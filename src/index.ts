@@ -8,6 +8,7 @@ import { wallet } from "./routes/wallet";
 import { rooms } from "./routes/rooms";
 import { calls } from "./routes/calls";
 import { stats } from "./routes/stats";
+import { notifications } from "./routes/notifications";
 import { renderRoomPage } from "./lib/room-page";
 import type { Room, Session } from "./lib/db";
 
@@ -34,6 +35,7 @@ app.route("/", wallet);
 app.route("/", rooms);
 app.route("/", calls);
 app.route("/", stats);
+app.route("/", notifications);
 
 app.get("/r/:slug", async (c) => {
   const utmSource = c.req.query("utm_source");

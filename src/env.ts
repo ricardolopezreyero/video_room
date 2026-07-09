@@ -10,4 +10,5 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET: string;
   CALLS_APP_ID: string;
   CALLS_APP_TOKEN: string;
+  RESEND_API_KEY: string;
 }

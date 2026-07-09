@@ -3,6 +3,7 @@ import { currentUser } from "../lib/current-user";
 import { creditLedger, newId, type Room, type Session, type User } from "../lib/db";
 import { slugify, isNumericSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
+import { notifyRoomLive } from "../lib/notify";
 import type { Env } from "../env";
 
 export const rooms = new Hono<{ Bindings: Env }>();
@@ -76,6 +77,9 @@ rooms.post("/api/rooms/:slug/start", async (c) => {
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId }) });
+
+  // No bloquea la respuesta: el creador no debe esperar a que salgan los correos.
+  c.executionCtx.waitUntil(notifyRoomLive(c.env, room, sessionId, user.name));
 
   return c.json({ session_id: sessionId });
 });
