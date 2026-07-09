@@ -160,9 +160,12 @@
     $("chat-panel").style.display = chatVisible ? "flex" : "none";
   }
 
-  // Barras que reaccionan al audio real (el del stream entrante para el
+  // Onda que reacciona al audio real (el del stream entrante para el
   // espectador, el propio mic para el creador) — puro adorno visual en el
-  // cliente, no toca nada del servidor.
+  // cliente, no toca nada del servidor. Se dibuja como una curva continua
+  // suavizada sobre datos de dominio del tiempo (la forma real de la onda,
+  // no un espectro de barras) y el canvas se escala al devicePixelRatio real
+  // de la pantalla para que se vea nítida en cualquier dispositivo.
   function setupWaveform(stream) {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -170,21 +173,76 @@
       audioCtx.resume().catch(() => {});
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.85;
       source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
+      const data = new Uint8Array(analyser.fftSize);
       const canvas = $("chat-wave");
       const ctx2d = canvas.getContext("2d");
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+
+      function resize() {
+        const w = canvas.clientWidth || 120;
+        const h = canvas.clientHeight || 22;
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      resize();
+      window.addEventListener("resize", resize);
+
+      const SAMPLES = 56; // puntos de muestreo de la onda; el resto se interpola suave
+      const step = Math.floor(data.length / SAMPLES);
+
       (function draw() {
         requestAnimationFrame(draw);
-        analyser.getByteFrequencyData(data);
-        ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-        const barWidth = canvas.width / data.length;
-        for (let i = 0; i < data.length; i++) {
-          const h = (data[i] / 255) * canvas.height;
-          ctx2d.fillStyle = "#56EF9F";
-          ctx2d.fillRect(i * barWidth, canvas.height - h, Math.max(barWidth - 1, 1), h);
+        analyser.getByteTimeDomainData(data);
+        const w = canvas.clientWidth || 120;
+        const h = canvas.clientHeight || 22;
+        const mid = h / 2;
+        ctx2d.clearRect(0, 0, w, h);
+
+        const points = [];
+        for (let i = 0; i < SAMPLES; i++) {
+          const v = (data[i * step] - 128) / 128; // -1..1
+          points.push({ x: (i / (SAMPLES - 1)) * w, y: mid - v * mid * 0.9 });
         }
+
+        ctx2d.beginPath();
+        ctx2d.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length - 1; i++) {
+          const midX = (points[i].x + points[i + 1].x) / 2;
+          const midY = (points[i].y + points[i + 1].y) / 2;
+          ctx2d.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+        }
+        const last = points[points.length - 1];
+        ctx2d.lineTo(last.x, last.y);
+
+        // relleno con degradado hacia el centro: le da cuerpo a la onda en
+        // vez de una simple línea, sensación de "audio real" más premium.
+        ctx2d.lineTo(w, mid);
+        ctx2d.lineTo(0, mid);
+        ctx2d.closePath();
+        const gradient = ctx2d.createLinearGradient(0, 0, 0, h);
+        gradient.addColorStop(0, "rgba(86,239,159,.85)");
+        gradient.addColorStop(1, "rgba(86,239,159,.05)");
+        ctx2d.fillStyle = gradient;
+        ctx2d.fill();
+
+        // trazo nítido encima del relleno para definir bien la curva
+        ctx2d.beginPath();
+        ctx2d.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length - 1; i++) {
+          const midX = (points[i].x + points[i + 1].x) / 2;
+          const midY = (points[i].y + points[i + 1].y) / 2;
+          ctx2d.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+        }
+        ctx2d.lineTo(last.x, last.y);
+        ctx2d.strokeStyle = "#56EF9F";
+        ctx2d.lineWidth = 1.5;
+        ctx2d.lineJoin = "round";
+        ctx2d.lineCap = "round";
+        ctx2d.stroke();
       })();
     } catch {
       // sin soporte de Web Audio API: la barra de comentarios sigue funcionando sin la onda

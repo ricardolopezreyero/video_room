@@ -56,7 +56,7 @@ export function renderRoomPage(opts: {
     </div>
     <div id="chat-panel" class="chat-panel" style="display:none">
       <div class="chat-panel-header">
-        <canvas id="chat-wave" width="120" height="22" title="Audio en vivo"></canvas>
+        <canvas id="chat-wave" width="360" height="32" title="Audio en vivo"></canvas>
         <input id="dim-slider" type="range" min="30" max="100" value="100" title="Atenuar el video">
       </div>
       <div id="chat-feed" class="chat-feed"></div>

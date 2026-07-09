@@ -335,7 +335,7 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   border-radius: 16px; padding: 10px 12px; border: .5px solid rgba(86,239,159,.15);
 }
 .chat-panel-header { display: flex; align-items: center; gap: 10px; }
-#chat-wave { flex: 1; height: 22px; }
+#chat-wave { flex: 1; height: 32px; display: block; }
 #dim-slider { width: 90px; accent-color: var(--green, #56EF9F); }
 .chat-feed {
   overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column;
