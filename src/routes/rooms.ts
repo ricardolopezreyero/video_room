@@ -1,20 +1,13 @@
 import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
 import { creditLedger, newId, type Room, type Session, type User } from "../lib/db";
+import { slugify, isNumericSlug, nextAvailableSlug } from "../lib/slugs";
+import { readUtmCookie } from "../lib/utm";
 import type { Env } from "../env";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 40);
-}
-
+// Respaldo para cuentas creadas antes de que el login asignara sala automáticamente.
 rooms.post("/api/rooms", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: "no_session" }, 401);
@@ -22,19 +15,48 @@ rooms.post("/api/rooms", async (c) => {
   const existing = await c.env.DB.prepare("SELECT * FROM rooms WHERE owner_id = ?").bind(user.id).first<Room>();
   if (existing) return c.json({ slug: existing.slug });
 
-  const base = slugify(user.name) || "sala";
-  let slug = base;
-  for (let i = 0; i < 20; i++) {
-    const taken = await c.env.DB.prepare("SELECT id FROM rooms WHERE slug = ?").bind(slug).first();
-    if (!taken) break;
-    slug = `${base}-${Math.floor(Math.random() * 9999)}`;
-  }
-
-  const roomId = newId("room");
+  const slug = await nextAvailableSlug(c.env.DB);
   await c.env.DB.prepare("INSERT INTO rooms (id, owner_id, slug, title) VALUES (?, ?, ?, ?)")
-    .bind(roomId, user.id, slug, user.name)
+    .bind(newId("room"), user.id, slug, user.name)
     .run();
   return c.json({ slug });
+});
+
+rooms.get("/api/rooms/mine", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE owner_id = ?").bind(user.id).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const ageDays = Math.floor((Date.now() / 1000 - room.slug_assigned_at) / 86400);
+  return c.json({ slug: room.slug, is_numeric: isNumericSlug(room.slug), age_days: ageDays });
+});
+
+rooms.post("/api/rooms/:slug/rename", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { new_slug: rawSlug } = await c.req.json<{ new_slug: string }>().catch(() => ({ new_slug: "" }));
+  const newSlug = slugify(rawSlug ?? "");
+  if (!newSlug) return c.json({ error: "slug_invalido" }, 400);
+  if (newSlug === slug) return c.json({ error: "mismo_slug" }, 400);
+  if (isNumericSlug(newSlug)) return c.json({ error: "slug_numerico_reservado" }, 400);
+
+  const taken = await c.env.DB.prepare("SELECT id FROM rooms WHERE slug = ?").bind(newSlug).first();
+  if (taken) return c.json({ error: "slug_ocupado" }, 400);
+
+  const oldSlugWasNumeric = isNumericSlug(slug);
+  const statements = [
+    c.env.DB.prepare("UPDATE rooms SET slug = ?, slug_assigned_at = unixepoch() WHERE id = ?").bind(newSlug, room.id),
+  ];
+  if (oldSlugWasNumeric) {
+    statements.push(c.env.DB.prepare("INSERT INTO released_slugs (slug) VALUES (?)").bind(slug));
+  }
+  await c.env.DB.batch(statements);
+
+  return c.json({ ok: true, slug: newSlug });
 });
 
 rooms.post("/api/rooms/:slug/start", async (c) => {
@@ -122,12 +144,14 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
 
   const passId = newId("pass");
   const expiresAt = now + 3600;
+  const utm = readUtmCookie(c);
   const debited = await creditLedger(c.env.DB, user.id, -2000, "entrada", passId, `entrada:${passId}`, "balance_cents");
   if (!debited) return c.json({ error: "no_procesado" }, 500);
   await creditLedger(c.env.DB, room.owner_id, 1000, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents");
   await c.env.DB.prepare(
-    "INSERT INTO passes (id, session_id, user_id, expires_at, device_id) VALUES (?, ?, ?, ?, ?)"
-  ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web").run();
+    `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, utm_source, utm_medium, utm_campaign)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web", utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null).run();
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name }) });

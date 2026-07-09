@@ -1,10 +1,13 @@
 // RLR
 import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
+import { UTM_COOKIE } from "./lib/utm";
 import type { Env } from "./env";
 import { auth } from "./routes/auth";
 import { wallet } from "./routes/wallet";
 import { rooms } from "./routes/rooms";
 import { calls } from "./routes/calls";
+import { stats } from "./routes/stats";
 import { renderRoomPage } from "./lib/room-page";
 import type { Room, Session } from "./lib/db";
 
@@ -22,8 +25,21 @@ app.route("/", auth);
 app.route("/", wallet);
 app.route("/", rooms);
 app.route("/", calls);
+app.route("/", stats);
 
 app.get("/r/:slug", async (c) => {
+  const utmSource = c.req.query("utm_source");
+  const utmMedium = c.req.query("utm_medium");
+  const utmCampaign = c.req.query("utm_campaign");
+  if (utmSource || utmMedium || utmCampaign) {
+    const data = JSON.stringify({ utm_source: utmSource, utm_medium: utmMedium, utm_campaign: utmCampaign });
+    setCookie(c, UTM_COOKIE, data, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+      sameSite: "Lax",
+    });
+  }
+
   const slug = c.req.param("slug");
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
   if (!room) return c.notFound();

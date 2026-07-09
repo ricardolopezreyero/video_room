@@ -4,10 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tu monedero — Video Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-<div class="wrap" id="app">
+<body class="app-shell">
+<nav class="nav">
+  <a href="/" class="logo"><img src="https://assets.cdn.filesafe.space/E6Gh1sE1RnPtadmL7wmG/media/698e530bc08665d629146a14.png" alt="SuperLeads" style="height:22px"><span>Video Room</span></a>
+  <div class="links">
+    <a href="/">Inicio</a>
+    <a href="/estadisticas">Estadísticas</a>
+  </div>
+  <a href="/auth/logout"><button class="btn-ghost nav-cta">Cerrar sesión</button></a>
+</nav>
+<div class="app-wrap" id="app">
   <h1>Tu monedero</h1>
   <div id="content">Cargando…</div>
 </div>
@@ -16,13 +26,13 @@ async function main() {
   const res = await fetch('/api/wallet/me');
   const content = document.getElementById('content');
   if (!res.ok) {
-    content.innerHTML = '<p>No has iniciado sesión.</p><a href="/login"><button class="btn-primary">Entrar con Google</button></a>';
+    content.innerHTML = '<p class="muted">No has iniciado sesión.</p><a href="/login"><button class="btn-primary">Entrar con Google</button></a>';
     return;
   }
   const me = await res.json();
   content.innerHTML = `
     <div class="balance-box">
-      <div class="fineprint">Tu saldo</div>
+      <div class="label">Tu saldo</div>
       <div class="amount">$${(me.balance_cents/100).toFixed(0)}</div>
       <div class="amount-grid">
         <button data-amt="2000">$20</button>
@@ -32,17 +42,24 @@ async function main() {
         <button data-amt="100000">$1,000</button>
         <button data-amt="200000">$2,000</button>
       </div>
-      <p class="fineprint">Tu saldo sirve para entrar a salas y mandar dinero a creadores.</p>
+      <p class="muted">Tu saldo sirve para entrar a salas y mandar dinero a creadores.</p>
     </div>
     <div class="balance-box">
-      <div class="fineprint">Balance de creador (separado — esto es lo que has ganado)</div>
-      <div class="amount">$${(me.creator_balance_cents/100).toFixed(0)}</div>
-      <button class="btn-secondary" id="btn-retiro">Retirar a mi banco</button>
-      <p class="fineprint">Mínimo $200, llega en 1-2 días hábiles.</p>
+      <div class="label">Balance de creador (separado — esto es lo que has ganado)</div>
+      <div class="amount green">$${(me.creator_balance_cents/100).toFixed(0)}</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <button class="btn-navy" id="btn-retiro">Retirar a mi banco</button>
+        <a href="/estadisticas"><button class="btn-ghost">Ver mis estadísticas</button></a>
+      </div>
+      <p class="muted" style="margin-top:12px;">Mínimo $200, llega en 1-2 días hábiles. Cada recarga, entrada, propina y retiro queda guardado para siempre — nada se borra.</p>
     </div>
-    <a href="/r/mi-sala-nueva" id="link-crear-sala"><button class="btn-primary">Crear / ir a mi sala</button></a>
-    <p><a href="/auth/logout">Cerrar sesión</a></p>
+    <div class="balance-box">
+      <div class="label">Tu sala</div>
+      <div id="room-info">Cargando…</div>
+    </div>
+    <p><a href="/auth/logout" class="app-nav-link">Cerrar sesión</a></p>
   `;
+  loadRoom();
   content.querySelectorAll('[data-amt]').forEach((btn) => {
     btn.onclick = async () => {
       const r = await fetch('/api/wallet/checkout', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ amount_cents: Number(btn.dataset.amt) }) });
@@ -56,13 +73,71 @@ async function main() {
     if (j.error === 'minimo_200') alert('Necesitas al menos $200 en tu balance de creador.');
     else if (j.ok) { alert('Retiro solicitado. Llega en 1-2 días hábiles.'); main(); }
   };
-  document.getElementById('link-crear-sala').onclick = async (e) => {
-    e.preventDefault();
-    const r = await fetch('/api/rooms', { method: 'POST' });
+}
+
+async function loadRoom() {
+  const el = document.getElementById('room-info');
+  const res = await fetch('/api/rooms/mine');
+  if (!res.ok) { el.innerHTML = '<p class="muted">No se pudo cargar tu sala.</p>'; return; }
+  const room = await res.json();
+  renderRoom(room);
+}
+
+function renderRoom(room) {
+  const el = document.getElementById('room-info');
+  const url = 'videoroom.superleads.mx/r/' + room.slug;
+  const ageMsg = room.age_days <= 0
+    ? 'La acabas de recibir.'
+    : `La tienes desde hace ${room.age_days} día${room.age_days === 1 ? '' : 's'}.`;
+  const numericMsg = room.is_numeric
+    ? ` Es una URL numérica — entre más antigua, más vale conservarla.`
+    : '';
+  el.innerHTML = `
+    <div class="amount" style="font-size:20px;">${url}</div>
+    <p class="muted">${ageMsg}${numericMsg}</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+      <button class="btn-primary" id="btn-copy-link">Copiar link</button>
+      <button class="btn-ghost" id="btn-edit-slug">Editar URL</button>
+    </div>
+    <div id="edit-slug-form" style="display:none; margin-top:14px;">
+      <input id="new-slug-input" placeholder="mi-nombre-de-sala" style="width:100%; padding:12px; border-radius:10px; border:.5px solid rgba(255,255,255,.15); background:rgba(255,255,255,.04); color:#fff; margin-bottom:8px; box-sizing:border-box;">
+      <div style="display:flex; gap:10px;">
+        <button class="btn-navy" id="btn-save-slug">Guardar</button>
+        <button class="btn-ghost" id="btn-cancel-slug">Cancelar</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btn-copy-link').onclick = () => {
+    navigator.clipboard.writeText('https://' + url);
+    alert('Link copiado.');
+  };
+  document.getElementById('btn-edit-slug').onclick = () => {
+    document.getElementById('edit-slug-form').style.display = 'block';
+  };
+  document.getElementById('btn-cancel-slug').onclick = () => {
+    document.getElementById('edit-slug-form').style.display = 'none';
+  };
+  document.getElementById('btn-save-slug').onclick = async () => {
+    const newSlug = document.getElementById('new-slug-input').value.trim();
+    if (!newSlug) return;
+    const warning = room.is_numeric
+      ? `Vas a cambiar tu URL numérica "${room.slug}" (la tienes desde hace ${room.age_days} día${room.age_days === 1 ? '' : 's'}) por una personalizada. El número "${room.slug}" quedará libre para que lo tome otro usuario nuevo. ¿Continuar?`
+      : `Vas a cambiar tu URL actual "${room.slug}" por "${newSlug}". ¿Continuar?`;
+    if (!confirm(warning)) return;
+    const r = await fetch(`/api/rooms/${room.slug}/rename`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_slug: newSlug }),
+    });
     const j = await r.json();
-    if (j.slug) window.location.href = '/r/' + j.slug;
+    if (j.error === 'slug_ocupado') return alert('Esa URL ya está en uso, prueba con otra.');
+    if (j.error === 'slug_numerico_reservado') return alert('Las URLs numéricas las asigna el sistema, elige un nombre con letras.');
+    if (j.error === 'slug_invalido') return alert('Ese nombre no es válido.');
+    if (j.error) return alert('No se pudo cambiar la URL.');
+    loadRoom();
   };
 }
+
 main();
 </script>
 </body>

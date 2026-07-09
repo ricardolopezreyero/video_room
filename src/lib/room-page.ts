@@ -18,6 +18,8 @@ export function renderRoomPage(opts: { room: Room; live: boolean; viewerCount: n
 <meta property="og:description" content="${desc}">
 <meta property="og:image" content="${ogImage}">
 <meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body data-slug="${room.slug}" data-live="${live}">
@@ -27,7 +29,7 @@ export function renderRoomPage(opts: { room: Room; live: boolean; viewerCount: n
       <h1>${live ? `🔴 ${room.title} está EN VIVO` : `${room.title} — abre pronto`}</h1>
       <p id="sub">${desc}</p>
       <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">Entrar · $20 la hora</button>
-      <button id="btn-notify" class="btn-secondary" style="display:${live ? "none" : "block"}">Avísame cuando abra</button>
+      <button id="btn-notify" class="btn-ghost" style="display:${live ? "none" : "block"}">Avísame cuando abra</button>
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
       <p class="fineprint">Entras con Google en un tap. Tu hora empieza cuando cruzas la puerta.</p>
     </div>

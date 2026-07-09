@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tus estadísticas — Video Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="app-shell">
+<nav class="nav">
+  <a href="/" class="logo"><img src="https://assets.cdn.filesafe.space/E6Gh1sE1RnPtadmL7wmG/media/698e530bc08665d629146a14.png" alt="SuperLeads" style="height:22px"><span>Video Room</span></a>
+  <div class="links">
+    <a href="/monedero">Monedero</a>
+  </div>
+  <a href="/monedero"><button class="btn-ghost nav-cta">Mi monedero</button></a>
+</nav>
+<div class="app-wrap" id="app">
+  <h1>Tus números</h1>
+  <div id="content">Cargando…</div>
+</div>
+<script>
+const RANGE_LABELS = { today: 'Hoy', '7d': '7 días', '30d': '30 días', all: 'Todo' };
+let currentRange = '30d';
+
+function fmt(cents) { return '$' + Math.round((cents || 0) / 100).toLocaleString('es-MX'); }
+
+async function load() {
+  const content = document.getElementById('content');
+  const res = await fetch('/api/stats?range=' + currentRange);
+  if (res.status === 401) {
+    content.innerHTML = '<p class="muted">No has iniciado sesión.</p><a href="/login"><button class="btn-primary">Entrar con Google</button></a>';
+    return;
+  }
+  const data = await res.json();
+
+  if (!data.has_room) {
+    content.innerHTML = `
+      <div class="empty-state">
+        No encontramos tu sala. Ve a tu <a href="/monedero" style="color:var(--green)">monedero</a> — si el problema sigue, escríbenos.
+      </div>`;
+    return;
+  }
+
+  const pills = Object.keys(RANGE_LABELS).map((key) =>
+    `<button data-range="${key}" class="${key === currentRange ? 'active' : ''}">${RANGE_LABELS[key]}</button>`
+  ).join('');
+
+  const donorsHtml = data.top_donors.length
+    ? `<ul class="donor-list">${data.top_donors.map((d, i) => `
+        <li class="donor-row">
+          <div class="donor-rank">${i + 1}</div>
+          ${d.avatar_url ? `<img class="donor-avatar" src="${d.avatar_url}">` : `<div class="donor-avatar"></div>`}
+          <div class="donor-info">
+            <div class="donor-name">${d.name}</div>
+            <div class="donor-meta">${d.entradas} entrada${d.entradas === 1 ? '' : 's'} · ${d.propinas} propina${d.propinas === 1 ? '' : 's'}</div>
+          </div>
+          <div class="donor-total">${fmt(d.total_cents)}</div>
+        </li>`).join('')}</ul>`
+    : `<div class="empty-state">Todavía no hay donadores en este periodo. En cuanto alguien entre o te mande dinero, aparece aquí.</div>`;
+
+  const campaignsHtml = data.campaigns && data.campaigns.length
+    ? `<ul class="donor-list">${data.campaigns.map((cmp) => `
+        <li class="donor-row">
+          <div class="donor-info">
+            <div class="donor-name">${cmp.utm_source}${cmp.utm_campaign ? ' · ' + cmp.utm_campaign : ''}</div>
+            <div class="donor-meta">${cmp.entradas} entrada${cmp.entradas === 1 ? '' : 's'}</div>
+          </div>
+          <div class="donor-total">${fmt(cmp.ganado_cents)}</div>
+        </li>`).join('')}</ul>`
+    : `<div class="empty-state">Comparte tu link con <code>?utm_source=instagram&amp;utm_campaign=lanzamiento</code> (o la campaña que uses) y aquí vas a ver cuánta gente entró por cada una.</div>`;
+
+  content.innerHTML = `
+    <p class="muted">Sala: videoroom.superleads.mx/r/${data.room_slug}</p>
+    <div class="filter-pills" id="pills">${pills}</div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><div class="n green">${fmt(data.period.earned_cents)}</div><div class="l">Ganado en este periodo</div></div>
+      <div class="stat-card"><div class="n">${data.period.entradas_count}</div><div class="l">Entradas pagadas</div></div>
+      <div class="stat-card"><div class="n">${data.period.propinas_count}</div><div class="l">Propinas (${fmt(data.period.propinas_cents)})</div></div>
+      <div class="stat-card"><div class="n">${data.period.unique_viewers}</div><div class="l">Espectadores únicos</div></div>
+    </div>
+
+    <div class="balance-box">
+      <div class="label">Balance disponible para retirar</div>
+      <div class="amount green">${fmt(data.creator_balance_cents)}</div>
+      <div class="label" style="margin-top:14px;">Ganado histórico (desde siempre)</div>
+      <div class="amount" style="font-size:20px;">${fmt(data.total_earned_all_time_cents)}</div>
+    </div>
+
+    <h2 style="font-size:18px; margin-top:32px; margin-bottom:8px;">Tus mayores donadores</h2>
+    <p class="muted" style="margin-bottom:8px;">Quién te ha apoyado más en este periodo, sumando entradas y propinas.</p>
+    <div class="balance-box">${donorsHtml}</div>
+
+    <h2 style="font-size:18px; margin-top:32px; margin-bottom:8px;">Por campaña (UTM)</h2>
+    <p class="muted" style="margin-bottom:8px;">De dónde vinieron las personas que entraron a tu sala en este periodo.</p>
+    <div class="balance-box">${campaignsHtml}</div>
+  `;
+
+  document.querySelectorAll('#pills button').forEach((btn) => {
+    btn.onclick = () => { currentRange = btn.dataset.range; load(); };
+  });
+}
+load();
+</script>
+</body>
+</html>

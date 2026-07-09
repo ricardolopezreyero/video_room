@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { signSession, SESSION_COOKIE } from "../lib/session";
 import { newId, type User } from "../lib/db";
+import { nextAvailableSlug } from "../lib/slugs";
+import { readUtmCookie } from "../lib/utm";
 import type { Env } from "../env";
 
 export const auth = new Hono<{ Bindings: Env }>();
@@ -56,9 +58,20 @@ auth.get("/auth/google/callback", async (c) => {
       .run();
   } else {
     userId = newId("usr");
+    const utm = readUtmCookie(c);
     await c.env.DB.prepare(
-      "INSERT INTO users (id, google_id, email, name, avatar_url) VALUES (?, ?, ?, ?, ?)"
-    ).bind(userId, profile.sub, profile.email, profile.name, profile.picture).run();
+      `INSERT INTO users (id, google_id, email, name, avatar_url, signup_utm_source, signup_utm_medium, signup_utm_campaign)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      userId, profile.sub, profile.email, profile.name, profile.picture,
+      utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null
+    ).run();
+
+    // Toda cuenta nueva recibe su sala con URL numérica desde el primer login.
+    const slug = await nextAvailableSlug(c.env.DB);
+    await c.env.DB.prepare(
+      "INSERT INTO rooms (id, owner_id, slug, title) VALUES (?, ?, ?, ?)"
+    ).bind(newId("room"), userId, slug, profile.name).run();
   }
 
   const token = await signSession(c.env.SESSION_SECRET, { uid: userId, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 });

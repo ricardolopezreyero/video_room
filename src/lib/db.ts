@@ -11,6 +11,9 @@ export interface User {
   balance_cents: number;
   creator_balance_cents: number;
   created_at: number;
+  signup_utm_source: string | null;
+  signup_utm_medium: string | null;
+  signup_utm_campaign: string | null;
 }
 
 export interface Room {
@@ -20,6 +23,7 @@ export interface Room {
   title: string;
   blur_preview: number;
   created_at: number;
+  slug_assigned_at: number;
 }
 
 export interface Session {
