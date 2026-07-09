@@ -14,6 +14,29 @@
   let ws = null;
   let sessionEnded = false;
 
+  // Estado de los controles del creador durante la transmisión (cámara, mic,
+  // pantalla compartida, cambio de cámara). Nada de esto toca el backend: todo
+  // se resuelve con replaceTrack()/track.enabled sobre el mismo track ya
+  // negociado, así que Cloudflare Calls no necesita renegociar nada.
+  let videoSender = null;
+  let cameraTrack = null;
+  let micTrack = null;
+  let micOn = true;
+  let camOn = true;
+  let usingScreenShare = false;
+  let preferredFacing = "user";
+  let shownMicToast = false;
+  let shownCamToast = false;
+  let qualityTimer = null;
+
+  function buzz() {
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
+
+  function videoConstraints() {
+    return { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, facingMode: preferredFacing };
+  }
+
   function toast(msg, ms = 4000) {
     toastEl.textContent = msg;
     toastEl.classList.add("show");
@@ -99,16 +122,22 @@
   async function startPublishing(sessionId) {
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints(),
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
     } catch {
       throw new Error("sin_camara");
     }
     player.srcObject = stream;
     player.muted = true;
+    cameraTrack = stream.getVideoTracks()[0];
+    micTrack = stream.getAudioTracks()[0];
     pc = new RTCPeerConnection();
     const tracks = [];
     stream.getTracks().forEach((track, i) => {
-      pc.addTransceiver(track, { direction: "sendonly" });
+      const transceiver = pc.addTransceiver(track, { direction: "sendonly" });
+      if (track.kind === "video") videoSender = transceiver.sender;
       tracks.push({ mid: String(i), trackName: track.kind });
     });
     const offer = await pc.createOffer();
@@ -120,6 +149,159 @@
     controls.style.display = "flex";
     ticker.style.display = "block";
     $("btn-stop").style.display = "inline-block";
+    showCreatorToolbar();
+    toast("✨ Estás en vivo. Gracias por regalar tu tiempo — disfrútalo.", 6000);
+  }
+
+  // Botones de 💵/🎤 son para el viewer (mandar dinero / levantar la mano) y no
+  // aplican en la propia sala del creador — se ocultan y en su lugar aparecen
+  // los controles reales de transmisión.
+  function showCreatorToolbar() {
+    $("btn-tip").style.display = "none";
+    $("btn-hand").style.display = "none";
+    $("btn-mic").style.display = "inline-block";
+    $("btn-cam").style.display = "inline-block";
+    if ("getDisplayMedia" in navigator.mediaDevices) {
+      $("btn-screen").style.display = "inline-block";
+    }
+    setupCameraSwitcher();
+    startQualityMonitor();
+  }
+
+  function toggleMic() {
+    micOn = !micOn;
+    buzz();
+    if (micTrack) micTrack.enabled = micOn;
+    $("btn-mic").textContent = micOn ? "🎙️" : "🔇";
+    $("btn-mic").classList.toggle("off", !micOn);
+    if (!micOn && !shownMicToast) {
+      shownMicToast = true;
+      toast("Tu voz está en pausa. Nadie te escucha hasta que la actives. 🤫");
+    }
+  }
+
+  function toggleCam() {
+    camOn = !camOn;
+    buzz();
+    if (cameraTrack) cameraTrack.enabled = camOn;
+    $("btn-cam").textContent = camOn ? "📷" : "🚫";
+    $("btn-cam").classList.toggle("off", !camOn);
+    if (!camOn && !shownCamToast) {
+      shownCamToast = true;
+      toast("Tu cámara está en pausa.");
+    }
+  }
+
+  async function toggleScreenShare() {
+    buzz();
+    if (usingScreenShare) return stopScreenShare();
+    let screenStream;
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false });
+    } catch {
+      return; // el creador canceló el selector nativo
+    }
+    const screenTrack = screenStream.getVideoTracks()[0];
+    await videoSender.replaceTrack(screenTrack);
+    if (cameraTrack) cameraTrack.stop();
+    cameraTrack = screenTrack;
+    cameraTrack.enabled = camOn;
+    player.srcObject = micTrack ? new MediaStream([screenTrack, micTrack]) : screenStream;
+    screenTrack.onended = () => stopScreenShare();
+    usingScreenShare = true;
+    $("btn-screen").classList.add("active");
+    $("btn-screen").title = "Dejar de compartir pantalla";
+    toast("🖥️ Ahora compartes tu pantalla. Tu cámara se reanuda cuando la detengas.");
+  }
+
+  async function stopScreenShare() {
+    if (!usingScreenShare) return;
+    usingScreenShare = false;
+    $("btn-screen").classList.remove("active");
+    $("btn-screen").title = "Compartir pantalla";
+    let camStream;
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false });
+    } catch {
+      return toast("No se pudo reactivar la cámara.");
+    }
+    const camTrack = camStream.getVideoTracks()[0];
+    camTrack.enabled = camOn;
+    await videoSender.replaceTrack(camTrack);
+    if (cameraTrack) cameraTrack.stop();
+    cameraTrack = camTrack;
+    player.srcObject = micTrack ? new MediaStream([camTrack, micTrack]) : camStream;
+  }
+
+  async function setupCameraSwitcher() {
+    let devices;
+    try {
+      devices = await navigator.mediaDevices.enumerateDevices();
+    } catch {
+      return;
+    }
+    const cams = devices.filter((d) => d.kind === "videoinput");
+    if (cams.length < 2) return; // nada que cambiar
+    const isTouch = window.matchMedia("(pointer: coarse)").matches;
+    if (isTouch) {
+      $("btn-flip-cam").style.display = "inline-block";
+      guarded($("btn-flip-cam"), () => switchCamera({ flip: true }));
+    } else {
+      const select = $("cam-select");
+      select.innerHTML = cams.map((d, i) => `<option value="${d.deviceId}">${d.label || `Cámara ${i + 1}`}</option>`).join("");
+      select.style.display = "inline-block";
+      select.onchange = () => switchCamera({ deviceId: select.value });
+    }
+  }
+
+  async function switchCamera({ flip, deviceId }) {
+    if (usingScreenShare) return; // no aplica mientras comparte pantalla
+    if (flip) preferredFacing = preferredFacing === "user" ? "environment" : "user";
+    const constraints = flip ? { ...videoConstraints() } : { ...videoConstraints(), deviceId: { exact: deviceId } };
+    let newStream;
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+    } catch {
+      return toast("No se pudo cambiar de cámara.");
+    }
+    const newTrack = newStream.getVideoTracks()[0];
+    newTrack.enabled = camOn;
+    await videoSender.replaceTrack(newTrack);
+    if (cameraTrack) cameraTrack.stop();
+    cameraTrack = newTrack;
+    player.srcObject = micTrack ? new MediaStream([newTrack, micTrack]) : newStream;
+  }
+
+  function startQualityMonitor() {
+    const el = $("conn-quality");
+    el.style.display = "block";
+    qualityTimer = setInterval(async () => {
+      if (!pc) return;
+      let rtt = null;
+      let fractionLost = null;
+      try {
+        const stats = await pc.getStats();
+        stats.forEach((r) => {
+          if (r.type === "candidate-pair" && r.state === "succeeded" && r.currentRoundTripTime != null) {
+            rtt = r.currentRoundTripTime;
+          }
+          if (r.type === "remote-inbound-rtp" && r.fractionLost != null) {
+            fractionLost = r.fractionLost;
+          }
+        });
+      } catch {
+        return;
+      }
+      let level = "good";
+      if ((rtt != null && rtt > 0.3) || (fractionLost != null && fractionLost > 0.05)) level = "bad";
+      else if (rtt != null && rtt > 0.15) level = "ok";
+      el.className = `conn-quality ${level}`;
+      el.title = level === "good"
+        ? "Tu conexión va perfecta"
+        : level === "ok"
+        ? "Tu conexión está algo inestable"
+        : "Tu conexión está débil — acércate al router si puedes";
+    }, 3000);
   }
 
   async function startSubscribing() {
@@ -241,12 +423,16 @@
     guarded($("btn-stop"), async () => {
       const res = await api(`/api/rooms/${slug}/stop`, { body: {} });
       sessionEnded = true;
+      if (qualityTimer) clearInterval(qualityTimer);
       toast(`Ganaste $${Math.round((res.earned_cents ?? 0) / 100)} · Pico ${res.peak_viewers ?? 0} personas`, 8000);
     });
     guarded($("btn-tip"), async () => {
       if (!me) return requireLogin();
       openTipSheet();
     });
+    guarded($("btn-mic"), async () => toggleMic());
+    guarded($("btn-cam"), async () => toggleCam());
+    guarded($("btn-screen"), async () => toggleScreenShare());
   }
 
   init();

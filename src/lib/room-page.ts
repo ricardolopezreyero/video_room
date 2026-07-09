@@ -57,9 +57,15 @@ export function renderRoomPage(opts: {
     <div id="controls" class="controls" style="display:none">
       <button id="btn-tip">💵</button>
       <button id="btn-hand">🎤</button>
+      <button id="btn-mic" class="ctrl-btn" style="display:none" title="Silenciar micrófono">🎙️</button>
+      <button id="btn-cam" class="ctrl-btn" style="display:none" title="Apagar cámara">📷</button>
+      <button id="btn-flip-cam" class="ctrl-btn" style="display:none" title="Cambiar cámara">🔄</button>
+      <select id="cam-select" class="cam-select" style="display:none"></select>
+      <button id="btn-screen" class="ctrl-btn" style="display:none" title="Compartir pantalla">🖥️</button>
       <button id="btn-stop" style="display:none">Terminar</button>
     </div>
     <div id="ticker" class="ticker" style="display:none"></div>
+    <span id="conn-quality" class="conn-quality" style="display:none" title="Calidad de tu conexión"></span>
     <div id="toast" class="toast"></div>
   </div>
   <script src="/room.js" defer></script>

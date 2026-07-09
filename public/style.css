@@ -314,13 +314,28 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   bottom: calc(24px + env(safe-area-inset-bottom));
   display: flex; gap: 16px; background: rgba(0,18,64,0.7); padding: 10px 16px; border-radius: 999px;
   border: .5px solid rgba(86,239,159,.15);
+  flex-wrap: wrap; justify-content: center; max-width: min(92vw, 440px);
 }
 .controls button { font-size: 1.4rem; background: none; border: none; color: #fff; cursor: pointer; padding: 4px 8px; }
 #btn-stop { font-size: 0.9rem; background: var(--green); color: var(--navy); padding: 8px 16px; border-radius: 999px; font-weight: 700; }
+.ctrl-btn.off { opacity: .5; }
+.ctrl-btn.active { text-shadow: 0 0 10px var(--green, #56EF9F); }
+.cam-select {
+  background: rgba(0,18,64,.7); color: #fff; border: .5px solid rgba(86,239,159,.3); border-radius: 999px;
+  padding: 4px 10px; font-size: .8rem; font-family: inherit; max-width: 120px;
+}
 .ticker {
   position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; background: rgba(0,18,64,0.75); color: var(--green);
   font-weight: 800; padding: 8px 14px; border-radius: 10px; border: .5px solid rgba(86,239,159,.2);
 }
+.conn-quality {
+  position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; width: 10px; height: 10px; border-radius: 50%;
+  transform: translateY(-18px);
+}
+.conn-quality.good { background: var(--green, #56EF9F); }
+.conn-quality.ok { background: #F5C542; }
+.conn-quality.bad { background: #E5484D; animation: conn-pulse 1.2s ease-in-out infinite; }
+@keyframes conn-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .toast {
   position: absolute; top: calc(16px + env(safe-area-inset-top)); left: 16px; background: rgba(0,18,64,0.85); padding: 10px 16px;
   border-radius: 10px; opacity: 0; transition: opacity 0.3s; color: #fff; font-size: 13px; max-width: calc(100% - 32px);
