@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Tu monedero — Video Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
@@ -26,7 +26,7 @@ async function main() {
   const res = await fetch('/api/wallet/me');
   const content = document.getElementById('content');
   if (!res.ok) {
-    content.innerHTML = '<p class="muted">No has iniciado sesión.</p><a href="/login"><button class="btn-primary">Entrar con Google</button></a>';
+    content.innerHTML = '<p class="muted">Necesitas ingresar.</p><a href="/login"><button class="btn-primary">Ingresar con Google</button></a>';
     return;
   }
   const me = await res.json();
@@ -62,16 +62,25 @@ async function main() {
   loadRoom();
   content.querySelectorAll('[data-amt]').forEach((btn) => {
     btn.onclick = async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
       const r = await fetch('/api/wallet/checkout', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ amount_cents: Number(btn.dataset.amt) }) });
       const j = await r.json();
-      if (j.url) window.location.href = j.url;
+      if (j.url) { window.location.href = j.url; return; }
+      btn.disabled = false;
+      alert('No se pudo iniciar el pago. Intenta de nuevo.');
     };
   });
-  document.getElementById('btn-retiro').onclick = async () => {
+  const btnRetiro = document.getElementById('btn-retiro');
+  btnRetiro.onclick = async () => {
+    if (btnRetiro.disabled) return;
+    btnRetiro.disabled = true;
     const r = await fetch('/api/wallet/retiro', { method: 'POST' });
     const j = await r.json();
     if (j.error === 'minimo_200') alert('Necesitas al menos $200 en tu balance de creador.');
-    else if (j.ok) { alert('Retiro solicitado. Llega en 1-2 días hábiles.'); main(); }
+    else if (j.ok) { alert('Retiro solicitado. Llega en 1-2 días hábiles.'); main(); return; }
+    else alert('No se pudo procesar el retiro. Intenta de nuevo.');
+    btnRetiro.disabled = false;
   };
 }
 
@@ -118,18 +127,22 @@ function renderRoom(room) {
   document.getElementById('btn-cancel-slug').onclick = () => {
     document.getElementById('edit-slug-form').style.display = 'none';
   };
-  document.getElementById('btn-save-slug').onclick = async () => {
+  const btnSaveSlug = document.getElementById('btn-save-slug');
+  btnSaveSlug.onclick = async () => {
+    if (btnSaveSlug.disabled) return;
     const newSlug = document.getElementById('new-slug-input').value.trim();
     if (!newSlug) return;
     const warning = room.is_numeric
       ? `Vas a cambiar tu URL numérica "${room.slug}" (la tienes desde hace ${room.age_days} día${room.age_days === 1 ? '' : 's'}) por una personalizada. El número "${room.slug}" quedará libre para que lo tome otro usuario nuevo. ¿Continuar?`
       : `Vas a cambiar tu URL actual "${room.slug}" por "${newSlug}". ¿Continuar?`;
     if (!confirm(warning)) return;
+    btnSaveSlug.disabled = true;
     const r = await fetch(`/api/rooms/${room.slug}/rename`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ new_slug: newSlug }),
     });
     const j = await r.json();
+    btnSaveSlug.disabled = false;
     if (j.error === 'slug_ocupado') return alert('Esa URL ya está en uso, prueba con otra.');
     if (j.error === 'slug_numerico_reservado') return alert('Las URLs numéricas las asigna el sistema, elige un nombre con letras.');
     if (j.error === 'slug_invalido') return alert('Ese nombre no es válido.');

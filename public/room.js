@@ -11,6 +11,8 @@
 
   let isOwner = false;
   let pc = null;
+  let ws = null;
+  let sessionEnded = false;
 
   function toast(msg, ms = 4000) {
     toastEl.textContent = msg;
@@ -35,9 +37,26 @@
     return res.json();
   }
 
+  // Evita doble-clic/doble-tap disparando la misma acción dos veces (muy común
+  // en móvil): deshabilita el botón mientras la petición está en curso.
+  function guarded(el, fn) {
+    let busy = false;
+    el.addEventListener("click", async () => {
+      if (busy) return;
+      busy = true;
+      el.disabled = true;
+      try {
+        await fn();
+      } finally {
+        busy = false;
+        el.disabled = false;
+      }
+    });
+  }
+
   function connectWs() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${location.host}/ws/room/${slug}`);
+    ws = new WebSocket(`${proto}://${location.host}/ws/room/${slug}`);
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "viewers") {
@@ -56,9 +75,16 @@
       } else if (msg.type === "hearts") {
         // contador de corazones agregado
       } else if (msg.type === "ended") {
+        sessionEnded = true;
         toast("La transmisión terminó.");
         setTimeout(() => location.reload(), 2000);
       }
+    };
+    // El socket puede caerse por cambios de red (wifi/datos, la app pasa a segundo
+    // plano, etc.) sin que el DO ni la transmisión hayan terminado — reconectamos.
+    ws.onclose = () => {
+      if (sessionEnded) return;
+      setTimeout(connectWs, 2000);
     };
   }
 
@@ -71,19 +97,24 @@
   }
 
   async function startPublishing(sessionId) {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    } catch {
+      throw new Error("sin_camara");
+    }
     player.srcObject = stream;
     player.muted = true;
     pc = new RTCPeerConnection();
     const tracks = [];
     stream.getTracks().forEach((track, i) => {
-      const transceiver = pc.addTransceiver(track, { direction: "sendonly" });
+      pc.addTransceiver(track, { direction: "sendonly" });
       tracks.push({ mid: String(i), trackName: track.kind });
     });
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     const res = await api(`/api/rooms/${slug}/publish`, { body: { sdp: offer.sdp, tracks } });
-    if (res.error) return toast("No se pudo iniciar la transmisión.");
+    if (res.error) throw new Error("publish_error");
     await pc.setRemoteDescription({ type: "answer", sdp: res.answer_sdp });
     overlay.style.display = "none";
     controls.style.display = "flex";
@@ -93,7 +124,12 @@
 
   async function startSubscribing() {
     const res = await api(`/api/rooms/${slug}/subscribe`, { body: {} });
-    if (res.error) return toast(res.error === "creador_no_transmitiendo" ? "El creador aún no transmite." : "No se pudo conectar.");
+    if (res.error) {
+      const msg = res.error === "creador_no_transmitiendo" ? "El creador aún no transmite. Vuelve a intentar en un momento."
+        : res.error === "sin_pase" ? "Necesitas un pase para ver esta sala."
+        : "No se pudo conectar.";
+      return toast(msg);
+    }
     pc = new RTCPeerConnection();
     pc.ontrack = (ev) => {
       player.srcObject = ev.streams[0];
@@ -120,10 +156,15 @@
         <button id="tip-cancel">Cancelar</button>
       </div>`;
     document.body.appendChild(sheet);
+    let sent = false;
     sheet.querySelectorAll("[data-amt]").forEach((btn) => {
       btn.onclick = async () => {
+        if (sent) return;
+        sent = true;
+        sheet.querySelectorAll("[data-amt]").forEach((b) => (b.disabled = true));
         const amount_cents = Number(btn.dataset.amt);
-        const message = $("tip-msg") ? sheet.querySelector("#tip-msg").value : "";
+        const messageInput = sheet.querySelector("#tip-msg");
+        const message = messageInput ? messageInput.value : "";
         const res = await api(`/api/rooms/${slug}/tip`, { body: { amount_cents, message } });
         sheet.remove();
         if (res.error === "saldo_insuficiente") toast("Sin saldo suficiente. Recarga en tu monedero.");
@@ -137,8 +178,10 @@
   player.addEventListener("click", () => {
     const now = Date.now();
     if (now - lastTap < 300) {
-      // doble tap = corazón (visual local, agregación real vía DO en siguiente iteración)
       toast("❤️");
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "heart" }));
+      }
     }
     lastTap = now;
   });
@@ -169,32 +212,41 @@
       }
     }
 
-    $("btn-enter").onclick = async () => {
+    guarded($("btn-enter"), async () => {
       if (!me) return requireLogin();
       const res = await api(`/api/rooms/${slug}/pass`, { body: { device_id: "web" } });
       if (res.error === "saldo_insuficiente") return toast("Sin saldo. Ve a tu monedero para recargar.");
       if (res.error) return toast("No se pudo entrar a la sala.");
       await startSubscribing();
-    };
-    $("btn-notify").onclick = async () => {
+    });
+    guarded($("btn-notify"), async () => {
       if (!me) return requireLogin();
       await api(`/api/rooms/${slug}/notify-me`, { body: {} });
       toast("Listo, te avisamos cuando abra.");
-    };
-    $("btn-start").onclick = async () => {
+    });
+    guarded($("btn-start"), async () => {
       if (!me) return requireLogin();
       const res = await api(`/api/rooms/${slug}/start`, { body: {} });
       if (res.error) return toast("No se pudo iniciar.");
-      await startPublishing(res.session_id);
-    };
-    $("btn-stop").onclick = async () => {
+      try {
+        await startPublishing(res.session_id);
+      } catch (err) {
+        const msg = err && err.message === "sin_camara"
+          ? "No pudimos usar tu cámara o micrófono. Revisa los permisos del navegador."
+          : "No se pudo iniciar la transmisión.";
+        toast(msg, 6000);
+        await api(`/api/rooms/${slug}/stop`, { body: {} }).catch(() => {});
+      }
+    });
+    guarded($("btn-stop"), async () => {
       const res = await api(`/api/rooms/${slug}/stop`, { body: {} });
+      sessionEnded = true;
       toast(`Ganaste $${Math.round((res.earned_cents ?? 0) / 100)} · Pico ${res.peak_viewers ?? 0} personas`, 8000);
-    };
-    $("btn-tip").onclick = () => {
+    });
+    guarded($("btn-tip"), async () => {
       if (!me) return requireLogin();
       openTipSheet();
-    };
+    });
   }
 
   init();

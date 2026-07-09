@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Bienvenido a Video Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="app-shell">
+<div class="onboarding-wrap">
+  <div class="onboarding-card">
+    <div class="onboarding-emoji" id="card-emoji">🔴</div>
+    <h2 id="card-title">Transmite y cobra</h2>
+    <p id="card-desc">Crea tu sala, comparte tu link y cobra $20 por hora desde tu primer espectador. La mitad es tuya, al instante.</p>
+  </div>
+  <div class="onboarding-dots" id="dots">
+    <span class="active"></span><span></span><span></span>
+  </div>
+  <div class="onboarding-progress">
+    <div class="onboarding-step-label" id="step-label">Creando cuenta</div>
+    <div class="onboarding-bar-track"><div class="onboarding-bar-fill" id="bar-fill"></div></div>
+  </div>
+</div>
+<script>
+const STEPS = [
+  { label: 'Creando cuenta', emoji: '🔴', title: 'Transmite y cobra', desc: 'Crea tu sala, comparte tu link y cobra $20 por hora desde tu primer espectador. La mitad es tuya, al instante.' },
+  { label: 'Creando perfil', emoji: '💵', title: 'Propinas en vivo', desc: 'Tu audiencia te manda dinero cuando quiere, con un mensaje en pantalla. De cada $10 en propinas, $9 son tuyos.' },
+  { label: 'Estableciendo conexión', emoji: '📊', title: 'Tus números, claros', desc: 'Mira cuánto ganaste, quiénes son tus mayores donadores y de qué campaña vinieron — todo en tiempo real.' },
+];
+
+const emojiEl = document.getElementById('card-emoji');
+const titleEl = document.getElementById('card-title');
+const descEl = document.getElementById('card-desc');
+const labelEl = document.getElementById('step-label');
+const fillEl = document.getElementById('bar-fill');
+const dotEls = document.querySelectorAll('#dots span');
+
+function showStep(i) {
+  const s = STEPS[i];
+  emojiEl.textContent = s.emoji;
+  titleEl.textContent = s.title;
+  descEl.textContent = s.desc;
+  labelEl.textContent = s.label;
+  dotEls.forEach((d, idx) => d.classList.toggle('active', idx === i));
+  fillEl.style.transition = 'none';
+  fillEl.style.width = '0%';
+  void fillEl.offsetWidth; // fuerza reflow para reiniciar la animación
+  fillEl.style.transition = 'width 1s linear';
+  fillEl.style.width = '100%';
+}
+
+function finish() {
+  labelEl.textContent = 'Listo para entrar';
+  emojiEl.textContent = '✅';
+  titleEl.textContent = '¡Listo!';
+  descEl.textContent = 'Tu cuenta y tu sala ya están creadas.';
+  setTimeout(() => { window.location.href = '/monedero'; }, 700);
+}
+
+showStep(0);
+let i = 0;
+const interval = setInterval(() => {
+  i++;
+  if (i >= STEPS.length) {
+    clearInterval(interval);
+    finish();
+    return;
+  }
+  showStep(i);
+}, 1000);
+</script>
+</body>
+</html>

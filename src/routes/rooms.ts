@@ -145,8 +145,16 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   const passId = newId("pass");
   const expiresAt = now + 3600;
   const utm = readUtmCookie(c);
-  const debited = await creditLedger(c.env.DB, user.id, -2000, "entrada", passId, `entrada:${passId}`, "balance_cents");
-  if (!debited) return c.json({ error: "no_procesado" }, 500);
+  // Idem key atada a sesión+usuario+segundo: dos clics dobles en el mismo segundo
+  // (el caso real de doble-tap) chocan en esta llave y solo uno se cobra.
+  const debited = await creditLedger(c.env.DB, user.id, -2000, "entrada", passId, `entrada:${session.id}:${user.id}:${now}`, "balance_cents");
+  if (!debited) {
+    const racedPass = await c.env.DB.prepare(
+      "SELECT id, expires_at FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
+    ).bind(session.id, user.id, now).first<{ id: string; expires_at: number }>();
+    if (racedPass) return c.json({ ok: true, expires_at: racedPass.expires_at, charged: false });
+    return c.json({ error: "no_procesado" }, 500);
+  }
   await creditLedger(c.env.DB, room.owner_id, 1000, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents");
   await c.env.DB.prepare(
     `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, utm_source, utm_medium, utm_campaign)

@@ -41,22 +41,27 @@ auth.get("/auth/google/callback", async (c) => {
       grant_type: "authorization_code",
     }),
   });
-  if (!tokenRes.ok) return c.text("No se pudo iniciar sesión con Google.", 400);
+  if (!tokenRes.ok) return c.text("No se pudo ingresar con Google. Intenta de nuevo.", 400);
   const tokenJson = await tokenRes.json<{ access_token: string; id_token: string }>();
+  if (!tokenJson.access_token) return c.text("No se pudo ingresar con Google. Intenta de nuevo.", 400);
 
   const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: `Bearer ${tokenJson.access_token}` },
   });
+  if (!profileRes.ok) return c.text("No se pudo obtener tu perfil de Google. Intenta de nuevo.", 400);
   const profile = await profileRes.json<{ sub: string; email: string; name: string; picture: string }>();
+  if (!profile.sub || !profile.email) return c.text("No se pudo obtener tu perfil de Google. Intenta de nuevo.", 400);
 
   const existing = await c.env.DB.prepare("SELECT * FROM users WHERE google_id = ?").bind(profile.sub).first<User>();
   let userId: string;
+  let isNewUser = false;
   if (existing) {
     userId = existing.id;
     await c.env.DB.prepare("UPDATE users SET name = ?, avatar_url = ?, email = ? WHERE id = ?")
       .bind(profile.name, profile.picture, profile.email, userId)
       .run();
   } else {
+    isNewUser = true;
     userId = newId("usr");
     const utm = readUtmCookie(c);
     await c.env.DB.prepare(
@@ -83,7 +88,7 @@ auth.get("/auth/google/callback", async (c) => {
     path: "/",
   });
   deleteCookie(c, "vr_oauth_state");
-  return c.redirect("/monedero");
+  return c.redirect(isNewUser ? "/bienvenida" : "/monedero");
 });
 
 auth.get("/auth/logout", (c) => {

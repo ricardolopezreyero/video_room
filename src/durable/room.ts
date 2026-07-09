@@ -7,45 +7,86 @@ interface TipEvent {
   message?: string;
 }
 
+interface PersistedState {
+  totalCents: number;
+  peakViewers: number;
+  hearts: number;
+  sessionId: string | null;
+  sfuSessionId: string | null;
+  sfuTracks: { mid: string; trackName: string }[];
+}
+
+// Cloudflare puede hibernar este Durable Object (evictarlo de memoria) mientras
+// los WebSockets siguen abiertos en el edge — es el propósito de acceptWebSocket().
+// Por eso NUNCA guardamos el estado importante solo en memoria: se persiste en
+// this.state.storage y se recupera en el constructor, y los sockets se leen con
+// getWebSockets() en vez de una lista propia (que se perdería al re-instanciar).
 export class RoomDurableObject implements DurableObject {
   state: DurableObjectState;
   env: Env;
-  sockets: Set<WebSocket> = new Set();
-  viewerCount = 0;
   totalCents = 0;
   peakViewers = 0;
   hearts = 0;
   sessionId: string | null = null;
   sfuSessionId: string | null = null;
   sfuTracks: { mid: string; trackName: string }[] = [];
+  private ready: Promise<void>;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+    this.ready = this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.get<PersistedState>("state");
+      if (stored) {
+        this.totalCents = stored.totalCents;
+        this.peakViewers = stored.peakViewers;
+        this.hearts = stored.hearts;
+        this.sessionId = stored.sessionId;
+        this.sfuSessionId = stored.sfuSessionId;
+        this.sfuTracks = stored.sfuTracks;
+      }
+    });
+  }
+
+  private async persist() {
+    const data: PersistedState = {
+      totalCents: this.totalCents,
+      peakViewers: this.peakViewers,
+      hearts: this.hearts,
+      sessionId: this.sessionId,
+      sfuSessionId: this.sfuSessionId,
+      sfuTracks: this.sfuTracks,
+    };
+    await this.state.storage.put("state", data);
+  }
+
+  private viewerCount(): number {
+    return this.state.getWebSockets().length;
   }
 
   broadcast(msg: unknown) {
     const data = JSON.stringify(msg);
-    for (const ws of this.sockets) {
+    for (const ws of this.state.getWebSockets()) {
       try {
         ws.send(data);
       } catch {
-        this.sockets.delete(ws);
+        // socket muerto, se limpia solo al hibernar/cerrar
       }
     }
   }
 
   async fetch(request: Request): Promise<Response> {
+    await this.ready;
     const url = new URL(request.url);
 
     if (url.pathname === "/ws") {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.state.acceptWebSocket(server);
-      this.sockets.add(server);
-      this.viewerCount++;
-      this.peakViewers = Math.max(this.peakViewers, this.viewerCount);
-      this.broadcast({ type: "viewers", count: this.viewerCount });
+      const count = this.viewerCount();
+      this.peakViewers = Math.max(this.peakViewers, count);
+      await this.persist();
+      this.broadcast({ type: "viewers", count });
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -53,9 +94,9 @@ export class RoomDurableObject implements DurableObject {
       const body = await request.json<{ sessionId: string }>();
       this.sessionId = body.sessionId;
       this.totalCents = 0;
-      this.viewerCount = 0;
-      this.peakViewers = 0;
+      this.peakViewers = this.viewerCount();
       this.hearts = 0;
+      await this.persist();
       return Response.json({ ok: true });
     }
 
@@ -66,17 +107,27 @@ export class RoomDurableObject implements DurableObject {
         hearts: this.hearts,
       };
       this.broadcast({ type: "ended" });
-      for (const ws of this.sockets) ws.close(1000, "sesión terminada");
-      this.sockets.clear();
+      for (const ws of this.state.getWebSockets()) {
+        try {
+          ws.close(1000, "sesión terminada");
+        } catch {
+          // ya cerrado
+        }
+      }
       this.sessionId = null;
       this.sfuSessionId = null;
       this.sfuTracks = [];
+      this.totalCents = 0;
+      this.peakViewers = 0;
+      this.hearts = 0;
+      await this.persist();
       return Response.json(summary);
     }
 
     if (url.pathname === "/entrada" && request.method === "POST") {
       const { name } = await request.json<{ name: string }>();
       this.totalCents += 1000;
+      await this.persist();
       this.broadcast({ type: "entrada", name, ticker_cents: this.totalCents });
       return Response.json({ ok: true });
     }
@@ -85,17 +136,19 @@ export class RoomDurableObject implements DurableObject {
       const body = await request.json<{ sfuSessionId: string; tracks: { mid: string; trackName: string }[] }>();
       this.sfuSessionId = body.sfuSessionId;
       this.sfuTracks = body.tracks;
+      await this.persist();
       return Response.json({ ok: true });
     }
 
     if (url.pathname === "/sfu-session") {
-      return Response.json({ sfuSessionId: this.sfuSessionId, tracks: this.sfuTracks });
+      return Response.json({ sfuSessionId: this.sfuSessionId, tracks: this.sfuTracks, viewerCount: this.viewerCount() });
     }
 
     if (url.pathname === "/tip" && request.method === "POST") {
       const tip = await request.json<TipEvent>();
       const creatorCut = Math.round(tip.amount_cents * 0.9);
       this.totalCents += creatorCut;
+      await this.persist();
       this.broadcast({
         type: "tip",
         from: tip.from,
@@ -114,6 +167,7 @@ export class RoomDurableObject implements DurableObject {
       const data = JSON.parse(typeof message === "string" ? message : new TextDecoder().decode(message));
       if (data.type === "heart") {
         this.hearts++;
+        await this.persist();
         this.broadcast({ type: "hearts", count: this.hearts });
       }
       if (data.type === "raise_hand") {
@@ -124,9 +178,11 @@ export class RoomDurableObject implements DurableObject {
     }
   }
 
-  async webSocketClose(ws: WebSocket) {
-    this.sockets.delete(ws);
-    this.viewerCount = Math.max(0, this.viewerCount - 1);
-    this.broadcast({ type: "viewers", count: this.viewerCount });
+  async webSocketClose(_ws: WebSocket) {
+    this.broadcast({ type: "viewers", count: this.viewerCount() });
+  }
+
+  async webSocketError(_ws: WebSocket) {
+    this.broadcast({ type: "viewers", count: this.viewerCount() });
   }
 }

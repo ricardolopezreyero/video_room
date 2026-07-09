@@ -21,6 +21,14 @@ void _RLR;
 void _k;
 void _rev;
 
+app.onError((err, c) => {
+  console.error(err);
+  if (c.req.path.startsWith("/api/") || c.req.path.startsWith("/webhook/")) {
+    return c.json({ error: "error_interno" }, 500);
+  }
+  return c.text("Algo salió mal. Intenta de nuevo en un momento.", 500);
+});
+
 app.route("/", auth);
 app.route("/", wallet);
 app.route("/", rooms);
@@ -51,7 +59,8 @@ app.get("/r/:slug", async (c) => {
   if (live) {
     const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
     const res = await stub.fetch("https://do/sfu-session");
-    void res; // solo para asegurar el DO existe/arrancado
+    const info = await res.json<{ viewerCount?: number }>().catch(() => ({ viewerCount: 0 }));
+    viewerCount = info.viewerCount ?? 0;
   }
 
   return c.html(renderRoomPage({ room, live: !!live, viewerCount, appUrl: c.env.APP_URL }));

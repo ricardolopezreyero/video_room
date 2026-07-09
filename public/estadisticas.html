@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Tus estadísticas — Video Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
@@ -23,14 +23,46 @@
 <script>
 const RANGE_LABELS = { today: 'Hoy', '7d': '7 días', '30d': '30 días', all: 'Todo' };
 let currentRange = '30d';
+let viewMode = 'vivo'; // 'demo' | 'vivo'
+let lastData = null;
+let autoDecided = false;
+
+const DEMO_DATA = {
+  has_room: true,
+  room_slug: 'tu-sala',
+  balance_cents: 0,
+  creator_balance_cents: 92000,
+  total_earned_all_time_cents: 184000,
+  period: { earned_cents: 184000, entradas_count: 47, unique_viewers: 38, propinas_count: 12, propinas_cents: 45000 },
+  top_donors: [
+    { name: 'María', avatar_url: null, total_cents: 52000, entradas: 3, propinas: 2 },
+    { name: 'Juan', avatar_url: null, total_cents: 31000, entradas: 2, propinas: 1 },
+    { name: 'Ana', avatar_url: null, total_cents: 18000, entradas: 1, propinas: 1 },
+  ],
+  campaigns: [
+    { utm_source: 'instagram', utm_campaign: 'lanzamiento', entradas: 22, ganado_cents: 22000 },
+    { utm_source: 'whatsapp', utm_campaign: '', entradas: 15, ganado_cents: 15000 },
+    { utm_source: '(directo)', utm_campaign: '', entradas: 10, ganado_cents: 10000 },
+  ],
+};
 
 function fmt(cents) { return '$' + Math.round((cents || 0) / 100).toLocaleString('es-MX'); }
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function isEmptyData(data) {
+  return data.period.earned_cents === 0 && data.top_donors.length === 0 && (!data.campaigns || data.campaigns.length === 0);
+}
 
 async function load() {
   const content = document.getElementById('content');
   const res = await fetch('/api/stats?range=' + currentRange);
   if (res.status === 401) {
-    content.innerHTML = '<p class="muted">No has iniciado sesión.</p><a href="/login"><button class="btn-primary">Entrar con Google</button></a>';
+    content.innerHTML = '<p class="muted">Necesitas ingresar.</p><a href="/login"><button class="btn-primary">Ingresar con Google</button></a>';
     return;
   }
   const data = await res.json();
@@ -43,6 +75,21 @@ async function load() {
     return;
   }
 
+  lastData = data;
+  // Solo la primera vez: si no hay actividad real todavía, arrancamos en Demo
+  // para que la persona vea cómo se ve su panel con movimiento, no puros ceros.
+  // Después de esa primera decisión, respetamos lo que la persona elija.
+  if (!autoDecided) {
+    viewMode = isEmptyData(data) ? 'demo' : 'vivo';
+    autoDecided = true;
+  }
+  render();
+}
+
+function render() {
+  const content = document.getElementById('content');
+  const data = viewMode === 'demo' ? DEMO_DATA : lastData;
+
   const pills = Object.keys(RANGE_LABELS).map((key) =>
     `<button data-range="${key}" class="${key === currentRange ? 'active' : ''}">${RANGE_LABELS[key]}</button>`
   ).join('');
@@ -51,9 +98,9 @@ async function load() {
     ? `<ul class="donor-list">${data.top_donors.map((d, i) => `
         <li class="donor-row">
           <div class="donor-rank">${i + 1}</div>
-          ${d.avatar_url ? `<img class="donor-avatar" src="${d.avatar_url}">` : `<div class="donor-avatar"></div>`}
+          ${d.avatar_url ? `<img class="donor-avatar" src="${escapeHtml(d.avatar_url)}">` : `<div class="donor-avatar"></div>`}
           <div class="donor-info">
-            <div class="donor-name">${d.name}</div>
+            <div class="donor-name">${escapeHtml(d.name)}</div>
             <div class="donor-meta">${d.entradas} entrada${d.entradas === 1 ? '' : 's'} · ${d.propinas} propina${d.propinas === 1 ? '' : 's'}</div>
           </div>
           <div class="donor-total">${fmt(d.total_cents)}</div>
@@ -64,7 +111,7 @@ async function load() {
     ? `<ul class="donor-list">${data.campaigns.map((cmp) => `
         <li class="donor-row">
           <div class="donor-info">
-            <div class="donor-name">${cmp.utm_source}${cmp.utm_campaign ? ' · ' + cmp.utm_campaign : ''}</div>
+            <div class="donor-name">${escapeHtml(cmp.utm_source)}${cmp.utm_campaign ? ' · ' + escapeHtml(cmp.utm_campaign) : ''}</div>
             <div class="donor-meta">${cmp.entradas} entrada${cmp.entradas === 1 ? '' : 's'}</div>
           </div>
           <div class="donor-total">${fmt(cmp.ganado_cents)}</div>
@@ -72,7 +119,12 @@ async function load() {
     : `<div class="empty-state">Comparte tu link con <code>?utm_source=instagram&amp;utm_campaign=lanzamiento</code> (o la campaña que uses) y aquí vas a ver cuánta gente entró por cada una.</div>`;
 
   content.innerHTML = `
-    <p class="muted">Sala: videoroom.superleads.mx/r/${data.room_slug}</p>
+    <p class="muted">Sala: videoroom.superleads.mx/r/${escapeHtml(data.room_slug)}</p>
+    <div class="filter-pills" id="view-pills" style="margin-bottom:0;">
+      <button data-view="demo" class="${viewMode === 'demo' ? 'active' : ''}">Demo</button>
+      <button data-view="vivo" class="${viewMode === 'vivo' ? 'active' : ''}">En vivo</button>
+    </div>
+    ${viewMode === 'demo' ? '<p class="muted" style="color:var(--green);">📊 Estos son números de ejemplo para que veas cómo se ve tu panel con actividad. Cambia a "En vivo" para ver los tuyos reales.</p>' : ''}
     <div class="filter-pills" id="pills">${pills}</div>
 
     <div class="stat-grid">
@@ -100,6 +152,9 @@ async function load() {
 
   document.querySelectorAll('#pills button').forEach((btn) => {
     btn.onclick = () => { currentRange = btn.dataset.range; load(); };
+  });
+  document.querySelectorAll('#view-pills button').forEach((btn) => {
+    btn.onclick = () => { viewMode = btn.dataset.view; render(); };
   });
 }
 load();

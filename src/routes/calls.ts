@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
 import type { Env } from "../env";
-import type { Room } from "../lib/db";
+import type { Room, Session } from "../lib/db";
 
 export const calls = new Hono<{ Bindings: Env }>();
 
@@ -45,7 +45,6 @@ calls.post("/api/rooms/:slug/publish", async (c) => {
   if (!res.ok) return c.json({ error: "calls_error", detail: await res.text() }, 502);
   const json = await res.json<{ sessionDescription: { sdp: string } }>();
 
-  await c.env.DB.prepare("UPDATE rooms SET title = title WHERE id = ?").bind(room.id).run();
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/set-sfu-session", { method: "POST", body: JSON.stringify({ sfuSessionId, tracks }) });
 
@@ -59,6 +58,18 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   const slug = c.req.param("slug");
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
   if (!room) return c.json({ error: "not_found" }, 404);
+
+  if (user.id !== room.owner_id) {
+    const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+      .bind(room.id)
+      .first<Session>();
+    if (!session) return c.json({ error: "creador_no_transmitiendo" }, 400);
+    const now = Math.floor(Date.now() / 1000);
+    const validPass = await c.env.DB.prepare(
+      "SELECT id FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ?"
+    ).bind(session.id, user.id, now).first();
+    if (!validPass) return c.json({ error: "sin_pase" }, 402);
+  }
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   const infoRes = await stub.fetch("https://do/sfu-session");

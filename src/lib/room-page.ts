@@ -1,18 +1,28 @@
 import type { Room } from "./db";
 
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function renderRoomPage(opts: { room: Room; live: boolean; viewerCount: number; appUrl: string }): string {
   const { room, live, viewerCount, appUrl } = opts;
+  const safeTitle = escapeHtml(room.title);
   const ogImage = `${appUrl}/og-default.svg`;
-  const title = live ? `🔴 ${room.title} — EN VIVO` : `${room.title} — abre pronto`;
+  const title = live ? `🔴 ${safeTitle} — EN VIVO` : `${safeTitle} — abre pronto`;
   const desc = live
-    ? `${viewerCount} personas adentro · Entra por $20/hora · Nada se graba`
+    ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · Entra por $20/hora · Nada se graba`
     : `Toca para que te avisemos cuando esté en vivo`;
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>${title}</title>
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${desc}">
@@ -26,12 +36,12 @@ export function renderRoomPage(opts: { room: Room; live: boolean; viewerCount: n
   <div id="app" class="room-app">
     <video id="player" playsinline autoplay muted></video>
     <div id="overlay" class="overlay">
-      <h1>${live ? `🔴 ${room.title} está EN VIVO` : `${room.title} — abre pronto`}</h1>
+      <h1>${live ? `🔴 ${safeTitle} está EN VIVO` : `${safeTitle} — abre pronto`}</h1>
       <p id="sub">${desc}</p>
       <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">Entrar · $20 la hora</button>
       <button id="btn-notify" class="btn-ghost" style="display:${live ? "none" : "block"}">Avísame cuando abra</button>
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
-      <p class="fineprint">Entras con Google en un tap. Tu hora empieza cuando cruzas la puerta.</p>
+      <p class="fineprint">Ingresas con Google en un tap. Tu hora empieza cuando cruzas la puerta.</p>
     </div>
     <div id="controls" class="controls" style="display:none">
       <button id="btn-tip">💵</button>

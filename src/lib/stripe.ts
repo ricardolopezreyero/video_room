@@ -6,6 +6,13 @@ export async function stripeCreateCheckoutSession(
 ): Promise<{ url: string; id: string }> {
   const body = new URLSearchParams({
     mode: "payment",
+    // "card" ya incluye Apple Pay / Google Pay como wallets automáticos en Checkout
+    // (se muestran solos si el navegador/dispositivo los soporta, sin config extra).
+    // Se deja fijo a "card" a propósito para NO habilitar por accidente métodos
+    // asíncronos (OXXO, SPEI, etc.) que necesitarían manejar
+    // checkout.session.async_payment_succeeded aparte — hoy solo escuchamos
+    // checkout.session.completed, que para "card" siempre es pago inmediato.
+    "payment_method_types[0]": "card",
     "line_items[0][price_data][currency]": "mxn",
     "line_items[0][price_data][product_data][name]": "Recarga de saldo Video Room",
     "line_items[0][price_data][unit_amount]": String(params.amountCents),
@@ -40,6 +47,8 @@ async function hmacSha256Hex(secret: string, data: string): Promise<string> {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300;
+
 export async function verifyStripeSignature(
   payload: string,
   sigHeader: string,
@@ -49,6 +58,9 @@ export async function verifyStripeSignature(
   const timestamp = parts["t"];
   const v1 = parts["v1"];
   if (!timestamp || !v1) return false;
+  // Rechaza payloads viejos reenviados (ataque de repetición) aunque la firma sea válida.
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
+  if (!Number.isFinite(age) || age > STRIPE_SIGNATURE_TOLERANCE_SECONDS) return false;
   const expected = await hmacSha256Hex(secret, `${timestamp}.${payload}`);
   return expected === v1;
 }
