@@ -52,8 +52,10 @@ app.get("/r/:slug", async (c) => {
   }
 
   const slug = c.req.param("slug");
-  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
-  if (!room) return c.notFound();
+  const room = await c.env.DB.prepare(
+    "SELECT rooms.*, users.avatar_url as owner_avatar FROM rooms JOIN users ON users.id = rooms.owner_id WHERE rooms.slug = ?"
+  ).bind(slug).first<Room & { owner_avatar: string | null }>();
+  if (!room) return c.html(roomNotFoundPage(), 404);
   const live = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
     .bind(room.id)
     .first<Session>();
@@ -66,8 +68,25 @@ app.get("/r/:slug", async (c) => {
     viewerCount = info.viewerCount ?? 0;
   }
 
-  return c.html(renderRoomPage({ room, live: !!live, viewerCount, appUrl: c.env.APP_URL }));
+  return c.html(
+    renderRoomPage({ room, ownerAvatar: room.owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL })
+  );
 });
+
+function roomNotFoundPage(): string {
+  return `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sala no encontrada — Video Room</title>
+<link rel="stylesheet" href="/style.css"></head>
+<body class="app-shell">
+  <div class="onboarding-wrap"><div class="onboarding-card">
+    <div class="onboarding-emoji">🔍</div>
+    <h2>No encontramos esta sala</h2>
+    <p class="muted">El link puede estar mal escrito o la sala ya cambió de URL.</p>
+    <p><a href="/" style="color:var(--green)">Volver a Video Room</a></p>
+  </div></div>
+</body></html>`;
+}
 
 async function handleUnsubscribe(c: Context<{ Bindings: Env }>) {
   let token = c.req.query("token");

@@ -305,6 +305,10 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 }
 .overlay h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.5px; }
 .overlay .fineprint { color: #7a9fd4; }
+.room-avatar {
+  width: 84px; height: 84px; border-radius: 50%; object-fit: cover;
+  border: 3px solid var(--green, #56EF9F); margin-bottom: 16px; background: #001240;
+}
 .controls {
   position: absolute; left: 50%; transform: translateX(-50%);
   bottom: calc(24px + env(safe-area-inset-bottom));
