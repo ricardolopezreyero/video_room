@@ -1,24 +1,39 @@
 // RLR
 import { newId, type Room } from "./db";
-import { sendEmail, liveNotificationEmail } from "./email";
+import { sendEmail, liveNotificationEmail, startingSoonEmail } from "./email";
+import { signUnsubscribeToken } from "./unsubscribe";
 import type { Env } from "../env";
+
+interface Follower {
+  id: string;
+  email: string;
+}
+
+async function getFollowers(env: Env, roomId: string): Promise<Follower[]> {
+  const res = await env.DB.prepare(
+    "SELECT u.id as id, u.email as email FROM notify_me n JOIN users u ON u.id = n.user_id WHERE n.room_id = ?"
+  ).bind(roomId).all<Follower>();
+  return res.results;
+}
 
 // Se llama vía waitUntil desde /api/rooms/:slug/start — no debe bloquear la
 // respuesta al creador. Avisa por correo y deja una notificación in-app a
 // cada persona que pidió "avísame cuando abra" para esta sala.
-export async function notifyRoomLive(env: Env, room: Room, sessionId: string, creatorName: string): Promise<void> {
-  const followers = await env.DB.prepare(
-    "SELECT u.id as id, u.email as email FROM notify_me n JOIN users u ON u.id = n.user_id WHERE n.room_id = ?"
-  ).bind(room.id).all<{ id: string; email: string }>();
-
-  if (followers.results.length === 0) return;
+export async function notifyRoomLive(
+  env: Env,
+  room: Room,
+  sessionId: string,
+  creatorName: string,
+  creatorAvatar: string | null
+): Promise<void> {
+  const followers = await getFollowers(env, room.id);
+  if (followers.length === 0) return;
 
   const roomUrl = `${env.APP_URL}/r/${room.slug}`;
-  const { subject, html, text } = liveNotificationEmail({ creatorName, roomTitle: room.title, roomUrl });
   const title = `🔴 ${creatorName} ya está en vivo`;
   const body = `Entra a ${room.title} antes de que se acabe.`;
 
-  const inserts = followers.results.map((f) =>
+  const inserts = followers.map((f) =>
     env.DB.prepare(
       "INSERT INTO notifications (id, user_id, room_id, session_id, title, body) VALUES (?, ?, ?, ?, ?, ?)"
     ).bind(newId("ntf"), f.id, room.id, sessionId, title, body)
@@ -26,6 +41,48 @@ export async function notifyRoomLive(env: Env, room: Room, sessionId: string, cr
   await env.DB.batch(inserts);
 
   await Promise.all(
-    followers.results.map((f) => sendEmail(env.RESEND_API_KEY, { to: f.email, subject, html, text }))
+    followers.map(async (f) => {
+      const unsubscribeUrl = `${env.APP_URL}/unsubscribe?token=${await signUnsubscribeToken(env.SESSION_SECRET, f.id, room.id)}`;
+      const { subject, html, text } = liveNotificationEmail({
+        creatorName,
+        creatorAvatar,
+        roomTitle: room.title,
+        roomUrl,
+        unsubscribeUrl,
+      });
+      return sendEmail(env.RESEND_API_KEY, { to: f.email, subject, html, text, unsubscribeUrl });
+    })
   );
+}
+
+// Se llama desde /api/rooms/:slug/notify-starting cuando el creador avisa
+// manualmente "empiezo en X minutos". Devuelve cuántas personas se avisaron.
+export async function notifyRoomStartingSoon(
+  env: Env,
+  room: Room,
+  minutes: number,
+  creatorName: string,
+  creatorAvatar: string | null
+): Promise<number> {
+  const followers = await getFollowers(env, room.id);
+  if (followers.length === 0) return 0;
+
+  const roomUrl = `${env.APP_URL}/r/${room.slug}`;
+
+  await Promise.all(
+    followers.map(async (f) => {
+      const unsubscribeUrl = `${env.APP_URL}/unsubscribe?token=${await signUnsubscribeToken(env.SESSION_SECRET, f.id, room.id)}`;
+      const { subject, html, text } = startingSoonEmail({
+        creatorName,
+        creatorAvatar,
+        roomTitle: room.title,
+        roomUrl,
+        minutes,
+        unsubscribeUrl,
+      });
+      return sendEmail(env.RESEND_API_KEY, { to: f.email, subject, html, text, unsubscribeUrl });
+    })
+  );
+
+  return followers.length;
 }

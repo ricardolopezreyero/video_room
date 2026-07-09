@@ -185,6 +185,18 @@ function renderRoom(room) {
         <button class="btn-ghost" id="btn-cancel-slug">Cancelar</button>
       </div>
     </div>
+    <div style="margin-top:22px; padding-top:20px; border-top:.5px solid rgba(255,255,255,.08);">
+      <div class="label">Avisar que ya casi empiezas</div>
+      <p class="muted" style="margin:4px 0 12px;">
+        Tienes <strong style="color:#fff;">${room.notify_count}</strong> persona${room.notify_count === 1 ? '' : 's'} esperando que le${room.notify_count === 1 ? '' : 's'} avises.
+      </p>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input id="starting-minutes" type="number" min="1" max="1440" value="60" inputmode="numeric"
+          style="width:90px; padding:12px; border-radius:10px; border:.5px solid rgba(255,255,255,.15); background:rgba(255,255,255,.04); color:#fff; box-sizing:border-box;">
+        <span class="muted">minutos</span>
+        <button class="btn-primary" id="btn-notify-starting">Avisar que empiezo</button>
+      </div>
+    </div>
   `;
 
   document.getElementById('btn-copy-link').onclick = () => {
@@ -218,6 +230,29 @@ function renderRoom(room) {
     if (j.error === 'slug_invalido') return alert('Ese nombre no es válido.');
     if (j.error) return alert('No se pudo cambiar la URL.');
     loadRoom(false);
+  };
+
+  const btnNotifyStarting = document.getElementById('btn-notify-starting');
+  btnNotifyStarting.onclick = async () => {
+    if (btnNotifyStarting.disabled) return;
+    const minutes = parseInt(document.getElementById('starting-minutes').value, 10);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+      alert('Pon un número de minutos válido (1 a 1440).');
+      return;
+    }
+    if (room.notify_count === 0) {
+      alert('Todavía nadie te ha pedido que le avises. Comparte tu link para que la gente active "Avísame cuando abra".');
+      return;
+    }
+    btnNotifyStarting.disabled = true;
+    const r = await fetch(`/api/rooms/${room.slug}/notify-starting`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ minutes }),
+    });
+    const j = await r.json();
+    btnNotifyStarting.disabled = false;
+    if (j.ok) showToast(`✅ Avisamos a ${j.count} persona${j.count === 1 ? '' : 's'} que empiezas en ${minutes} min.`, 5000);
+    else alert('No se pudo enviar el aviso.');
   };
 }
 

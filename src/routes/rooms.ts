@@ -3,7 +3,7 @@ import { currentUser } from "../lib/current-user";
 import { creditLedger, newId, type Room, type Session, type User } from "../lib/db";
 import { slugify, isNumericSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
-import { notifyRoomLive } from "../lib/notify";
+import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
 import type { Env } from "../env";
 
 export const rooms = new Hono<{ Bindings: Env }>();
@@ -29,7 +29,33 @@ rooms.get("/api/rooms/mine", async (c) => {
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE owner_id = ?").bind(user.id).first<Room>();
   if (!room) return c.json({ error: "not_found" }, 404);
   const ageDays = Math.floor((Date.now() / 1000 - room.slug_assigned_at) / 86400);
-  return c.json({ slug: room.slug, is_numeric: isNumericSlug(room.slug), age_days: ageDays });
+  const notifyCount = await c.env.DB.prepare("SELECT COUNT(*) as n FROM notify_me WHERE room_id = ?")
+    .bind(room.id)
+    .first<{ n: number }>();
+  return c.json({
+    slug: room.slug,
+    is_numeric: isNumericSlug(room.slug),
+    age_days: ageDays,
+    notify_count: notifyCount?.n ?? 0,
+  });
+});
+
+const MAX_STARTING_SOON_MINUTES = 24 * 60;
+
+rooms.post("/api/rooms/:slug/notify-starting", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { minutes } = await c.req.json<{ minutes: number }>().catch(() => ({ minutes: NaN }));
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_STARTING_SOON_MINUTES) {
+    return c.json({ error: "minutos_invalidos" }, 400);
+  }
+
+  const count = await notifyRoomStartingSoon(c.env, room, minutes, user.name, user.avatar_url);
+  return c.json({ ok: true, count });
 });
 
 rooms.post("/api/rooms/:slug/rename", async (c) => {
@@ -79,7 +105,7 @@ rooms.post("/api/rooms/:slug/start", async (c) => {
   await stub.fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId }) });
 
   // No bloquea la respuesta: el creador no debe esperar a que salgan los correos.
-  c.executionCtx.waitUntil(notifyRoomLive(c.env, room, sessionId, user.name));
+  c.executionCtx.waitUntil(notifyRoomLive(c.env, room, sessionId, user.name, user.avatar_url));
 
   return c.json({ session_id: sessionId });
 });

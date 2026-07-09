@@ -1,5 +1,5 @@
 // RLR
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { setCookie } from "hono/cookie";
 import { UTM_COOKIE } from "./lib/utm";
 import type { Env } from "./env";
@@ -10,6 +10,7 @@ import { calls } from "./routes/calls";
 import { stats } from "./routes/stats";
 import { notifications } from "./routes/notifications";
 import { renderRoomPage } from "./lib/room-page";
+import { verifyUnsubscribeToken } from "./lib/unsubscribe";
 import type { Room, Session } from "./lib/db";
 
 export { RoomDurableObject } from "./durable/room";
@@ -67,6 +68,36 @@ app.get("/r/:slug", async (c) => {
 
   return c.html(renderRoomPage({ room, live: !!live, viewerCount, appUrl: c.env.APP_URL }));
 });
+
+async function handleUnsubscribe(c: Context<{ Bindings: Env }>) {
+  let token = c.req.query("token");
+  if (!token && c.req.method === "POST") {
+    const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+    if (typeof body["token"] === "string") token = body["token"];
+  }
+  if (!token) return c.html(unsubscribePage("El link no es válido."), 400);
+  const data = await verifyUnsubscribeToken(c.env.SESSION_SECRET, token);
+  if (!data) return c.html(unsubscribePage("El link no es válido o ya expiró."), 400);
+  await c.env.DB.prepare("DELETE FROM notify_me WHERE room_id = ? AND user_id = ?").bind(data.roomId, data.userId).run();
+  return c.html(unsubscribePage("Listo, ya no te avisaremos cuando esta sala abra."));
+}
+
+function unsubscribePage(message: string): string {
+  return `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Room</title>
+<link rel="stylesheet" href="/style.css"></head>
+<body class="app-shell">
+  <div class="onboarding-wrap"><div class="onboarding-card">
+    <div class="onboarding-emoji">🔕</div>
+    <h2>${message}</h2>
+    <p><a href="/" style="color:var(--green)">Volver a Video Room</a></p>
+  </div></div>
+</body></html>`;
+}
+
+app.get("/unsubscribe", handleUnsubscribe);
+app.post("/unsubscribe", handleUnsubscribe);
 
 app.get("/ws/room/:slug", async (c) => {
   const slug = c.req.param("slug");
