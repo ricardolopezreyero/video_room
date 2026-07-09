@@ -10,9 +10,12 @@
   const toastEl = $("toast");
 
   let isOwner = false;
+  let me = null;
   let pc = null;
   let ws = null;
   let sessionEnded = false;
+  let chatVisible = true;
+  let waveformStarted = false;
 
   // Estado de los controles del creador durante la transmisión (cámara, mic,
   // pantalla compartida, cambio de cámara). Nada de esto toca el backend: todo
@@ -97,6 +100,8 @@
         }
       } else if (msg.type === "hearts") {
         // contador de corazones agregado
+      } else if (msg.type === "comment") {
+        appendChatMessage(msg.name, msg.body);
       } else if (msg.type === "ended") {
         sessionEnded = true;
         toast("La transmisión terminó.");
@@ -117,6 +122,79 @@
     band.textContent = `${from} mandó $${Math.round(amountCents / 100)}${message ? ` — "${message}"` : ""}`;
     document.body.appendChild(band);
     setTimeout(() => band.remove(), amountCents >= 50000 ? 6000 : 4000);
+  }
+
+  // Los comentarios son eventos fugaces: solo viven en el DOM mientras la
+  // pestaña está abierta. Se arman con createElement/textContent (nunca
+  // innerHTML) para que no haya forma de inyectar HTML desde un comentario.
+  function appendChatMessage(name, body) {
+    const feed = $("chat-feed");
+    const row = document.createElement("div");
+    row.className = "chat-msg";
+    const nameEl = document.createElement("span");
+    nameEl.className = "chat-msg-name";
+    nameEl.textContent = name;
+    const bodyEl = document.createElement("span");
+    bodyEl.className = "chat-msg-body";
+    bodyEl.textContent = ` ${body}`;
+    row.appendChild(nameEl);
+    row.appendChild(bodyEl);
+    feed.appendChild(row);
+    feed.scrollTop = feed.scrollHeight;
+    while (feed.children.length > 200) feed.removeChild(feed.firstChild);
+  }
+
+  async function sendComment() {
+    const input = $("chat-input");
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    const res = await api(`/api/rooms/${slug}/comment`, { body: { text } });
+    if (res.error === "sin_pase") toast("Necesitas un pase vigente para comentar.");
+    else if (res.error === "sala_cerrada") toast("La sala ya cerró.");
+    else if (res.error) toast("No se pudo enviar tu comentario.");
+  }
+
+  function revealChatUI() {
+    $("btn-chat").style.display = "inline-block";
+    $("chat-panel").style.display = chatVisible ? "flex" : "none";
+  }
+
+  // Barras que reaccionan al audio real (el del stream entrante para el
+  // espectador, el propio mic para el creador) — puro adorno visual en el
+  // cliente, no toca nada del servidor.
+  function setupWaveform(stream) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioCtx.resume().catch(() => {});
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const canvas = $("chat-wave");
+      const ctx2d = canvas.getContext("2d");
+      (function draw() {
+        requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(data);
+        ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+        const barWidth = canvas.width / data.length;
+        for (let i = 0; i < data.length; i++) {
+          const h = (data[i] / 255) * canvas.height;
+          ctx2d.fillStyle = "#56EF9F";
+          ctx2d.fillRect(i * barWidth, canvas.height - h, Math.max(barWidth - 1, 1), h);
+        }
+      })();
+    } catch {
+      // sin soporte de Web Audio API: la barra de comentarios sigue funcionando sin la onda
+    }
+  }
+
+  function maybeSetupWaveform(stream) {
+    if (waveformStarted || !stream.getAudioTracks().length) return;
+    waveformStarted = true;
+    setupWaveform(stream);
   }
 
   async function startPublishing(sessionId) {
@@ -150,7 +228,9 @@
     ticker.style.display = "block";
     $("btn-stop").style.display = "inline-block";
     showCreatorToolbar();
-    toast("✨ Estás en vivo. Gracias por regalar tu tiempo — disfrútalo.", 6000);
+    revealChatUI();
+    maybeSetupWaveform(stream);
+    toast("✨ Estás en vivo, disfruta.", 6000);
   }
 
   // Botones de 💵/🎤 son para el viewer (mandar dinero / levantar la mano) y no
@@ -315,6 +395,7 @@
     pc = new RTCPeerConnection();
     pc.ontrack = (ev) => {
       player.srcObject = ev.streams[0];
+      maybeSetupWaveform(ev.streams[0]);
     };
     if (res.offer_sdp) {
       await pc.setRemoteDescription({ type: "offer", sdp: res.offer_sdp });
@@ -324,6 +405,7 @@
     }
     overlay.style.display = "none";
     controls.style.display = "flex";
+    revealChatUI();
   }
 
   function openTipSheet() {
@@ -371,7 +453,6 @@
   async function init() {
     const status = await fetch(`/api/rooms/${slug}/status`).then((r) => r.json());
     if (status.error) return;
-    let me = null;
     try {
       const meRes = await fetch("/api/wallet/me");
       if (meRes.ok) me = await meRes.json();
@@ -391,6 +472,7 @@
         controls.style.display = "flex";
         ticker.style.display = "block";
         $("btn-stop").style.display = "inline-block";
+        revealChatUI();
       }
     }
 
@@ -433,6 +515,24 @@
     guarded($("btn-mic"), async () => toggleMic());
     guarded($("btn-cam"), async () => toggleCam());
     guarded($("btn-screen"), async () => toggleScreenShare());
+    guarded($("btn-chat"), async () => {
+      chatVisible = !chatVisible;
+      $("chat-panel").style.display = chatVisible ? "flex" : "none";
+    });
+    guarded($("btn-chat-send"), async () => {
+      if (!me) return requireLogin();
+      await sendComment();
+    });
+    $("chat-input").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (!me) return requireLogin();
+      sendComment();
+    });
+    $("dim-slider").addEventListener("input", (e) => {
+      const val = Number(e.target.value);
+      player.style.filter = val >= 100 ? "" : `brightness(${val}%)`;
+    });
   }
 
   init();

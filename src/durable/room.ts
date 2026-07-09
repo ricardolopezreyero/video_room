@@ -144,6 +144,12 @@ export class RoomDurableObject implements DurableObject {
       return Response.json({ sfuSessionId: this.sfuSessionId, tracks: this.sfuTracks, viewerCount: this.viewerCount() });
     }
 
+    if (url.pathname === "/comment" && request.method === "POST") {
+      const { name, body } = await request.json<{ name: string; body: string }>();
+      this.broadcast({ type: "comment", name, body, ts: Date.now() });
+      return Response.json({ ok: true });
+    }
+
     if (url.pathname === "/tip" && request.method === "POST") {
       const tip = await request.json<TipEvent>();
       const creatorCut = Math.round(tip.amount_cents * 0.9);

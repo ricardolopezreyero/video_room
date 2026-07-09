@@ -54,9 +54,21 @@ export function renderRoomPage(opts: {
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
       <p class="fineprint">${live ? "Ingresas con Google en un tap. Tu hora empieza cuando cruzas la puerta." : "Te llega un correo y una notificación en el momento en que entre en vivo."}</p>
     </div>
+    <div id="chat-panel" class="chat-panel" style="display:none">
+      <div class="chat-panel-header">
+        <canvas id="chat-wave" width="120" height="22" title="Audio en vivo"></canvas>
+        <input id="dim-slider" type="range" min="30" max="100" value="100" title="Atenuar el video">
+      </div>
+      <div id="chat-feed" class="chat-feed"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" maxlength="240" placeholder="Escribe un comentario…">
+        <button id="btn-chat-send" title="Enviar">➤</button>
+      </div>
+    </div>
     <div id="controls" class="controls" style="display:none">
       <button id="btn-tip">💵</button>
       <button id="btn-hand">🎤</button>
+      <button id="btn-chat" class="ctrl-btn" style="display:none" title="Comentarios">💬</button>
       <button id="btn-mic" class="ctrl-btn" style="display:none" title="Silenciar micrófono">🎙️</button>
       <button id="btn-cam" class="ctrl-btn" style="display:none" title="Apagar cámara">📷</button>
       <button id="btn-flip-cam" class="ctrl-btn" style="display:none" title="Cambiar cámara">🔄</button>

@@ -19,7 +19,8 @@
   },
   "homepage": "https://github.com/ricardolopezreyero/video_room#readme",
   "dependencies": {
-    "hono": "^4.12.28"
+    "hono": "^4.12.28",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260702.1",

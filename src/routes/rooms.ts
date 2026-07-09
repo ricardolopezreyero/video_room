@@ -4,6 +4,7 @@ import { creditLedger, newId, type Room, type Session, type User } from "../lib/
 import { slugify, isNumericSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
+import { archiveAndClearComments } from "../lib/transcript";
 import type { Env } from "../env";
 
 export const rooms = new Hono<{ Bindings: Env }>();
@@ -123,7 +124,9 @@ rooms.post("/api/rooms/:slug/stop", async (c) => {
   if (!live) return c.json({ error: "no_live_session" }, 400);
 
   await c.env.DB.prepare("UPDATE sessions SET status = 'ended', ended_at = unixepoch() WHERE id = ?").bind(live.id).run();
-  await c.env.DB.prepare("DELETE FROM comments WHERE session_id = ?").bind(live.id).run();
+  // Los comentarios son eventos fugaces: se archivan en un PDF silencioso y se
+  // borran, en segundo plano, sin retrasar la respuesta al creador.
+  c.executionCtx.waitUntil(archiveAndClearComments(c.env, room, live.id));
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   const summary = await stub.fetch("https://do/stop", { method: "POST" });
@@ -237,6 +240,41 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
   });
 
   return c.json({ ok: true, creator_cut_cents: creatorCut });
+});
+
+const MAX_COMMENT_LENGTH = 240;
+
+rooms.post("/api/rooms/:slug/comment", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const { text } = await c.req.json<{ text: string }>().catch(() => ({ text: "" }));
+  const body = (text ?? "").trim().slice(0, MAX_COMMENT_LENGTH);
+  if (!body) return c.json({ error: "vacio" }, 400);
+
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+  if (!session) return c.json({ error: "sala_cerrada" }, 400);
+
+  if (user.id !== room.owner_id) {
+    const now = Math.floor(Date.now() / 1000);
+    const validPass = await c.env.DB.prepare(
+      "SELECT id FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ?"
+    ).bind(session.id, user.id, now).first();
+    if (!validPass) return c.json({ error: "sin_pase" }, 402);
+  }
+
+  await c.env.DB.prepare(
+    "INSERT INTO comments (id, session_id, user_id, body) VALUES (?, ?, ?, ?)"
+  ).bind(newId("cmt"), session.id, user.id, body).run();
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/comment", { method: "POST", body: JSON.stringify({ name: user.name, body }) });
+
+  return c.json({ ok: true });
 });
 
 rooms.post("/api/rooms/:slug/notify-me", async (c) => {
