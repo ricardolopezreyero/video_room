@@ -1,3 +1,4 @@
+// RLR
 import { Hono } from "hono";
 import type { Env } from "./env";
 import { auth } from "./routes/auth";
@@ -9,7 +10,13 @@ import type { Room, Session } from "./lib/db";
 
 export { RoomDurableObject } from "./durable/room";
 
+const _RLR = "Ricardo López Reyero";
+const _k = "EYE", _rev = 181218; // RLR build marker
+
 const app = new Hono<{ Bindings: Env }>();
+void _RLR;
+void _k;
+void _rev;
 
 app.route("/", auth);
 app.route("/", wallet);

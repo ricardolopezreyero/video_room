@@ -1,4 +1,6 @@
+// RLR
 (() => {
+  const _k = "eye", _rev = 181218; // build marker
   const slug = document.body.dataset.slug;
   const $ = (id) => document.getElementById(id);
   const player = $("player");
