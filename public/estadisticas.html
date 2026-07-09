@@ -14,7 +14,13 @@
   <div class="links">
     <a href="/monedero">Monedero</a>
   </div>
-  <a href="/monedero"><button class="btn-ghost nav-cta">Mi monedero</button></a>
+  <div class="user-chip" id="user-chip" style="display:none;">
+    <img class="user-avatar" id="user-avatar" src="" alt="" onerror="this.style.visibility='hidden'">
+    <span class="user-name" id="user-name"></span>
+    <button class="icon-btn" id="btn-logout" title="Cerrar sesión" aria-label="Cerrar sesión">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+    </button>
+  </div>
 </nav>
 <div class="app-wrap" id="app">
   <h1>Tus números</h1>
@@ -157,7 +163,19 @@ function render() {
     btn.onclick = () => { viewMode = btn.dataset.view; render(); };
   });
 }
+
+async function loadUserChip() {
+  const res = await fetch('/api/wallet/me');
+  if (!res.ok) return;
+  const me = await res.json();
+  document.getElementById('user-avatar').src = me.avatar_url || '';
+  document.getElementById('user-name').textContent = me.name || '';
+  document.getElementById('user-chip').style.display = 'flex';
+  document.getElementById('btn-logout').onclick = () => { window.location.href = '/auth/logout'; };
+}
+
 load();
+loadUserChip();
 </script>
 </body>
 </html>

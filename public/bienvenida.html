@@ -56,7 +56,7 @@ function finish() {
   emojiEl.textContent = '✅';
   titleEl.textContent = '¡Listo!';
   descEl.textContent = 'Tu cuenta y tu sala ya están creadas.';
-  setTimeout(() => { window.location.href = '/monedero'; }, 700);
+  setTimeout(() => { window.location.href = '/monedero?bienvenida=1'; }, 700);
 }
 
 showStep(0);

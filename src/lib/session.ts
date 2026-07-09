@@ -36,3 +36,8 @@ export async function verifySession(secret: string, token: string): Promise<Sess
 }
 
 export const SESSION_COOKIE = "vr_session";
+
+// 400 días: el máximo que Chrome/Safari permiten para la vida de una cookie.
+// La sesión se renueva en cada visita (ver current-user.ts), así que en la
+// práctica no expira mientras la persona use la app al menos una vez en ese lapso.
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 400;

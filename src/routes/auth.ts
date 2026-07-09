@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { signSession, SESSION_COOKIE } from "../lib/session";
+import { signSession, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "../lib/session";
 import { newId, type User } from "../lib/db";
 import { nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
@@ -79,12 +79,12 @@ auth.get("/auth/google/callback", async (c) => {
     ).bind(newId("room"), userId, slug, profile.name).run();
   }
 
-  const token = await signSession(c.env.SESSION_SECRET, { uid: userId, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 });
+  const token = await signSession(c.env.SESSION_SECRET, { uid: userId, exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS });
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: "Lax",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_MAX_AGE_SECONDS,
     path: "/",
   });
   deleteCookie(c, "vr_oauth_state");

@@ -15,14 +15,46 @@
     <a href="/">Inicio</a>
     <a href="/estadisticas">Estadísticas</a>
   </div>
-  <a href="/auth/logout"><button class="btn-ghost nav-cta">Cerrar sesión</button></a>
+  <div class="user-chip" id="user-chip" style="display:none;">
+    <img class="user-avatar" id="user-avatar" src="" alt="" onerror="this.style.visibility='hidden'">
+    <span class="user-name" id="user-name"></span>
+    <button class="icon-btn" id="btn-logout" title="Cerrar sesión" aria-label="Cerrar sesión">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+    </button>
+  </div>
 </nav>
 <div class="app-wrap" id="app">
   <h1>Tu monedero</h1>
   <div id="content">Cargando…</div>
 </div>
+<div class="app-toast" id="app-toast"></div>
 <script>
+function showToast(msg, ms) {
+  const el = document.getElementById('app-toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms || 3200);
+}
+
+function animateBalance(el, fromCents, toCents, duration) {
+  duration = duration || 1000;
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const val = Math.round((fromCents + (toCents - fromCents) * eased) / 100);
+    el.textContent = '$' + val.toLocaleString('es-MX');
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = '$' + Math.round(toCents / 100).toLocaleString('es-MX');
+  }
+  requestAnimationFrame(tick);
+}
+
 async function main() {
+  const params = new URLSearchParams(location.search);
+  const recarga = params.get('recarga');
+  if (recarga) history.replaceState(null, '', '/monedero');
+
   const res = await fetch('/api/wallet/me');
   const content = document.getElementById('content');
   if (!res.ok) {
@@ -30,10 +62,16 @@ async function main() {
     return;
   }
   const me = await res.json();
+
+  document.getElementById('user-avatar').src = me.avatar_url || '';
+  document.getElementById('user-name').textContent = me.name || '';
+  document.getElementById('user-chip').style.display = 'flex';
+  document.getElementById('btn-logout').onclick = () => { window.location.href = '/auth/logout'; };
+
   content.innerHTML = `
     <div class="balance-box">
       <div class="label">Tu saldo</div>
-      <div class="amount">$${(me.balance_cents/100).toFixed(0)}</div>
+      <div class="amount" id="balance-amount">$${(me.balance_cents/100).toFixed(0)}</div>
       <div class="amount-grid">
         <button data-amt="2000">$20</button>
         <button data-amt="5000" class="featured">$50</button>
@@ -57,16 +95,30 @@ async function main() {
       <div class="label">Tu sala</div>
       <div id="room-info">Cargando…</div>
     </div>
-    <p><a href="/auth/logout" class="app-nav-link">Cerrar sesión</a></p>
   `;
-  loadRoom();
+
+  // Venimos de Stripe: animamos el saldo subiendo del valor de antes al de ahora.
+  if (recarga === 'ok') {
+    const before = Number(localStorage.getItem('vr_balance_before') || me.balance_cents);
+    localStorage.removeItem('vr_balance_before');
+    animateBalance(document.getElementById('balance-amount'), before, me.balance_cents);
+    showToast('✅ Recarga exitosa.');
+  } else if (recarga === 'cancelada') {
+    localStorage.removeItem('vr_balance_before');
+    showToast('Recarga cancelada.');
+  }
+
+  loadRoom(params.get('bienvenida') === '1');
+
   content.querySelectorAll('[data-amt]').forEach((btn) => {
     btn.onclick = async () => {
       if (btn.disabled) return;
       btn.disabled = true;
+      localStorage.setItem('vr_balance_before', String(me.balance_cents));
       const r = await fetch('/api/wallet/checkout', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ amount_cents: Number(btn.dataset.amt) }) });
       const j = await r.json();
       if (j.url) { window.location.href = j.url; return; }
+      localStorage.removeItem('vr_balance_before');
       btn.disabled = false;
       alert('No se pudo iniciar el pago. Intenta de nuevo.');
     };
@@ -84,12 +136,20 @@ async function main() {
   };
 }
 
-async function loadRoom() {
+async function loadRoom(autoCopy) {
   const el = document.getElementById('room-info');
   const res = await fetch('/api/rooms/mine');
   if (!res.ok) { el.innerHTML = '<p class="muted">No se pudo cargar tu sala.</p>'; return; }
   const room = await res.json();
   renderRoom(room);
+  if (autoCopy) {
+    const fullUrl = 'https://videoroom.superleads.mx/r/' + room.slug;
+    navigator.clipboard.writeText(fullUrl).then(() => {
+      showToast('🔗 Tu link ya está copiado — compártelo cuando quieras.', 4500);
+    }).catch(() => {
+      // algunos navegadores bloquean el copiado automático; el botón "Copiar link" sigue disponible.
+    });
+  }
 }
 
 function renderRoom(room) {
@@ -119,7 +179,7 @@ function renderRoom(room) {
 
   document.getElementById('btn-copy-link').onclick = () => {
     navigator.clipboard.writeText('https://' + url);
-    alert('Link copiado.');
+    showToast('Link copiado.');
   };
   document.getElementById('btn-edit-slug').onclick = () => {
     document.getElementById('edit-slug-form').style.display = 'block';
@@ -147,7 +207,7 @@ function renderRoom(room) {
     if (j.error === 'slug_numerico_reservado') return alert('Las URLs numéricas las asigna el sistema, elige un nombre con letras.');
     if (j.error === 'slug_invalido') return alert('Ese nombre no es válido.');
     if (j.error) return alert('No se pudo cambiar la URL.');
-    loadRoom();
+    loadRoom(false);
   };
 }
 

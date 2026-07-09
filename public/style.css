@@ -48,6 +48,20 @@ button { touch-action: manipulation; }
 .nav .links { display: flex; align-items: center; gap: 28px; }
 .nav .links a { font-size: 13px; font-weight: 500; color: rgba(255,255,255,.55); transition: color .2s var(--ease); }
 .nav .links a:hover { color: #fff; }
+
+.user-chip { display: flex; align-items: center; gap: 10px; }
+.user-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(86,239,159,.35); background: var(--navy-mid); flex-shrink: 0; }
+.user-name { font-size: 13px; color: #fff; font-weight: 600; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn {
+  background: rgba(255,255,255,.06); border: .5px solid rgba(255,255,255,.16); color: rgba(255,255,255,.8);
+  width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0; transition: border-color .2s, color .2s;
+}
+.icon-btn:hover { border-color: var(--green); color: var(--green); }
+.icon-btn svg { width: 16px; height: 16px; }
+@media (max-width: 480px) {
+  .user-name { display: none; }
+}
 .nav .nav-cta { padding: 9px 18px; font-size: 12px; }
 @media (max-width: 720px) {
   .nav { padding: 14px 16px; }
@@ -187,6 +201,15 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 
 .app-nav-link { display: inline-block; margin: 4px 0; font-size: 13px; color: var(--blue-mid); }
 .app-nav-link:hover { color: var(--green); }
+
+.app-toast {
+  position: fixed; top: calc(20px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%) translateY(-8px);
+  background: rgba(0,18,64,.96); color: #fff; padding: 12px 20px; border-radius: 10px;
+  border: .5px solid rgba(86,239,159,.3); font-size: 13px; font-weight: 600;
+  opacity: 0; transition: opacity .3s, transform .3s; z-index: 200; max-width: calc(100% - 40px);
+  text-align: center; pointer-events: none;
+}
+.app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ---------- Estadísticas ---------- */
 .filter-pills { display: flex; gap: 8px; margin: 20px 0; flex-wrap: wrap; }
