@@ -1,0 +1,188 @@
+import { Hono } from "hono";
+import { currentUser } from "../lib/current-user";
+import { creditLedger, newId, type Room, type Session, type User } from "../lib/db";
+import type { Env } from "../env";
+
+export const rooms = new Hono<{ Bindings: Env }>();
+
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 40);
+}
+
+rooms.post("/api/rooms", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+
+  const existing = await c.env.DB.prepare("SELECT * FROM rooms WHERE owner_id = ?").bind(user.id).first<Room>();
+  if (existing) return c.json({ slug: existing.slug });
+
+  const base = slugify(user.name) || "sala";
+  let slug = base;
+  for (let i = 0; i < 20; i++) {
+    const taken = await c.env.DB.prepare("SELECT id FROM rooms WHERE slug = ?").bind(slug).first();
+    if (!taken) break;
+    slug = `${base}-${Math.floor(Math.random() * 9999)}`;
+  }
+
+  const roomId = newId("room");
+  await c.env.DB.prepare("INSERT INTO rooms (id, owner_id, slug, title) VALUES (?, ?, ?, ?)")
+    .bind(roomId, user.id, slug, user.name)
+    .run();
+  return c.json({ slug });
+});
+
+rooms.post("/api/rooms/:slug/start", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const live = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+  if (live) return c.json({ session_id: live.id });
+
+  const sessionId = newId("sess");
+  await c.env.DB.prepare("INSERT INTO sessions (id, room_id, status) VALUES (?, ?, 'live')").bind(sessionId, room.id).run();
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId }) });
+
+  return c.json({ session_id: sessionId });
+});
+
+rooms.post("/api/rooms/:slug/stop", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const live = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+  if (!live) return c.json({ error: "no_live_session" }, 400);
+
+  await c.env.DB.prepare("UPDATE sessions SET status = 'ended', ended_at = unixepoch() WHERE id = ?").bind(live.id).run();
+  await c.env.DB.prepare("DELETE FROM comments WHERE session_id = ?").bind(live.id).run();
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const summary = await stub.fetch("https://do/stop", { method: "POST" });
+  return c.json(await summary.json());
+});
+
+rooms.get("/api/rooms/:slug/status", async (c) => {
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const live = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+  return c.json({ room, live_session: live ?? null });
+});
+
+// Compra o renovación del pase de entrada ($20/hora, split 50/50)
+rooms.post("/api/rooms/:slug/pass", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const { device_id } = await c.req.json<{ device_id: string }>().catch(() => ({ device_id: "web" }));
+
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+  if (!session) return c.json({ error: "sala_cerrada" }, 400);
+
+  const now = Math.floor(Date.now() / 1000);
+  const validPass = await c.env.DB.prepare(
+    "SELECT * FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
+  ).bind(session.id, user.id, now).first<{ id: string; expires_at: number }>();
+  if (validPass) return c.json({ ok: true, expires_at: validPass.expires_at, charged: false });
+
+  if (user.id === room.owner_id) {
+    // el creador entra gratis a su propia sala
+    const passId = newId("pass");
+    const expiresAt = now + 3600;
+    await c.env.DB.prepare(
+      "INSERT INTO passes (id, session_id, user_id, expires_at, device_id) VALUES (?, ?, ?, ?, ?)"
+    ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web").run();
+    return c.json({ ok: true, expires_at: expiresAt, charged: false });
+  }
+
+  if (user.balance_cents < 2000) return c.json({ error: "saldo_insuficiente" }, 402);
+
+  const passId = newId("pass");
+  const expiresAt = now + 3600;
+  const debited = await creditLedger(c.env.DB, user.id, -2000, "entrada", passId, `entrada:${passId}`, "balance_cents");
+  if (!debited) return c.json({ error: "no_procesado" }, 500);
+  await creditLedger(c.env.DB, room.owner_id, 1000, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents");
+  await c.env.DB.prepare(
+    "INSERT INTO passes (id, session_id, user_id, expires_at, device_id) VALUES (?, ?, ?, ?, ?)"
+  ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web").run();
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name }) });
+
+  return c.json({ ok: true, expires_at: expiresAt, charged: true });
+});
+
+const TIP_SESSION_CAP_CENTS = 200000;
+
+rooms.post("/api/rooms/:slug/tip", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const { amount_cents, message } = await c.req.json<{ amount_cents: number; message?: string }>();
+  if (!Number.isInteger(amount_cents) || amount_cents < 1000) return c.json({ error: "monto_invalido" }, 400);
+
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+  if (!session) return c.json({ error: "sala_cerrada" }, 400);
+  if (user.balance_cents < amount_cents) return c.json({ error: "saldo_insuficiente" }, 402);
+
+  const alreadyTipped = await c.env.DB.prepare(
+    "SELECT COALESCE(SUM(amount_cents), 0) as total FROM tips WHERE session_id = ? AND from_user = ?"
+  ).bind(session.id, user.id).first<{ total: number }>();
+  if ((alreadyTipped?.total ?? 0) + amount_cents > TIP_SESSION_CAP_CENTS) {
+    return c.json({ error: "limite_propinas_alcanzado" }, 400);
+  }
+
+  const tipId = newId("tip");
+  const creatorCut = Math.round(amount_cents * 0.9);
+  const debited = await creditLedger(c.env.DB, user.id, -amount_cents, "propina_enviada", tipId, `propina_env:${tipId}`, "balance_cents");
+  if (!debited) return c.json({ error: "no_procesado" }, 500);
+  await creditLedger(c.env.DB, room.owner_id, creatorCut, "propina_recibida", tipId, `propina_rec:${tipId}`, "creator_balance_cents");
+  await c.env.DB.prepare(
+    "INSERT INTO tips (id, session_id, from_user, to_user, amount_cents, message) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(tipId, session.id, user.id, room.owner_id, amount_cents, (message ?? "").slice(0, 60)).run();
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/tip", {
+    method: "POST",
+    body: JSON.stringify({ from: user.name, amount_cents, message: (message ?? "").slice(0, 60) }),
+  });
+
+  return c.json({ ok: true, creator_cut_cents: creatorCut });
+});
+
+rooms.post("/api/rooms/:slug/notify-me", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  await c.env.DB.prepare("INSERT OR IGNORE INTO notify_me (room_id, user_id) VALUES (?, ?)").bind(room.id, user.id).run();
+  return c.json({ ok: true });
+});

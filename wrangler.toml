@@ -1,0 +1,32 @@
+name = "video-room"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [
+  { pattern = "videoroom.superleads.mx", custom_domain = true }
+]
+
+[observability]
+enabled = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/r/*", "/api/*", "/auth/*", "/webhook/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "video-room-db"
+database_id = "6d4677e0-6bbe-4611-abf5-be37c028c0f5"
+
+[[durable_objects.bindings]]
+name = "ROOM_DO"
+class_name = "RoomDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomDurableObject"]
+
+[vars]
+APP_URL = "https://videoroom.superleads.mx"

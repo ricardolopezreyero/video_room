@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tu monedero — Video Room</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap" id="app">
+  <h1>Tu monedero</h1>
+  <div id="content">Cargando…</div>
+</div>
+<script>
+async function main() {
+  const res = await fetch('/api/wallet/me');
+  const content = document.getElementById('content');
+  if (!res.ok) {
+    content.innerHTML = '<p>No has iniciado sesión.</p><a href="/login"><button class="btn-primary">Entrar con Google</button></a>';
+    return;
+  }
+  const me = await res.json();
+  content.innerHTML = `
+    <div class="balance-box">
+      <div class="fineprint">Tu saldo</div>
+      <div class="amount">$${(me.balance_cents/100).toFixed(0)}</div>
+      <div class="amount-grid">
+        <button data-amt="2000">$20</button>
+        <button data-amt="5000" class="featured">$50</button>
+        <button data-amt="10000">$100</button>
+        <button data-amt="50000">$500</button>
+        <button data-amt="100000">$1,000</button>
+        <button data-amt="200000">$2,000</button>
+      </div>
+      <p class="fineprint">Tu saldo sirve para entrar a salas y mandar dinero a creadores.</p>
+    </div>
+    <div class="balance-box">
+      <div class="fineprint">Balance de creador (separado — esto es lo que has ganado)</div>
+      <div class="amount">$${(me.creator_balance_cents/100).toFixed(0)}</div>
+      <button class="btn-secondary" id="btn-retiro">Retirar a mi banco</button>
+      <p class="fineprint">Mínimo $200, llega en 1-2 días hábiles.</p>
+    </div>
+    <a href="/r/mi-sala-nueva" id="link-crear-sala"><button class="btn-primary">Crear / ir a mi sala</button></a>
+    <p><a href="/auth/logout">Cerrar sesión</a></p>
+  `;
+  content.querySelectorAll('[data-amt]').forEach((btn) => {
+    btn.onclick = async () => {
+      const r = await fetch('/api/wallet/checkout', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ amount_cents: Number(btn.dataset.amt) }) });
+      const j = await r.json();
+      if (j.url) window.location.href = j.url;
+    };
+  });
+  document.getElementById('btn-retiro').onclick = async () => {
+    const r = await fetch('/api/wallet/retiro', { method: 'POST' });
+    const j = await r.json();
+    if (j.error === 'minimo_200') alert('Necesitas al menos $200 en tu balance de creador.');
+    else if (j.ok) { alert('Retiro solicitado. Llega en 1-2 días hábiles.'); main(); }
+  };
+  document.getElementById('link-crear-sala').onclick = async (e) => {
+    e.preventDefault();
+    const r = await fetch('/api/rooms', { method: 'POST' });
+    const j = await r.json();
+    if (j.slug) window.location.href = '/r/' + j.slug;
+  };
+}
+main();
+</script>
+</body>
+</html>

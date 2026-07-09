@@ -1,0 +1,45 @@
+import { Hono } from "hono";
+import type { Env } from "./env";
+import { auth } from "./routes/auth";
+import { wallet } from "./routes/wallet";
+import { rooms } from "./routes/rooms";
+import { calls } from "./routes/calls";
+import { renderRoomPage } from "./lib/room-page";
+import type { Room, Session } from "./lib/db";
+
+export { RoomDurableObject } from "./durable/room";
+
+const app = new Hono<{ Bindings: Env }>();
+
+app.route("/", auth);
+app.route("/", wallet);
+app.route("/", rooms);
+app.route("/", calls);
+
+app.get("/r/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.notFound();
+  const live = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+
+  let viewerCount = 0;
+  if (live) {
+    const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+    const res = await stub.fetch("https://do/sfu-session");
+    void res; // solo para asegurar el DO existe/arrancado
+  }
+
+  return c.html(renderRoomPage({ room, live: !!live, viewerCount, appUrl: c.env.APP_URL }));
+});
+
+app.get("/ws/room/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.notFound();
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  return stub.fetch("https://do/ws", c.req.raw);
+});
+
+export default app;

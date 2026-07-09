@@ -1,0 +1,29 @@
+{
+  "name": "video_room",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ricardolopezreyero/video_room.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ricardolopezreyero/video_room/issues"
+  },
+  "homepage": "https://github.com/ricardolopezreyero/video_room#readme",
+  "dependencies": {
+    "hono": "^4.12.28"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.107.1"
+  }
+}
