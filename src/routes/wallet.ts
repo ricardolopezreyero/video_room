@@ -6,7 +6,8 @@ import type { Env } from "../env";
 
 export const wallet = new Hono<{ Bindings: Env }>();
 
-const AMOUNTS = [2000, 5000, 10000, 50000, 100000, 200000]; // centavos: $20,$50,$100,$500,$1000,$2000
+// Centavos, en múltiplos de $20 (el costo de una hora de sala): $20,$60,$120,$240,$480,$960,$1920
+const AMOUNTS = [2000, 6000, 12000, 24000, 48000, 96000, 192000];
 const MIN_RETIRO_CENTS = 20000;
 
 wallet.get("/api/wallet/me", async (c) => {

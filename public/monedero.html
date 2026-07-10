@@ -81,13 +81,15 @@ async function main() {
     <div class="balance-box">
       <div class="label">Tu saldo</div>
       <div class="amount" id="balance-amount">$${(me.balance_cents/100).toFixed(0)}</div>
+      <p class="muted">Entrar a una sala cuesta $20 MXN por hora.</p>
       <div class="amount-grid">
         <button data-amt="2000">$20</button>
-        <button data-amt="5000" class="featured">$50</button>
-        <button data-amt="10000">$100</button>
-        <button data-amt="50000">$500</button>
-        <button data-amt="100000">$1,000</button>
-        <button data-amt="200000">$2,000</button>
+        <button data-amt="6000">$60</button>
+        <button data-amt="12000" class="featured">$120</button>
+        <button data-amt="24000">$240</button>
+        <button data-amt="48000">$480</button>
+        <button data-amt="96000">$960</button>
+        <button data-amt="192000" class="wide">$1,920</button>
       </div>
       <p class="muted">Tu saldo sirve para entrar a salas y mandar dinero a creadores.</p>
     </div>
