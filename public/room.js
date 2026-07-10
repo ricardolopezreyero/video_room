@@ -8,6 +8,9 @@
   const controls = $("controls");
   const ticker = $("ticker");
   const toastEl = $("toast");
+  const sub = $("sub");
+  const connectSpinner = $("connect-spinner");
+  const originalSub = sub.textContent;
 
   let isOwner = false;
   let me = null;
@@ -16,6 +19,7 @@
   let sessionEnded = false;
   let chatVisible = true;
   let waveformStarted = false;
+  let connectingTimer = null;
 
   // Estado de los controles del creador durante la transmisión (cámara, mic,
   // pantalla compartida, cambio de cámara). Nada de esto toca el backend: todo
@@ -44,6 +48,50 @@
     toastEl.textContent = msg;
     toastEl.classList.add("show");
     setTimeout(() => toastEl.classList.remove("show"), ms);
+  }
+
+  // El momento de "conectar en vivo" (entrar a ver / empezar a transmitir) es
+  // la promesa central del producto — nunca debe sentirse como un silencio
+  // muerto entre el clic y que aparece el video. Estos helpers dan reacción
+  // instantánea al toque, avisan en qué etapa real va la conexión, y si de
+  // plano tarda, tranquilizan en vez de dejar al usuario dudando.
+  function beginConnecting(message) {
+    overlay.classList.add("connecting");
+    connectSpinner.style.display = "flex";
+    sub.textContent = message;
+    clearTimeout(connectingTimer);
+    connectingTimer = setTimeout(() => {
+      sub.textContent = "Esto puede tardar unos segundos si tu conexión es lenta…";
+    }, 4500);
+  }
+
+  function updateConnecting(message) {
+    sub.textContent = message;
+  }
+
+  function endConnecting() {
+    clearTimeout(connectingTimer);
+    overlay.classList.remove("connecting");
+    connectSpinner.style.display = "none";
+    sub.textContent = originalSub;
+  }
+
+  // El overlay se queda visible hasta que de verdad hay imagen — se revela el
+  // video con un crossfade en vez de un salto brusco de display:none.
+  function hideOverlaySmoothly() {
+    clearTimeout(connectingTimer);
+    overlay.classList.remove("connecting");
+    connectSpinner.style.display = "none";
+    overlay.classList.add("fade-out");
+    setTimeout(() => {
+      overlay.style.display = "none";
+    }, 460);
+  }
+
+  function showControlsWithEntrance() {
+    controls.style.display = "flex";
+    controls.classList.add("entering");
+    setTimeout(() => controls.classList.remove("entering"), 450);
   }
 
   function requireLogin() {
@@ -256,6 +304,7 @@
   }
 
   async function startPublishing(sessionId) {
+    updateConnecting("Accediendo a tu cámara y micrófono…");
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -278,11 +327,12 @@
     });
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    updateConnecting("Conectando con el estudio…");
     const res = await api(`/api/rooms/${slug}/publish`, { body: { sdp: offer.sdp, tracks } });
     if (res.error) throw new Error("publish_error");
     await pc.setRemoteDescription({ type: "answer", sdp: res.answer_sdp });
-    overlay.style.display = "none";
-    controls.style.display = "flex";
+    hideOverlaySmoothly();
+    showControlsWithEntrance();
     ticker.style.display = "block";
     $("btn-stop").style.display = "inline-block";
     showCreatorToolbar();
@@ -443,17 +493,31 @@
   }
 
   async function startSubscribing() {
+    updateConnecting("Conectando con la transmisión…");
     const res = await api(`/api/rooms/${slug}/subscribe`, { body: {} });
     if (res.error) {
+      endConnecting();
       const msg = res.error === "creador_no_transmitiendo" ? "El creador aún no transmite. Vuelve a intentar en un momento."
         : res.error === "sin_pase" ? "Necesitas un pase para ver esta sala."
         : "No se pudo conectar.";
       return toast(msg);
     }
+    updateConnecting("Sintonizando la señal…");
     pc = new RTCPeerConnection();
+    let firstFrame = false;
+    // El overlay no se va hasta que de verdad hay imagen — así nunca se ve un
+    // recuadro negro detrás de un overlay que ya desapareció.
+    function onFirstFrame() {
+      if (firstFrame) return;
+      firstFrame = true;
+      hideOverlaySmoothly();
+      showControlsWithEntrance();
+      revealChatUI();
+    }
     pc.ontrack = (ev) => {
       player.srcObject = ev.streams[0];
       maybeSetupWaveform(ev.streams[0]);
+      onFirstFrame();
     };
     if (res.offer_sdp) {
       await pc.setRemoteDescription({ type: "offer", sdp: res.offer_sdp });
@@ -461,9 +525,9 @@
       await pc.setLocalDescription(answer);
       await api(`/api/rooms/${slug}/renegotiate`, { body: { session_id: res.viewer_session_id, sdp: answer.sdp } });
     }
-    overlay.style.display = "none";
-    controls.style.display = "flex";
-    revealChatUI();
+    // Respaldo: si por lo que sea "ontrack" nunca dispara (raro, pero pasa en
+    // algunas redes), no dejamos al espectador mirando el overlay para siempre.
+    setTimeout(onFirstFrame, 6000);
   }
 
   function openTipSheet() {
@@ -536,9 +600,10 @@
 
     guarded($("btn-enter"), async () => {
       if (!me) return requireLogin();
+      beginConnecting("Verificando tu pase…");
       const res = await api(`/api/rooms/${slug}/pass`, { body: { device_id: "web" } });
-      if (res.error === "saldo_insuficiente") return toast("Sin saldo. Ve a tu monedero para recargar.");
-      if (res.error) return toast("No se pudo entrar a la sala.");
+      if (res.error === "saldo_insuficiente") { endConnecting(); return toast("Sin saldo. Ve a tu monedero para recargar."); }
+      if (res.error) { endConnecting(); return toast("No se pudo entrar a la sala."); }
       await startSubscribing();
     });
     guarded($("btn-notify"), async () => {
@@ -548,11 +613,13 @@
     });
     guarded($("btn-start"), async () => {
       if (!me) return requireLogin();
+      beginConnecting("Preparando tu transmisión…");
       const res = await api(`/api/rooms/${slug}/start`, { body: {} });
-      if (res.error) return toast("No se pudo iniciar.");
+      if (res.error) { endConnecting(); return toast("No se pudo iniciar."); }
       try {
         await startPublishing(res.session_id);
       } catch (err) {
+        endConnecting();
         const msg = err && err.message === "sin_camara"
           ? "No pudimos usar tu cámara o micrófono. Revisa los permisos del navegador."
           : "No se pudo iniciar la transmisión.";

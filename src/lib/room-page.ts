@@ -49,6 +49,7 @@ export function renderRoomPage(opts: {
       ${avatarHtml}
       <h1>${live ? `🔴 ${safeTitle} está EN VIVO` : `${safeTitle} — abre pronto`}</h1>
       <p id="sub">${desc}</p>
+      <div id="connect-spinner" class="connect-spinner" style="display:none"><span></span><span></span><span></span></div>
       <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">Entrar · $20 la hora</button>
       <button id="btn-notify" class="btn-ghost" style="display:${live ? "none" : "block"}">🔔 Avísame cuando abra</button>
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
