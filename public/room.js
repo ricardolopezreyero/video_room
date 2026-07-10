@@ -471,7 +471,11 @@
     usingScreenShare = true;
     $("btn-screen").classList.add("active");
     $("btn-screen").title = "Dejar de compartir pantalla";
-    toast("🖥️ Ahora compartes tu pantalla. Tu cámara se reanuda cuando la detengas.");
+    // Se oculta el panel de chat mientras comparte pantalla — menos distracción,
+    // y si su pantalla todavía muestra esta misma página, un "espejo infinito"
+    // con menos elementos encima se ve/graba mejor. Vuelve solo al terminar.
+    $("chat-panel").style.display = "none";
+    toast("🖥️ Compartiendo pantalla. Si tu pantalla muestra esta misma página, cambia a la app que quieres mostrar — la transmisión sigue aunque salgas de aquí.", 9000);
   }
 
   async function stopScreenShare() {
@@ -479,6 +483,7 @@
     usingScreenShare = false;
     $("btn-screen").classList.remove("active");
     $("btn-screen").title = "Compartir pantalla";
+    $("chat-panel").style.display = chatVisible ? "flex" : "none";
     let camStream;
     try {
       camStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false });

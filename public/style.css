@@ -369,7 +369,11 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   bottom: calc(24px + env(safe-area-inset-bottom));
   display: flex; gap: 16px; background: rgba(0,18,64,0.7); padding: 10px 16px; border-radius: 28px;
   border: .5px solid rgba(86,239,159,.15);
-  flex-wrap: wrap; justify-content: center; max-width: min(92vw, 440px);
+  flex-wrap: wrap; justify-content: center;
+  /* "left:50%" sin un ancho explícito hace que el navegador calcule el
+     shrink-to-fit con la mitad del viewport como base disponible, y envuelve
+     los botones antes de tiempo — width:max-content lo corrige. */
+  width: max-content; max-width: min(92vw, 440px);
 }
 .controls.entering { animation: controls-in .4s ease; }
 @keyframes controls-in {
