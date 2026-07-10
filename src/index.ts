@@ -11,6 +11,7 @@ import { stats } from "./routes/stats";
 import { notifications } from "./routes/notifications";
 import { renderRoomPage } from "./lib/room-page";
 import { verifyUnsubscribeToken } from "./lib/unsubscribe";
+import { currentUser } from "./lib/current-user";
 import type { Room, Session } from "./lib/db";
 
 export { RoomDurableObject } from "./durable/room";
@@ -123,7 +124,12 @@ app.get("/ws/room/:slug", async (c) => {
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
   if (!room) return c.notFound();
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  return stub.fetch("https://do/ws", c.req.raw);
+  const user = await currentUser(c);
+  const doUrl = new URL("https://do/ws");
+  if (user) doUrl.searchParams.set("uid", user.id);
+  const cid = c.req.query("cid");
+  if (cid) doUrl.searchParams.set("cid", cid);
+  return stub.fetch(doUrl.toString(), c.req.raw);
 });
 
 export default app;

@@ -83,11 +83,39 @@ export class RoomDurableObject implements DurableObject {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.state.acceptWebSocket(server);
+      // Etiqueta la conexión con quién es (uid) y desde qué pestaña/dispositivo
+      // (cid) — serializeAttachment() sobrevive a la hibernación, a diferencia
+      // de una variable en memoria. Esto es lo que permite, más abajo, avisarle
+      // a cualquier OTRA conexión de la misma cuenta que se apague sola cuando
+      // un dispositivo nuevo empieza a ver la transmisión.
+      const uid = url.searchParams.get("uid");
+      const cid = url.searchParams.get("cid");
+      if (uid && cid) server.serializeAttachment({ uid, cid });
       const count = this.viewerCount();
       this.peakViewers = Math.max(this.peakViewers, count);
       await this.persist();
       this.broadcast({ type: "viewers", count });
       return new Response(null, { status: 101, webSocket: client });
+    }
+
+    // Un mismo usuario solo puede ver la transmisión activamente desde un
+    // dispositivo a la vez — cuando uno nuevo empieza a ver, se avisa y se
+    // cierra la conexión vieja de esa misma cuenta (no cobra de nuevo, solo
+    // deja de recibir video ahí).
+    if (url.pathname === "/kick-other-devices" && request.method === "POST") {
+      const { uid, keep_cid } = await request.json<{ uid: string; keep_cid: string }>();
+      for (const ws of this.state.getWebSockets()) {
+        const attachment = ws.deserializeAttachment() as { uid?: string; cid?: string } | null;
+        if (attachment?.uid === uid && attachment.cid !== keep_cid) {
+          try {
+            ws.send(JSON.stringify({ type: "kicked" }));
+            ws.close(4000, "sesion movida a otro dispositivo");
+          } catch {
+            // ya estaba cerrada
+          }
+        }
+      }
+      return Response.json({ ok: true });
     }
 
     if (url.pathname === "/start" && request.method === "POST") {

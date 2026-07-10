@@ -81,10 +81,22 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   // banda en resoluciones que ni siquiera va a mostrar. Si por lo que sea los
   // nombres no calzan (ej. un cliente viejo durante un deploy), se cae de
   // vuelta a pedir todos los tracks, como antes.
-  const { quality } = await c.req.json<{ quality?: "low" | "medium" | "high" | "off" }>().catch(() => ({ quality: undefined }));
+  const { quality, cid } = await c.req.json<{ quality?: "low" | "medium" | "high" | "off"; cid?: string }>()
+    .catch(() => ({ quality: undefined, cid: undefined }));
   const wantedNames = quality === "off" ? ["audio"] : ["audio", `video_${quality ?? "high"}`];
   const filtered = info.tracks.filter((t) => wantedNames.includes(t.trackName));
   const tracksToRequest = filtered.length > 0 ? filtered : info.tracks;
+
+  // Una sola cuenta solo puede estar viendo activamente desde un dispositivo a
+  // la vez — si esta misma cuenta ya tenía otra pestaña/dispositivo conectado
+  // (identificado por un cid distinto), se le avisa y se apaga sola allá. No
+  // bloquea la respuesta si por lo que sea falla.
+  if (cid) {
+    await stub.fetch("https://do/kick-other-devices", {
+      method: "POST",
+      body: JSON.stringify({ uid: user.id, keep_cid: cid }),
+    }).catch(() => {});
+  }
 
   const viewerSessionId = await newCallsSession(c.env);
   const res = await fetch(callsUrl(c.env, `/sessions/${viewerSessionId}/tracks/new`), {

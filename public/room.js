@@ -12,6 +12,10 @@
   const sub = $("sub");
   const connectSpinner = $("connect-spinner");
   const originalSub = sub.textContent;
+  // Identifica esta pestaña/dispositivo — se manda al WebSocket y a /subscribe
+  // para que una misma cuenta solo pueda estar viendo activamente desde un
+  // lugar a la vez (ver handleKicked()).
+  const connectionId = (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}_${Math.random()}`;
 
   let isOwner = false;
   let me = null;
@@ -137,6 +141,24 @@
     setTimeout(() => controls.classList.remove("entering"), 450);
   }
 
+  // Esta misma cuenta empezó a ver la transmisión desde otro dispositivo — se
+  // apaga el video aquí (sin cobrar de nuevo) y se explica qué pasó. Si
+  // quieren recuperarlo en esta pantalla, "Entrar" vuelve a jalarlo.
+  function handleKicked() {
+    if (pc) { try { pc.close(); } catch {} pc = null; }
+    stopViewerQualityMonitor();
+    player.srcObject = null;
+    controls.style.display = "none";
+    const chatPanel = $("chat-panel");
+    if (chatPanel) chatPanel.style.display = "none";
+    overlay.classList.remove("fade-out", "connecting");
+    overlay.style.display = "flex";
+    connectSpinner.style.display = "none";
+    sub.textContent = "Tu sesión se movió a otro dispositivo. Toca \"Entrar\" si quieres seguir viendo aquí.";
+    $("btn-enter").style.display = "block";
+    toast("📱 Otro dispositivo con tu cuenta empezó a ver esta sala.", 6000);
+  }
+
   function requireLogin() {
     window.location.href = "/login";
   }
@@ -173,11 +195,13 @@
 
   function connectWs() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    ws = new WebSocket(`${proto}://${location.host}/ws/room/${slug}`);
+    ws = new WebSocket(`${proto}://${location.host}/ws/room/${slug}?cid=${connectionId}`);
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "viewers") {
         // podría mostrarse "N viendo" si se agrega en el overlay
+      } else if (msg.type === "kicked") {
+        handleKicked();
       } else if (msg.type === "entrada") {
         if (isOwner) {
           toast(`+$10 · ${msg.name} entró`);
@@ -569,7 +593,7 @@
   // cuanto llega el primer track (o a los 6s, de respaldo, por si la red no
   // manda nada — no dejamos al espectador esperando para siempre).
   async function subscribeAt(tier) {
-    const res = await api(`/api/rooms/${slug}/subscribe`, { body: { quality: tier } });
+    const res = await api(`/api/rooms/${slug}/subscribe`, { body: { quality: tier, cid: connectionId } });
     if (res.error) return { error: res.error };
     const newPc = new RTCPeerConnection();
     const ready = new Promise((resolve) => {
