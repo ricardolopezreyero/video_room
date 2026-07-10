@@ -390,6 +390,10 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .conn-quality.ok { background: #F5C542; }
 .conn-quality.bad { background: #E5484D; animation: conn-pulse 1.2s ease-in-out infinite; }
 @keyframes conn-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.audio-only-badge {
+  position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; background: rgba(0,18,64,0.75); color: var(--green);
+  font-weight: 700; font-size: 12px; padding: 8px 14px; border-radius: 10px; border: .5px solid rgba(86,239,159,.2);
+}
 .toast {
   position: absolute; top: calc(16px + env(safe-area-inset-top)); left: 16px; background: rgba(0,18,64,0.85); padding: 10px 16px;
   border-radius: 10px; opacity: 0; transition: opacity 0.3s; color: #fff; font-size: 13px; max-width: calc(100% - 32px);

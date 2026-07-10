@@ -36,6 +36,48 @@
   let shownCamToast = false;
   let qualityTimer = null;
 
+  // El creador publica 3 calidades de video (alta = la cámara tal cual, media
+  // y baja = la misma imagen redibujada más chica en un <canvas> oculto). Así
+  // el espectador puede pedir solo la calidad que quiere ver, sin gastar ancho
+  // de banda en resoluciones que ni va a mostrar — ver setupTieredVideoTracks().
+  let hiddenSourceVideo = null;
+
+  function setHiddenSourceTrack(track) {
+    if (!hiddenSourceVideo) {
+      hiddenSourceVideo = document.createElement("video");
+      hiddenSourceVideo.muted = true;
+      hiddenSourceVideo.playsInline = true;
+      hiddenSourceVideo.style.cssText = "position:fixed; left:-9999px; top:0; width:2px; height:2px;";
+      document.body.appendChild(hiddenSourceVideo);
+    }
+    hiddenSourceVideo.srcObject = new MediaStream([track]);
+    hiddenSourceVideo.play().catch(() => {});
+  }
+
+  function setupTieredVideoTracks(track) {
+    setHiddenSourceTrack(track);
+    const specs = [
+      { width: 640, height: 360, fps: 24 },
+      { width: 320, height: 180, fps: 15 },
+    ];
+    const canvases = specs.map((s) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = s.width;
+      canvas.height = s.height;
+      return { ctx: canvas.getContext("2d"), width: s.width, height: s.height, canvas };
+    });
+    (function draw() {
+      requestAnimationFrame(draw);
+      if (hiddenSourceVideo.readyState >= 2) {
+        canvases.forEach((c) => c.ctx.drawImage(hiddenSourceVideo, 0, 0, c.width, c.height));
+      }
+    })();
+    return {
+      mediumTrack: canvases[0].canvas.captureStream(specs[0].fps).getVideoTracks()[0],
+      lowTrack: canvases[1].canvas.captureStream(specs[1].fps).getVideoTracks()[0],
+    };
+  }
+
   function buzz() {
     if (navigator.vibrate) navigator.vibrate(10);
   }
@@ -318,12 +360,19 @@
     player.muted = true;
     cameraTrack = stream.getVideoTracks()[0];
     micTrack = stream.getAudioTracks()[0];
+    const { mediumTrack, lowTrack } = setupTieredVideoTracks(cameraTrack);
     pc = new RTCPeerConnection();
     const tracks = [];
-    stream.getTracks().forEach((track, i) => {
+    const toPublish = [
+      { track: micTrack, name: "audio" },
+      { track: cameraTrack, name: "video_high" },
+      { track: mediumTrack, name: "video_medium" },
+      { track: lowTrack, name: "video_low" },
+    ];
+    toPublish.forEach(({ track, name }, i) => {
       const transceiver = pc.addTransceiver(track, { direction: "sendonly" });
-      if (track.kind === "video") videoSender = transceiver.sender;
-      tracks.push({ mid: String(i), trackName: track.kind });
+      if (name === "video_high") videoSender = transceiver.sender;
+      tracks.push({ mid: String(i), trackName: name });
     });
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -394,6 +443,7 @@
     if (cameraTrack) cameraTrack.stop();
     cameraTrack = screenTrack;
     cameraTrack.enabled = camOn;
+    setHiddenSourceTrack(screenTrack); // las calidades media/baja siguen la pantalla compartida
     player.srcObject = micTrack ? new MediaStream([screenTrack, micTrack]) : screenStream;
     screenTrack.onended = () => stopScreenShare();
     usingScreenShare = true;
@@ -418,6 +468,7 @@
     await videoSender.replaceTrack(camTrack);
     if (cameraTrack) cameraTrack.stop();
     cameraTrack = camTrack;
+    setHiddenSourceTrack(camTrack);
     player.srcObject = micTrack ? new MediaStream([camTrack, micTrack]) : camStream;
   }
 
@@ -492,42 +543,180 @@
     }, 3000);
   }
 
+  // Calidad de video del espectador: siempre entra rápido (audio + baja) y
+  // sube sola a la calidad objetivo, se puede fijar a mano, o se adapta sola
+  // según qué tan buena esté la conexión — ver plan "Calidad de video
+  // seleccionable y adaptativa". El audio nunca se degrada, solo el video.
+  let qualityPref = localStorage.getItem("vr_quality") || "auto";
+  let effectiveTier = null; // 'low'|'medium'|'high'|'off' — lo que de verdad está llegando
+  let rampUpTimer = null;
+  let viewerQualityTimer = null;
+  let switchingQuality = false;
+  let shownAutoDownToast = false;
+  let shownAutoUpToast = false;
+  let goodStreak = 0;
+  let badStreak = 0;
+
+  function targetTierForPref() {
+    if (qualityPref === "off") return "off";
+    if (qualityPref === "auto") return "high";
+    return qualityPref;
+  }
+
+  function updateAudioOnlyBadge() {
+    $("audio-only-badge").style.display = effectiveTier === "off" ? "block" : "none";
+  }
+
+  // Pide una calidad concreta, arma un RTCPeerConnection nuevo, y resuelve en
+  // cuanto llega el primer track (o a los 6s, de respaldo, por si la red no
+  // manda nada — no dejamos al espectador esperando para siempre).
+  async function subscribeAt(tier) {
+    const res = await api(`/api/rooms/${slug}/subscribe`, { body: { quality: tier } });
+    if (res.error) return { error: res.error };
+    const newPc = new RTCPeerConnection();
+    const ready = new Promise((resolve) => {
+      let done = false;
+      newPc.ontrack = (ev) => {
+        player.srcObject = ev.streams[0];
+        maybeSetupWaveform(ev.streams[0]);
+        if (!done) { done = true; resolve(); }
+      };
+      setTimeout(() => { if (!done) { done = true; resolve(); } }, 6000);
+    });
+    if (res.offer_sdp) {
+      await newPc.setRemoteDescription({ type: "offer", sdp: res.offer_sdp });
+      const answer = await newPc.createAnswer();
+      await newPc.setLocalDescription(answer);
+      await api(`/api/rooms/${slug}/renegotiate`, { body: { session_id: res.viewer_session_id, sdp: answer.sdp } });
+    }
+    await ready;
+    return { pc: newPc };
+  }
+
+  // Cambia de calidad ya conectado: cierra la sesión vieja y abre una nueva
+  // pidiendo el track que corresponde — un parpadeo breve es normal (mismo
+  // comportamiento que el selector de calidad de YouTube/Twitch).
+  async function switchQuality(newTier, opts = {}) {
+    if (switchingQuality || newTier === effectiveTier) return;
+    switchingQuality = true;
+    clearTimeout(rampUpTimer);
+    const oldPc = pc;
+    const result = await subscribeAt(newTier);
+    switchingQuality = false;
+    if (result.error) {
+      if (!opts.silent) toast("No se pudo cambiar la calidad.");
+      return;
+    }
+    if (oldPc) oldPc.close();
+    pc = result.pc;
+    effectiveTier = newTier;
+    updateAudioOnlyBadge();
+    if (!opts.silent) {
+      const labels = { high: "Alta", medium: "Media", low: "Baja", off: "Apagado (solo audio)" };
+      toast(`Calidad: ${labels[newTier]}`);
+    }
+  }
+
+  function setupQualitySelector() {
+    const select = $("quality-select");
+    select.value = qualityPref;
+    select.style.display = "inline-block";
+    select.onchange = () => {
+      qualityPref = select.value;
+      localStorage.setItem("vr_quality", qualityPref);
+      clearTimeout(rampUpTimer);
+      if (qualityPref === "auto") {
+        startViewerQualityMonitor();
+        switchQuality("high");
+      } else {
+        stopViewerQualityMonitor();
+        switchQuality(qualityPref);
+      }
+    };
+  }
+
+  function stopViewerQualityMonitor() {
+    clearInterval(viewerQualityTimer);
+    viewerQualityTimer = null;
+  }
+
+  // Solo corre en modo "Auto". Sondea la conexión cada 4s; baja un escalón
+  // rápido (2 lecturas malas seguidas) para no dejar que se trabe, sube un
+  // escalón con calma (3 lecturas buenas seguidas) para no ir subiendo y
+  // bajando. Nunca apaga el video sola — eso lo decide el espectador.
+  function startViewerQualityMonitor() {
+    stopViewerQualityMonitor();
+    goodStreak = 0;
+    badStreak = 0;
+    viewerQualityTimer = setInterval(async () => {
+      if (!pc || switchingQuality || effectiveTier === "off") return;
+      let rtt = null;
+      let lost = null;
+      try {
+        const stats = await pc.getStats();
+        stats.forEach((r) => {
+          if (r.type === "candidate-pair" && r.state === "succeeded" && r.currentRoundTripTime != null) {
+            rtt = r.currentRoundTripTime;
+          }
+          if (r.type === "inbound-rtp" && r.kind === "video" && r.packetsLost != null && r.packetsReceived != null) {
+            const total = r.packetsLost + r.packetsReceived;
+            lost = total > 0 ? r.packetsLost / total : 0;
+          }
+        });
+      } catch {
+        return;
+      }
+      const bad = (rtt != null && rtt > 0.35) || (lost != null && lost > 0.06);
+      const good = (rtt == null || rtt < 0.15) && (lost == null || lost < 0.02);
+      if (bad) { badStreak++; goodStreak = 0; } else if (good) { goodStreak++; badStreak = 0; } else { badStreak = 0; goodStreak = 0; }
+
+      const order = ["low", "medium", "high"];
+      const idx = order.indexOf(effectiveTier);
+      if (badStreak >= 2 && idx > 0) {
+        badStreak = 0;
+        switchQuality(order[idx - 1], { silent: true });
+        if (!shownAutoDownToast) {
+          shownAutoDownToast = true;
+          toast("📶 Bajamos la calidad para que no se trabe.");
+        }
+      } else if (goodStreak >= 3 && idx < order.length - 1) {
+        goodStreak = 0;
+        switchQuality(order[idx + 1], { silent: true });
+        if (!shownAutoUpToast) {
+          shownAutoUpToast = true;
+          toast("✨ Tu conexión mejoró, subimos la calidad.");
+        }
+      }
+    }, 4000);
+  }
+
   async function startSubscribing() {
     updateConnecting("Conectando con la transmisión…");
-    const res = await api(`/api/rooms/${slug}/subscribe`, { body: {} });
-    if (res.error) {
+    const initialTier = qualityPref === "off" ? "off" : "low";
+    updateConnecting("Sintonizando la señal…");
+    const result = await subscribeAt(initialTier);
+    if (result.error) {
       endConnecting();
-      const msg = res.error === "creador_no_transmitiendo" ? "El creador aún no transmite. Vuelve a intentar en un momento."
-        : res.error === "sin_pase" ? "Necesitas un pase para ver esta sala."
+      const msg = result.error === "creador_no_transmitiendo" ? "El creador aún no transmite. Vuelve a intentar en un momento."
+        : result.error === "sin_pase" ? "Necesitas un pase para ver esta sala."
         : "No se pudo conectar.";
       return toast(msg);
     }
-    updateConnecting("Sintonizando la señal…");
-    pc = new RTCPeerConnection();
-    let firstFrame = false;
-    // El overlay no se va hasta que de verdad hay imagen — así nunca se ve un
-    // recuadro negro detrás de un overlay que ya desapareció.
-    function onFirstFrame() {
-      if (firstFrame) return;
-      firstFrame = true;
-      hideOverlaySmoothly();
-      showControlsWithEntrance();
-      revealChatUI();
+    pc = result.pc;
+    effectiveTier = initialTier;
+    updateAudioOnlyBadge();
+    hideOverlaySmoothly();
+    showControlsWithEntrance();
+    revealChatUI();
+    setupQualitySelector();
+
+    // Arrancamos bajo para que la entrada sea rápida, y subimos a la calidad
+    // objetivo (1080p por default, vía "Auto") en cuanto ya hay imagen fluyendo.
+    const target = targetTierForPref();
+    if (target !== initialTier) {
+      rampUpTimer = setTimeout(() => switchQuality(target, { silent: true }), 1500);
     }
-    pc.ontrack = (ev) => {
-      player.srcObject = ev.streams[0];
-      maybeSetupWaveform(ev.streams[0]);
-      onFirstFrame();
-    };
-    if (res.offer_sdp) {
-      await pc.setRemoteDescription({ type: "offer", sdp: res.offer_sdp });
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await api(`/api/rooms/${slug}/renegotiate`, { body: { session_id: res.viewer_session_id, sdp: answer.sdp } });
-    }
-    // Respaldo: si por lo que sea "ontrack" nunca dispara (raro, pero pasa en
-    // algunas redes), no dejamos al espectador mirando el overlay para siempre.
-    setTimeout(onFirstFrame, 6000);
+    if (qualityPref === "auto") startViewerQualityMonitor();
   }
 
   function openTipSheet() {

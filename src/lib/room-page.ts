@@ -74,11 +74,19 @@ export function renderRoomPage(opts: {
       <button id="btn-cam" class="ctrl-btn" style="display:none" title="Apagar cámara">📷</button>
       <button id="btn-flip-cam" class="ctrl-btn" style="display:none" title="Cambiar cámara">🔄</button>
       <select id="cam-select" class="cam-select" style="display:none"></select>
+      <select id="quality-select" class="cam-select" style="display:none" title="Calidad de video">
+        <option value="auto">Auto (recomendado)</option>
+        <option value="high">Alta · 1080p</option>
+        <option value="medium">Media · 480p</option>
+        <option value="low">Baja · 180p</option>
+        <option value="off">Apagado (solo audio)</option>
+      </select>
       <button id="btn-screen" class="ctrl-btn" style="display:none" title="Compartir pantalla">🖥️</button>
       <button id="btn-stop" style="display:none">Terminar</button>
     </div>
     <div id="ticker" class="ticker" style="display:none"></div>
     <span id="conn-quality" class="conn-quality" style="display:none" title="Calidad de tu conexión"></span>
+    <span id="audio-only-badge" class="audio-only-badge" style="display:none">🎧 Solo audio</span>
     <div id="toast" class="toast"></div>
   </div>
   <script src="/room.js" defer></script>

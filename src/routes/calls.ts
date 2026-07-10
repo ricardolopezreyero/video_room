@@ -76,12 +76,22 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   const info = await infoRes.json<{ sfuSessionId: string | null; tracks: { mid: string; trackName: string }[] }>();
   if (!info.sfuSessionId) return c.json({ error: "creador_no_transmitiendo" }, 400);
 
+  // El creador publica audio + 3 calidades de video (video_low/medium/high) —
+  // el espectador solo jala la calidad que quiere ver, para no gastar ancho de
+  // banda en resoluciones que ni siquiera va a mostrar. Si por lo que sea los
+  // nombres no calzan (ej. un cliente viejo durante un deploy), se cae de
+  // vuelta a pedir todos los tracks, como antes.
+  const { quality } = await c.req.json<{ quality?: "low" | "medium" | "high" | "off" }>().catch(() => ({ quality: undefined }));
+  const wantedNames = quality === "off" ? ["audio"] : ["audio", `video_${quality ?? "high"}`];
+  const filtered = info.tracks.filter((t) => wantedNames.includes(t.trackName));
+  const tracksToRequest = filtered.length > 0 ? filtered : info.tracks;
+
   const viewerSessionId = await newCallsSession(c.env);
   const res = await fetch(callsUrl(c.env, `/sessions/${viewerSessionId}/tracks/new`), {
     method: "POST",
     headers: callsHeaders(c.env),
     body: JSON.stringify({
-      tracks: info.tracks.map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName })),
+      tracks: tracksToRequest.map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName })),
     }),
   });
   if (!res.ok) return c.json({ error: "calls_error", detail: await res.text() }, 502);
