@@ -332,7 +332,7 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .controls {
   position: absolute; left: 50%; transform: translateX(-50%);
   bottom: calc(24px + env(safe-area-inset-bottom));
-  display: flex; gap: 16px; background: rgba(0,18,64,0.7); padding: 10px 16px; border-radius: 999px;
+  display: flex; gap: 16px; background: rgba(0,18,64,0.7); padding: 10px 16px; border-radius: 28px;
   border: .5px solid rgba(86,239,159,.15);
   flex-wrap: wrap; justify-content: center; max-width: min(92vw, 440px);
 }
@@ -342,7 +342,6 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 .controls button { font-size: 1.4rem; background: none; border: none; color: #fff; cursor: pointer; padding: 4px 8px; }
-#btn-stop { font-size: 0.9rem; background: var(--green); color: var(--navy); padding: 8px 16px; border-radius: 999px; font-weight: 700; }
 .ctrl-btn.off { opacity: .5; }
 .ctrl-btn.active { text-shadow: 0 0 10px var(--green, #56EF9F); }
 .cam-select {
@@ -352,7 +351,17 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .ticker {
   position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; background: rgba(0,18,64,0.75); color: var(--green);
   font-weight: 800; padding: 8px 14px; border-radius: 10px; border: .5px solid rgba(86,239,159,.2);
+  display: flex; align-items: center; gap: 8px;
 }
+/* Botón de terminar transmisión: secundario a propósito — no debe competir
+   con la barra de controles principal ni ser el primer botón que se toca. */
+.btn-stop-secondary {
+  position: absolute; top: calc(60px + env(safe-area-inset-top)); right: 16px;
+  background: rgba(0,18,64,.55); color: rgba(255,255,255,.65);
+  font-size: .72rem; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+  border: .5px solid rgba(255,255,255,.15); cursor: pointer; font-family: inherit;
+}
+.btn-stop-secondary:hover { color: #fff; border-color: rgba(255,255,255,.3); }
 .chat-panel {
   position: absolute; left: 12px; right: 12px; bottom: calc(96px + env(safe-area-inset-bottom));
   max-height: 42vh; display: none; flex-direction: column; gap: 8px;
@@ -360,7 +369,7 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   border-radius: 16px; padding: 10px 12px; border: .5px solid rgba(86,239,159,.15);
 }
 .chat-panel-header { display: flex; align-items: center; gap: 10px; }
-#chat-wave { flex: 1; height: 32px; display: block; }
+#chat-wave { flex: 1; min-width: 0; height: 32px; display: block; }
 #dim-slider { width: 90px; accent-color: var(--green, #56EF9F); }
 .chat-feed {
   overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column;
@@ -383,8 +392,8 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   .chat-panel { left: 8px; right: 8px; max-height: 38vh; }
 }
 .conn-quality {
-  position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; width: 10px; height: 10px; border-radius: 50%;
-  transform: translateY(-18px);
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(255,255,255,.3);
 }
 .conn-quality.good { background: var(--green, #56EF9F); }
 .conn-quality.ok { background: #F5C542; }

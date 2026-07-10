@@ -7,6 +7,7 @@
   const overlay = $("overlay");
   const controls = $("controls");
   const ticker = $("ticker");
+  const tickerText = $("ticker-text");
   const toastEl = $("toast");
   const sub = $("sub");
   const connectSpinner = $("connect-spinner");
@@ -180,13 +181,13 @@
       } else if (msg.type === "entrada") {
         if (isOwner) {
           toast(`+$10 · ${msg.name} entró`);
-          ticker.textContent = `$${(msg.ticker_cents / 100).toFixed(0)} esta sesión`;
+          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)} esta sesión`;
         }
       } else if (msg.type === "tip") {
         showTipBand(msg.from, msg.amount_cents, msg.message);
         if (isOwner) {
           toast(`+$${Math.round(msg.amount_cents * 0.9 / 100)} · ${msg.from} te mandó dinero 💵`);
-          ticker.textContent = `$${(msg.ticker_cents / 100).toFixed(0)} esta sesión`;
+          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)} esta sesión`;
         }
       } else if (msg.type === "hearts") {
         // contador de corazones agregado
@@ -250,12 +251,10 @@
     $("chat-panel").style.display = chatVisible ? "flex" : "none";
   }
 
-  // Onda que reacciona al audio real (el del stream entrante para el
-  // espectador, el propio mic para el creador) — puro adorno visual en el
-  // cliente, no toca nada del servidor. Se dibuja como una curva continua
-  // suavizada sobre datos de dominio del tiempo (la forma real de la onda,
-  // no un espectro de barras) y el canvas se escala al devicePixelRatio real
-  // de la pantalla para que se vea nítida en cualquier dispositivo.
+  // Medidor de espectro tipo estudio de grabación: barras por banda de
+  // frecuencia (no una sola onda pareja) que suben rápido y bajan con calma,
+  // como un medidor de audio real — así se ve genuinamente distinto según lo
+  // que capta el mic (silencio se aplana, voz mueve bandas distintas).
   function setupWaveform(stream) {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -263,17 +262,17 @@
       audioCtx.resume().catch(() => {});
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.85;
+      analyser.fftSize = 256; // 128 bandas de frecuencia
+      analyser.smoothingTimeConstant = 0.4;
       source.connect(analyser);
-      const data = new Uint8Array(analyser.fftSize);
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
       const canvas = $("chat-wave");
       const ctx2d = canvas.getContext("2d");
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
 
       function resize() {
         const w = canvas.clientWidth || 120;
-        const h = canvas.clientHeight || 22;
+        const h = canvas.clientHeight || 32;
         canvas.width = Math.round(w * dpr);
         canvas.height = Math.round(h * dpr);
         ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -281,58 +280,57 @@
       resize();
       window.addEventListener("resize", resize);
 
-      const SAMPLES = 56; // puntos de muestreo de la onda; el resto se interpola suave
-      const step = Math.floor(data.length / SAMPLES);
+      const BAR_COUNT = 26;
+      const barLevels = new Array(BAR_COUNT).fill(0);
+      // Agrupa las bandas de forma logarítmica (más resolución en graves y
+      // medios, donde vive la voz humana) y descarta el ruido de muy alta
+      // frecuencia — igual que un analizador de espectro real.
+      const maxBin = Math.floor(freqData.length * 0.65);
+      const edges = [];
+      for (let i = 0; i <= BAR_COUNT; i++) {
+        edges.push(Math.max(1, Math.floor(maxBin * Math.pow(i / BAR_COUNT, 1.8))));
+      }
+      const canRound = typeof ctx2d.roundRect === "function";
 
       (function draw() {
         requestAnimationFrame(draw);
-        analyser.getByteTimeDomainData(data);
+        analyser.getByteFrequencyData(freqData);
         const w = canvas.clientWidth || 120;
-        const h = canvas.clientHeight || 22;
-        const mid = h / 2;
+        const h = canvas.clientHeight || 32;
         ctx2d.clearRect(0, 0, w, h);
 
-        const points = [];
-        for (let i = 0; i < SAMPLES; i++) {
-          const v = (data[i * step] - 128) / 128; // -1..1
-          points.push({ x: (i / (SAMPLES - 1)) * w, y: mid - v * mid * 0.9 });
-        }
+        const gap = 2;
+        const barWidth = (w - gap * (BAR_COUNT - 1)) / BAR_COUNT;
 
-        ctx2d.beginPath();
-        ctx2d.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length - 1; i++) {
-          const midX = (points[i].x + points[i + 1].x) / 2;
-          const midY = (points[i].y + points[i + 1].y) / 2;
-          ctx2d.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
-        }
-        const last = points[points.length - 1];
-        ctx2d.lineTo(last.x, last.y);
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const start = edges[i];
+          const end = Math.max(edges[i + 1], start + 1);
+          let sum = 0;
+          for (let j = start; j < end; j++) sum += freqData[j];
+          const avg = sum / (end - start);
+          const target = (avg / 255) * h;
+          // Sube rápido (se siente al instante), baja con calma (el "decay"
+          // clásico de un medidor de estudio, no un parpadeo nervioso).
+          barLevels[i] = target > barLevels[i]
+            ? barLevels[i] + (target - barLevels[i]) * 0.65
+            : barLevels[i] * 0.8;
 
-        // relleno con degradado hacia el centro: le da cuerpo a la onda en
-        // vez de una simple línea, sensación de "audio real" más premium.
-        ctx2d.lineTo(w, mid);
-        ctx2d.lineTo(0, mid);
-        ctx2d.closePath();
-        const gradient = ctx2d.createLinearGradient(0, 0, 0, h);
-        gradient.addColorStop(0, "rgba(86,239,159,.85)");
-        gradient.addColorStop(1, "rgba(86,239,159,.05)");
-        ctx2d.fillStyle = gradient;
-        ctx2d.fill();
-
-        // trazo nítido encima del relleno para definir bien la curva
-        ctx2d.beginPath();
-        ctx2d.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length - 1; i++) {
-          const midX = (points[i].x + points[i + 1].x) / 2;
-          const midY = (points[i].y + points[i + 1].y) / 2;
-          ctx2d.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+          const barH = Math.max(barLevels[i], 2);
+          const x = i * (barWidth + gap);
+          const y = h - barH;
+          const grad = ctx2d.createLinearGradient(0, y, 0, h);
+          grad.addColorStop(0, "#B9FFDD");
+          grad.addColorStop(1, "#22A66B");
+          ctx2d.fillStyle = grad;
+          if (canRound) {
+            const r = Math.min(barWidth / 2, 2.5);
+            ctx2d.beginPath();
+            ctx2d.roundRect(x, y, barWidth, barH, [r, r, 0, 0]);
+            ctx2d.fill();
+          } else {
+            ctx2d.fillRect(x, y, barWidth, barH);
+          }
         }
-        ctx2d.lineTo(last.x, last.y);
-        ctx2d.strokeStyle = "#56EF9F";
-        ctx2d.lineWidth = 1.5;
-        ctx2d.lineJoin = "round";
-        ctx2d.lineCap = "round";
-        ctx2d.stroke();
       })();
     } catch {
       // sin soporte de Web Audio API: la barra de comentarios sigue funcionando sin la onda

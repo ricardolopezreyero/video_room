@@ -82,10 +82,12 @@ export function renderRoomPage(opts: {
         <option value="off">Apagado (solo audio)</option>
       </select>
       <button id="btn-screen" class="ctrl-btn" style="display:none" title="Compartir pantalla">🖥️</button>
-      <button id="btn-stop" style="display:none">Terminar</button>
     </div>
-    <div id="ticker" class="ticker" style="display:none"></div>
-    <span id="conn-quality" class="conn-quality" style="display:none" title="Calidad de tu conexión"></span>
+    <div id="ticker" class="ticker" style="display:none">
+      <span id="conn-quality" class="conn-quality" title="Calidad de tu conexión"></span>
+      <span id="ticker-text">$0 esta sesión</span>
+    </div>
+    <button id="btn-stop" class="btn-stop-secondary" style="display:none">Terminar transmisión</button>
     <span id="audio-only-badge" class="audio-only-badge" style="display:none">🎧 Solo audio</span>
     <div id="toast" class="toast"></div>
   </div>
