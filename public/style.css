@@ -222,6 +222,40 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .amount-grid button.featured { border-color: var(--green); color: var(--green); font-weight: 800; }
 .amount-grid button.wide { grid-column: 1 / -1; }
 
+/* ---------- Transacciones ---------- */
+.tx-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.tx-filter {
+  background: rgba(255,255,255,.04); color: #fff; border: .5px solid rgba(255,255,255,.15); border-radius: 10px;
+  padding: 10px 14px; font-size: 13px; font-family: inherit;
+}
+.tx-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tx-table { width: 100%; border-collapse: collapse; min-width: 640px; font-size: 13px; }
+.tx-table th {
+  text-align: left; color: #7a9fd4; font-weight: 700; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .3px; padding: 10px 12px; border-bottom: .5px solid rgba(255,255,255,.1);
+}
+.tx-table td { padding: 12px; border-bottom: .5px solid rgba(255,255,255,.06); color: #fff; white-space: nowrap; }
+.tx-table tr.tx-live { animation: tx-row-in .5s ease; }
+.tx-table tr.tx-leaving { animation: tx-row-out .4s ease forwards; }
+@keyframes tx-row-in {
+  from { opacity: 0; transform: translateY(-10px); background: rgba(86,239,159,.18); }
+  to { opacity: 1; transform: translateY(0); background: transparent; }
+}
+@keyframes tx-row-out { to { opacity: 0; transform: translateY(6px); } }
+.tx-amount.pos { color: var(--green); font-weight: 700; }
+.tx-amount.neg { color: #ff8a8a; font-weight: 700; }
+.tx-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: rgba(255,255,255,.06); border: .5px solid rgba(255,255,255,.1); color: #cfe0ff;
+}
+.tx-pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 16px; }
+.tx-pager span { color: var(--dim); font-size: 13px; }
+.tx-empty { color: var(--dim); text-align: center; padding: 32px 0; }
+@media (max-width: 480px) {
+  .tx-table { font-size: 12px; }
+  .tx-table td, .tx-table th { padding: 8px; }
+}
+
 .app-nav-link { display: inline-block; margin: 4px 0; font-size: 13px; color: var(--blue-mid); }
 .app-nav-link:hover { color: var(--green); }
 

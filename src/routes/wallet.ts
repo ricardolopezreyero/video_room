@@ -65,6 +65,38 @@ wallet.post("/webhook/stripe", async (c) => {
   return c.json({ received: true });
 });
 
+// De qué balance sale/entra cada tipo de movimiento — todo lo que toca el
+// saldo de un usuario pasa por creditLedger() o un insert directo (retiro),
+// así que sumar amount_cents en orden cronológico reconstruye el saldo real.
+const BALANCE_FIELD_BY_TYPE: Record<string, "balance_cents" | "creator_balance_cents"> = {
+  recarga: "balance_cents",
+  entrada: "balance_cents",
+  renovacion: "balance_cents",
+  propina_enviada: "balance_cents",
+  ganancia_entrada: "creator_balance_cents",
+  propina_recibida: "creator_balance_cents",
+  retiro: "creator_balance_cents",
+};
+
+wallet.get("/api/wallet/transactions", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, type, amount_cents, created_at FROM ledger WHERE user_id = ? ORDER BY created_at ASC"
+  ).bind(user.id).all<{ id: string; type: string; amount_cents: number; created_at: number }>();
+
+  const running = { balance_cents: 0, creator_balance_cents: 0 };
+  const transactions = results.map((row) => {
+    const balanceField = BALANCE_FIELD_BY_TYPE[row.type] ?? "balance_cents";
+    running[balanceField] += row.amount_cents;
+    return { ...row, balance_field: balanceField, running_balance_cents: running[balanceField] };
+  });
+  transactions.reverse(); // más reciente primero
+
+  return c.json({ transactions });
+});
+
 wallet.post("/api/wallet/retiro", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: "no_session" }, 401);

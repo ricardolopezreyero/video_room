@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Transacciones — Video Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="app-shell">
+<!-- RLR -->
+<nav class="nav">
+  <a href="/" class="logo"><img src="https://assets.cdn.filesafe.space/E6Gh1sE1RnPtadmL7wmG/media/698e530bc08665d629146a14.png" alt="SuperLeads" style="height:22px"><span>Video Room</span></a>
+  <div class="links">
+    <a href="/">Inicio</a>
+    <a href="/monedero">Monedero</a>
+    <a href="/estadisticas">Estadísticas</a>
+  </div>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <div class="bell-wrap" id="bell-wrap" style="display:none;">
+      <button class="icon-btn" id="btn-bell" title="Notificaciones" aria-label="Notificaciones">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+        <span class="bell-badge" id="bell-badge"></span>
+      </button>
+      <div class="bell-dropdown" id="bell-dropdown"></div>
+    </div>
+    <div class="user-chip" id="user-chip" style="display:none;">
+      <img class="user-avatar" id="user-avatar" src="" alt="" onerror="this.style.visibility='hidden'">
+      <span class="user-name" id="user-name"></span>
+      <button class="icon-btn" id="btn-logout" title="Cerrar sesión" aria-label="Cerrar sesión">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+<div class="app-wrap" id="app">
+  <h1>Transacciones</h1>
+  <p class="muted" style="margin-top:-8px;">Todo lo que ha pasado con tu dinero, siempre — nada se borra.</p>
+  <div id="content">Cargando…</div>
+</div>
+<div class="app-toast" id="app-toast"></div>
+<script>
+function showToast(msg, ms) {
+  const el = document.getElementById('app-toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms || 3200);
+}
+
+function pesos(cents) {
+  return '$' + Math.round(cents / 100).toLocaleString('es-MX');
+}
+
+const TYPE_LABELS = {
+  recarga: 'Recarga',
+  entrada: 'Entrada a sala',
+  renovacion: 'Renovación de pase',
+  ganancia_entrada: 'Ganancia por entrada',
+  propina_enviada: 'Propina enviada',
+  propina_recibida: 'Propina recibida',
+  retiro: 'Retiro',
+};
+
+const FILTERS = [
+  ['all', 'Todas'],
+  ['recarga', 'Recargas'],
+  ['entrada', 'Entradas a salas'],
+  ['ganancia_entrada', 'Ganancias por entrada'],
+  ['propina_enviada', 'Propinas enviadas'],
+  ['propina_recibida', 'Propinas recibidas'],
+  ['retiro', 'Retiros'],
+];
+
+const PAGE_SIZE = 20;
+let allTx = [];
+let filterValue = 'all';
+let currentPage = 1;
+let roomSlug = null;
+let ws = null;
+
+function fecha(unixSeconds) {
+  const d = new Date(unixSeconds * 1000);
+  return d.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function filteredTx() {
+  return filterValue === 'all' ? allTx : allTx.filter((t) => t.type === filterValue);
+}
+
+function txRowHtml(t) {
+  const isNeg = t.amount_cents < 0;
+  const cuenta = t.balance_field === 'creator_balance_cents' ? 'Balance de creador' : 'Saldo';
+  return `
+    <tr data-id="${t.id}">
+      <td>${fecha(t.created_at)}</td>
+      <td><span class="tx-badge">${TYPE_LABELS[t.type] || t.type}</span></td>
+      <td class="tx-amount ${isNeg ? 'neg' : 'pos'}">${isNeg ? '-' : '+'}${pesos(Math.abs(t.amount_cents))}</td>
+      <td>${cuenta}</td>
+      <td>${pesos(t.running_balance_cents)}</td>
+    </tr>`;
+}
+
+function renderTable() {
+  const rows = filteredTx();
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  currentPage = Math.min(currentPage, totalPages);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const page = rows.slice(start, start + PAGE_SIZE);
+
+  const tbody = document.getElementById('tx-tbody');
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="tx-empty">No hay transacciones de este tipo todavía.</td></tr>';
+  } else {
+    tbody.innerHTML = page.map(txRowHtml).join('');
+  }
+  document.getElementById('tx-page-label').textContent = `Página ${currentPage} de ${totalPages}`;
+  document.getElementById('tx-prev').disabled = currentPage <= 1;
+  document.getElementById('tx-next').disabled = currentPage >= totalPages;
+}
+
+function buildCsv() {
+  const header = ['Fecha', 'Tipo', 'Monto (MXN)', 'Cuenta', 'Saldo despues (MXN)'];
+  const lines = [header.join(',')];
+  // 100% del historial, sin filtro ni paginacion — orden mas reciente primero, igual que la tabla.
+  allTx.forEach((t) => {
+    const cuenta = t.balance_field === 'creator_balance_cents' ? 'Balance de creador' : 'Saldo';
+    const row = [
+      fecha(t.created_at),
+      TYPE_LABELS[t.type] || t.type,
+      (t.amount_cents / 100).toFixed(2),
+      cuenta,
+      (t.running_balance_cents / 100).toFixed(2),
+    ];
+    lines.push(row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  });
+  return lines.join('\r\n');
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function csvFilename() {
+  const d = new Date();
+  const slugPart = roomSlug || 'sala';
+  return `Video_Room_SuperLeads_${slugPart}_${pad(d.getDate())}_${pad(d.getMonth() + 1)}_${String(d.getFullYear()).slice(-2)}_${pad(d.getHours())}_${pad(d.getMinutes())}_${pad(d.getSeconds())}.csv`;
+}
+
+function downloadCsv() {
+  // Se arma en el navegador con lo que ya está en memoria — nada de ida y
+  // vuelta al servidor, la descarga sale instantánea.
+  const csv = '﻿' + buildCsv();
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = csvFilename();
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  showToast(`✅ Descargado: ${allTx.length} transacciones.`);
+}
+
+// Si el creador deja esta pantalla abierta mientras transmite, los nuevos
+// movimientos (alguien entra o manda propina) aparecen solos, arriba, con una
+// animación — y si la tabla ya tiene 20 renglones (una página), el más viejo
+// se desvanece para que la lista nunca crezca sin límite.
+function pushLiveTransaction(tx) {
+  allTx.unshift(tx);
+  if (currentPage !== 1 || (filterValue !== 'all' && filterValue !== tx.type)) return;
+
+  const tbody = document.getElementById('tx-tbody');
+  if (tbody.querySelector('.tx-empty')) tbody.innerHTML = '';
+  const wrapper = document.createElement('tbody');
+  wrapper.innerHTML = txRowHtml(tx);
+  const row = wrapper.firstElementChild;
+  row.classList.add('tx-live');
+  tbody.prepend(row);
+
+  const rows = tbody.querySelectorAll('tr');
+  if (rows.length > PAGE_SIZE) {
+    const last = rows[rows.length - 1];
+    last.classList.add('tx-leaving');
+    setTimeout(() => last.remove(), 420);
+  }
+}
+
+function connectLiveFeed(slug) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/room/${slug}`);
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'entrada') {
+      // Ganancia real del creador por cada entrada pagada: $10 fijos (ver rooms.ts /pass).
+      appendSyntheticGain('ganancia_entrada', 1000);
+    } else if (msg.type === 'tip') {
+      // El creador se queda con el 90% de la propina (ver rooms.ts /tip).
+      appendSyntheticGain('propina_recibida', Math.round(msg.amount_cents * 0.9));
+    }
+  };
+  ws.onclose = () => { setTimeout(() => connectLiveFeed(slug), 3000); };
+}
+
+function appendSyntheticGain(type, amountCents) {
+  const prevRunning = allTx.find((t) => t.balance_field === 'creator_balance_cents')?.running_balance_cents ?? 0;
+  pushLiveTransaction({
+    id: 'live_' + Date.now(),
+    type,
+    amount_cents: amountCents,
+    created_at: Math.floor(Date.now() / 1000),
+    balance_field: 'creator_balance_cents',
+    running_balance_cents: prevRunning + amountCents,
+  });
+}
+
+async function main() {
+  const res = await fetch('/api/wallet/me');
+  const content = document.getElementById('content');
+  if (!res.ok) {
+    content.innerHTML = '<p class="muted">Necesitas ingresar.</p><a href="/login"><button class="btn-primary">Ingresar con Google</button></a>';
+    return;
+  }
+  const me = await res.json();
+  document.getElementById('user-avatar').src = me.avatar_url || '';
+  document.getElementById('user-name').textContent = me.name || '';
+  document.getElementById('user-chip').style.display = 'flex';
+  document.getElementById('btn-logout').onclick = () => { window.location.href = '/auth/logout'; };
+
+  const txRes = await fetch('/api/wallet/transactions');
+  const txJson = await txRes.json();
+  allTx = txJson.transactions || [];
+
+  content.innerHTML = `
+    <div class="balance-box">
+      <div class="tx-toolbar">
+        <select id="tx-filter" class="tx-filter">
+          ${FILTERS.map(([v, label]) => `<option value="${v}">${label}</option>`).join('')}
+        </select>
+        <button class="btn-navy" id="btn-csv">⬇ Descargar CSV (100%)</button>
+      </div>
+      <div class="tx-scroll">
+        <table class="tx-table">
+          <thead>
+            <tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Cuenta</th><th>Saldo después</th></tr>
+          </thead>
+          <tbody id="tx-tbody"></tbody>
+        </table>
+      </div>
+      <div class="tx-pager">
+        <button class="btn-ghost" id="tx-prev">← Anterior</button>
+        <span id="tx-page-label"></span>
+        <button class="btn-ghost" id="tx-next">Siguiente →</button>
+      </div>
+    </div>
+  `;
+
+  renderTable();
+
+  document.getElementById('tx-filter').onchange = (e) => {
+    filterValue = e.target.value;
+    currentPage = 1;
+    renderTable();
+  };
+  document.getElementById('tx-prev').onclick = () => { currentPage--; renderTable(); };
+  document.getElementById('tx-next').onclick = () => { currentPage++; renderTable(); };
+  document.getElementById('btn-csv').onclick = downloadCsv;
+
+  const roomRes = await fetch('/api/rooms/mine');
+  if (roomRes.ok) {
+    const room = await roomRes.json();
+    roomSlug = room.slug;
+    connectLiveFeed(roomSlug);
+  }
+}
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+let notifData = { unread_count: 0, items: [] };
+
+async function loadNotifications() {
+  const res = await fetch('/api/notifications');
+  if (!res.ok) return;
+  notifData = await res.json();
+  document.getElementById('bell-wrap').style.display = 'flex';
+  document.getElementById('bell-badge').classList.toggle('show', notifData.unread_count > 0);
+}
+
+function renderNotifDropdown() {
+  const el = document.getElementById('bell-dropdown');
+  if (!notifData.items.length) {
+    el.innerHTML = '<div class="bell-empty">Aquí van a aparecer avisos cuando las salas que sigues se pongan en vivo.</div>';
+    return;
+  }
+  el.innerHTML = notifData.items.map((n) => `
+    <a class="bell-item" href="/r/${encodeURIComponent(n.room_slug)}">
+      <div class="t">${escapeHtml(n.title)}</div>
+      <div class="b">${escapeHtml(n.body)}</div>
+    </a>`).join('');
+}
+
+document.getElementById('btn-bell').onclick = async () => {
+  const dropdown = document.getElementById('bell-dropdown');
+  if (dropdown.classList.contains('show')) { dropdown.classList.remove('show'); return; }
+  renderNotifDropdown();
+  dropdown.classList.add('show');
+  if (notifData.unread_count > 0) {
+    await fetch('/api/notifications/read', { method: 'POST' });
+    document.getElementById('bell-badge').classList.remove('show');
+    notifData.unread_count = 0;
+  }
+};
+
+loadNotifications();
+setInterval(loadNotifications, 30000);
+
+main();
+</script>
+</body>
+</html>
