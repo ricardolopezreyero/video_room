@@ -4,7 +4,6 @@ import { creditLedger, newId, type Room, type Session, type User } from "../lib/
 import { slugify, isNumericSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
-import { archiveAndClearComments } from "../lib/transcript";
 import type { Env } from "../env";
 
 export const rooms = new Hono<{ Bindings: Env }>();
@@ -124,9 +123,9 @@ rooms.post("/api/rooms/:slug/stop", async (c) => {
   if (!live) return c.json({ error: "no_live_session" }, 400);
 
   await c.env.DB.prepare("UPDATE sessions SET status = 'ended', ended_at = unixepoch() WHERE id = ?").bind(live.id).run();
-  // Los comentarios son eventos fugaces: se archivan en un PDF silencioso y se
-  // borran, en segundo plano, sin retrasar la respuesta al creador.
-  c.executionCtx.waitUntil(archiveAndClearComments(c.env, room, live.id));
+  // Los comentarios son eventos fugaces: se borran al cerrar la sala, sin
+  // excepciones, y en segundo plano para no retrasar la respuesta al creador.
+  c.executionCtx.waitUntil(c.env.DB.prepare("DELETE FROM comments WHERE session_id = ?").bind(live.id).run());
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   const summary = await stub.fetch("https://do/stop", { method: "POST" });
@@ -272,7 +271,10 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
   ).bind(newId("cmt"), session.id, user.id, body).run();
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  await stub.fetch("https://do/comment", { method: "POST", body: JSON.stringify({ name: user.name, body }) });
+  await stub.fetch("https://do/comment", {
+    method: "POST",
+    body: JSON.stringify({ name: user.name, body, is_owner: user.id === room.owner_id }),
+  });
 
   return c.json({ ok: true });
 });

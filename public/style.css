@@ -418,6 +418,17 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   border: .5px solid rgba(255,255,255,.15); cursor: pointer; font-family: inherit;
 }
 .btn-stop-secondary:hover { color: #fff; border-color: rgba(255,255,255,.3); }
+/* Pastilla de presencia del espectador — misma idea que la barra de estudio
+   del creador, pero minimalista, y arriba a la IZQUIERDA a propósito: el
+   audio-only-badge (raro, condicional) ya vive arriba a la derecha, y
+   separarlos evita que compitan por el mismo rincón. */
+.viewer-presence {
+  position: absolute; top: calc(16px + env(safe-area-inset-top)); left: 16px;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(0,18,64,0.75); color: #cfe0ff;
+  font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
+  border: .5px solid rgba(86,239,159,.15);
+}
 .chat-panel {
   position: absolute; left: 12px; right: 12px; bottom: calc(96px + env(safe-area-inset-bottom));
   max-height: 42vh; display: none; flex-direction: column; gap: 8px;
@@ -427,13 +438,37 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .chat-panel-header { display: flex; align-items: center; gap: 10px; }
 #chat-wave { flex: 1; min-width: 0; height: 32px; display: block; }
 #dim-slider { width: 90px; accent-color: var(--green, #56EF9F); }
+/* Franja del comentario fijado por el creador — arriba del feed a propósito,
+   porque ahí es donde aterriza la vista antes de leer la conversación en
+   vivo, como un titular de lo que se está atendiendo en ese momento. */
+.pinned-msg {
+  display: none; align-items: center; gap: 8px;
+  background: rgba(86,239,159,.12); border: .5px solid rgba(86,239,159,.3); border-radius: 10px;
+  padding: 6px 10px; font-size: 12.5px; color: #fff;
+}
+.pinned-msg .pin-icon { flex-shrink: 0; }
+#pinned-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#btn-unpin { background: none; border: none; color: rgba(255,255,255,.5); cursor: pointer; font-size: 13px; flex-shrink: 0; }
+#btn-unpin:hover { color: #fff; }
 .chat-feed {
   overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column;
   gap: 6px; padding-right: 4px; min-height: 40px;
 }
-.chat-msg { font-size: 13px; color: #fff; line-height: 1.35; word-break: break-word; }
-.chat-msg-name { font-weight: 800; color: var(--green, #56EF9F); }
-.chat-msg-body { color: #e8edf8; }
+.chat-msg { font-size: 13px; color: #fff; line-height: 1.35; word-break: break-word; display: flex; align-items: baseline; gap: 4px; }
+/* El mensaje del creador salta a la vista sin necesitar una etiqueta de texto
+   extra — la señal más directa de "te está hablando a ti" que se puede dar
+   sin inventar infraestructura nueva. */
+.chat-msg.owner {
+  background: rgba(86,239,159,.12); border-left: 3px solid var(--green, #56EF9F);
+  border-radius: 6px; padding: 3px 8px; margin-left: -8px;
+}
+.chat-msg-name { font-weight: 800; color: var(--green, #56EF9F); flex-shrink: 0; }
+.chat-msg-body { color: #e8edf8; flex: 1; min-width: 0; }
+.pin-trigger {
+  background: none; border: none; color: rgba(255,255,255,.4); cursor: pointer;
+  font-size: 12px; padding: 0 2px; flex-shrink: 0;
+}
+.pin-trigger:hover { color: var(--green, #56EF9F); }
 .chat-input-row { display: flex; gap: 8px; }
 .chat-input-row input {
   flex: 1; background: rgba(255,255,255,.08); border: .5px solid rgba(86,239,159,.25); border-radius: 999px;
@@ -444,6 +479,9 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   background: var(--green); color: var(--navy); border: none; border-radius: 50%;
   width: 34px; height: 34px; font-size: 14px; cursor: pointer; flex-shrink: 0;
 }
+/* Recordatorio de privacidad, justo debajo de la caja de texto — el lugar
+   exacto donde alguien decide si escribir o no, no en el overlay de entrada. */
+.chat-privacy-note { margin: 0; font-size: 10.5px; color: rgba(255,255,255,.45); text-align: center; }
 @media (max-width: 480px) {
   .chat-panel { left: 8px; right: 8px; max-height: 38vh; }
 }
@@ -475,6 +513,18 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   border-radius: 10px; opacity: 0; transition: opacity 0.3s; color: #fff; font-size: 13px; max-width: calc(100% - 32px);
 }
 .toast.show { opacity: 1; }
+/* Cada corazón (doble-tap en el video) flota y se desvanece para todos los
+   conectados — el canal de reacción de baja fricción que evita que la gente
+   termine escribiendo "jaja"/"+1" como texto real en el chat. */
+.floating-heart {
+  position: absolute; bottom: 130px; font-size: 28px; pointer-events: none;
+  animation: heart-float 2.2s ease-out forwards; z-index: 40;
+}
+@keyframes heart-float {
+  0% { transform: translateY(0) scale(.6); opacity: 0; }
+  15% { opacity: 1; transform: translateY(-20px) scale(1.1); }
+  100% { transform: translateY(-260px) scale(.9) rotate(8deg); opacity: 0; }
+}
 .tip-band {
   position: absolute; bottom: calc(90px + env(safe-area-inset-bottom)); left: 0; right: 0; background: rgba(43,200,120,.94); color: #001240;
   padding: 14px 20px; font-weight: 800; font-size: 1.05rem; text-align: center;

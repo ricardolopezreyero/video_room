@@ -60,15 +60,22 @@ export function renderRoomPage(opts: {
         <canvas id="chat-wave" width="360" height="32" title="Audio en vivo"></canvas>
         <input id="dim-slider" type="range" min="30" max="100" value="100" title="Atenuar el video">
       </div>
+      <div id="pinned-msg" class="pinned-msg" style="display:none">
+        <span class="pin-icon" aria-hidden="true">📌</span>
+        <span id="pinned-text"></span>
+        <button id="btn-unpin" style="display:none" title="Quitar">✕</button>
+      </div>
       <div id="chat-feed" class="chat-feed"></div>
       <div class="chat-input-row">
         <input id="chat-input" maxlength="240" placeholder="Escribe un comentario…">
         <button id="btn-chat-send" title="Enviar">➤</button>
       </div>
+      <p class="chat-privacy-note">🔒 Nada se graba — se borra al cerrar la sala.</p>
     </div>
+    <div id="viewer-presence" class="viewer-presence" style="display:none">🟢 <span id="presence-count">0</span> en la sala</div>
     <div id="controls" class="controls" style="display:none">
       <button id="btn-tip">💵</button>
-      <button id="btn-hand">🎤</button>
+      <button id="btn-hand" class="ctrl-btn">🎤</button>
       <button id="btn-chat" class="ctrl-btn" style="display:none" title="Comentarios">💬</button>
       <button id="btn-mic" class="ctrl-btn" style="display:none" title="Silenciar micrófono">🎙️</button>
       <button id="btn-cam" class="ctrl-btn" style="display:none" title="Apagar cámara">📷</button>

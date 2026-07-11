@@ -180,8 +180,8 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/comment" && request.method === "POST") {
-      const { name, body } = await request.json<{ name: string; body: string }>();
-      this.broadcast({ type: "comment", name, body, ts: Date.now() });
+      const { name, body, is_owner } = await request.json<{ name: string; body: string; is_owner?: boolean }>();
+      this.broadcast({ type: "comment", name, body, is_owner: !!is_owner, ts: Date.now() });
       return Response.json({ ok: true });
     }
 
@@ -213,6 +213,21 @@ export class RoomDurableObject implements DurableObject {
       }
       if (data.type === "raise_hand") {
         this.broadcast({ type: "raise_hand", user_id: data.user_id, name: data.name });
+      }
+      // Fijar un comentario sí puede afectar lo que ve toda la sala, a
+      // diferencia de un corazón o una mano levantada — por eso, a diferencia
+      // de esos dos, se verifica contra la etiqueta real de la conexión
+      // (serializeAttachment en /ws) en vez de confiar en lo que mande el
+      // cliente.
+      if (data.type === "pin" || data.type === "unpin") {
+        const attachment = ws.deserializeAttachment() as { isOwner?: boolean } | null;
+        if (attachment?.isOwner) {
+          if (data.type === "pin" && typeof data.name === "string" && typeof data.body === "string") {
+            this.broadcast({ type: "pinned", name: data.name.slice(0, 60), body: data.body.slice(0, 240) });
+          } else if (data.type === "unpin") {
+            this.broadcast({ type: "unpinned" });
+          }
+        }
       }
     } catch {
       // ignora mensajes malformados

@@ -10,6 +10,8 @@
   const tickerText = $("ticker-text");
   const viewerCountEl = $("viewer-count");
   const liveTimerEl = $("live-timer");
+  const viewerPresenceEl = $("viewer-presence");
+  const presenceCountEl = $("presence-count");
   const toastEl = $("toast");
   const sub = $("sub");
   const connectSpinner = $("connect-spinner");
@@ -44,6 +46,10 @@
   let shownBadConnToast = false;
   let qualityTimer = null;
   let liveTimerInterval = null;
+  let shownHeartHintToast = false;
+  let shownPrivacyToast = false;
+  let handRaised = false;
+  let handRaiseTimer = null;
 
   // El creador publica 3 calidades de video (alta = la cámara tal cual, media
   // y baja = la misma imagen redibujada más chica en un <canvas> oculto). Así
@@ -107,6 +113,19 @@
     };
     tick();
     liveTimerInterval = setInterval(tick, 1000);
+  }
+
+  // Cada corazón (doble-tap en el video) se ve como una animación flotando
+  // sobre el video, para TODOS los conectados (no solo quien lo mandó) — así
+  // el chat de texto queda libre para preguntas y comentarios reales, en vez
+  // de llenarse de "jaja"/"+1" como pasa en Zoom.
+  function spawnFloatingHeart() {
+    const heart = document.createElement("div");
+    heart.className = "floating-heart";
+    heart.textContent = "❤️";
+    heart.style.left = `${38 + Math.random() * 24}%`;
+    document.body.appendChild(heart);
+    setTimeout(() => heart.remove(), 2200);
   }
 
   function videoConstraints() {
@@ -222,6 +241,7 @@
       const msg = JSON.parse(ev.data);
       if (msg.type === "viewers") {
         if (isOwner) viewerCountEl.textContent = `👁 ${msg.count}`;
+        else presenceCountEl.textContent = msg.count;
       } else if (msg.type === "kicked") {
         handleKicked();
       } else if (msg.type === "entrada") {
@@ -236,13 +256,20 @@
           tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)} esta sesión`;
         }
       } else if (msg.type === "hearts") {
-        // contador de corazones agregado
+        spawnFloatingHeart();
       } else if (msg.type === "comment") {
-        appendChatMessage(msg.name, msg.body);
+        appendChatMessage(msg.name, msg.body, msg.is_owner);
+      } else if (msg.type === "pinned") {
+        $("pinned-text").textContent = `${msg.name}: ${msg.body}`;
+        $("pinned-msg").style.display = "flex";
+      } else if (msg.type === "unpinned") {
+        $("pinned-msg").style.display = "none";
+      } else if (msg.type === "raise_hand") {
+        if (isOwner) toast(`🎤 ${msg.name} levantó la mano`, 5000);
       } else if (msg.type === "ended") {
         sessionEnded = true;
-        toast("La transmisión terminó.");
-        setTimeout(() => location.reload(), 2000);
+        toast("La transmisión terminó. Como prometimos, nada quedó grabado.", 6000);
+        setTimeout(() => location.reload(), 6000);
       }
     };
     // El socket puede caerse por cambios de red (wifi/datos, la app pasa a segundo
@@ -264,10 +291,10 @@
   // Los comentarios son eventos fugaces: solo viven en el DOM mientras la
   // pestaña está abierta. Se arman con createElement/textContent (nunca
   // innerHTML) para que no haya forma de inyectar HTML desde un comentario.
-  function appendChatMessage(name, body) {
+  function appendChatMessage(name, body, isOwnerMsg) {
     const feed = $("chat-feed");
     const row = document.createElement("div");
-    row.className = "chat-msg";
+    row.className = isOwnerMsg ? "chat-msg owner" : "chat-msg";
     const nameEl = document.createElement("span");
     nameEl.className = "chat-msg-name";
     nameEl.textContent = name;
@@ -276,6 +303,18 @@
     bodyEl.textContent = ` ${body}`;
     row.appendChild(nameEl);
     row.appendChild(bodyEl);
+    // Fijar un comentario es una herramienta del creador para que se note que
+    // está atendiendo algo puntual — el botón solo existe en su propia pantalla.
+    if (isOwner) {
+      const pinBtn = document.createElement("button");
+      pinBtn.className = "pin-trigger";
+      pinBtn.textContent = "📌";
+      pinBtn.title = "Destacar este comentario";
+      pinBtn.onclick = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pin", name, body }));
+      };
+      row.appendChild(pinBtn);
+    }
     feed.appendChild(row);
     feed.scrollTop = feed.scrollHeight;
     while (feed.children.length > 200) feed.removeChild(feed.firstChild);
@@ -764,6 +803,7 @@
     showControlsWithEntrance();
     revealChatUI();
     setupQualitySelector();
+    viewerPresenceEl.style.display = "flex";
 
     // Arrancamos bajo para que la entrada sea rápida, y subimos a la calidad
     // objetivo (1080p por default, vía "Auto") en cuanto ya hay imagen fluyendo.
@@ -772,6 +812,13 @@
       rampUpTimer = setTimeout(() => switchQuality(target, { silent: true }), 1500);
     }
     if (qualityPref === "auto") startViewerQualityMonitor();
+
+    // Descubribilidad del doble-tap: nadie adivina solo que ahí se manda un
+    // corazón — se avisa una sola vez, ya con imagen en pantalla.
+    if (!shownHeartHintToast) {
+      shownHeartHintToast = true;
+      setTimeout(() => toast("💡 Doble toque en el video para mandar un corazón ❤️", 5000), 3000);
+    }
   }
 
   function openTipSheet() {
@@ -808,7 +855,8 @@
   player.addEventListener("click", () => {
     const now = Date.now();
     if (now - lastTap < 300) {
-      toast("❤️");
+      // El feedback visual lo da spawnFloatingHeart() cuando llega el eco del
+      // propio WebSocket — así el que toca ve exactamente lo mismo que el resto.
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "heart" }));
       }
@@ -891,6 +939,33 @@
     guarded($("btn-chat"), async () => {
       chatVisible = !chatVisible;
       $("chat-panel").style.display = chatVisible ? "flex" : "none";
+      $("btn-chat").classList.toggle("active", chatVisible);
+    });
+    // Levantar la mano es una señal privada y ligera para pedir la atención
+    // del creador, distinta del chat (una pregunta real) y del corazón (una
+    // reacción emocional) — cada canal sirve para algo distinto, y ninguno
+    // ensucia a los otros. Se resetea sola a los 45s si nadie la baja.
+    guarded($("btn-hand"), async () => {
+      if (!me) return requireLogin();
+      handRaised = !handRaised;
+      $("btn-hand").textContent = handRaised ? "✋" : "🎤";
+      $("btn-hand").classList.toggle("active", handRaised);
+      clearTimeout(handRaiseTimer);
+      if (handRaised) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "raise_hand", name: me.name }));
+        }
+        toast("✋ Le avisamos al creador.");
+        handRaiseTimer = setTimeout(() => {
+          handRaised = false;
+          $("btn-hand").textContent = "🎤";
+          $("btn-hand").classList.remove("active");
+        }, 45000);
+      }
+    });
+    if (isOwner) $("btn-unpin").style.display = "inline-block";
+    guarded($("btn-unpin"), async () => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "unpin" }));
     });
     guarded($("btn-chat-send"), async () => {
       if (!me) return requireLogin();
@@ -901,6 +976,13 @@
       e.preventDefault();
       if (!me) return requireLogin();
       sendComment();
+    });
+    // Refuerza, justo en el momento en que alguien va a escribir por primera
+    // vez, que nada de esto se guarda — el lugar exacto donde vive la duda.
+    $("chat-input").addEventListener("focus", () => {
+      if (shownPrivacyToast) return;
+      shownPrivacyToast = true;
+      toast("🔒 Nada de esto se guarda. Habla con toda confianza.", 5000);
     });
     $("dim-slider").addEventListener("input", (e) => {
       const val = Number(e.target.value);
