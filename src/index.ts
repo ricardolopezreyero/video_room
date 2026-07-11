@@ -129,6 +129,9 @@ app.get("/ws/room/:slug", async (c) => {
   if (user) doUrl.searchParams.set("uid", user.id);
   const cid = c.req.query("cid");
   if (cid) doUrl.searchParams.set("cid", cid);
+  // Marca si esta conexión es la del propio creador — así el conteo de
+  // "espectadores viendo" no se infla con su propia pestaña abierta.
+  if (user && user.id === room.owner_id) doUrl.searchParams.set("owner", "1");
   return stub.fetch(doUrl.toString(), c.req.raw);
 });
 

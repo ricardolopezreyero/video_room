@@ -83,11 +83,14 @@ export function renderRoomPage(opts: {
       </select>
       <button id="btn-screen" class="ctrl-btn" style="display:none" title="Compartir pantalla">🖥️</button>
     </div>
-    <div id="ticker" class="ticker" style="display:none">
-      <span id="conn-quality" class="conn-quality" title="Calidad de tu conexión"></span>
+    <div id="studio-bar" class="studio-bar" style="display:none">
+      <span class="live-dot" aria-hidden="true"></span>
+      <span id="live-timer">0:00</span>
+      <span id="viewer-count" title="Espectadores en este momento">👁 0</span>
       <span id="ticker-text">$0 esta sesión</span>
+      <span id="conn-quality" class="conn-quality" title="Calidad de tu conexión"></span>
+      <button id="btn-stop" class="btn-stop-secondary">Terminar</button>
     </div>
-    <button id="btn-stop" class="btn-stop-secondary" style="display:none">Terminar transmisión</button>
     <span id="audio-only-badge" class="audio-only-badge" style="display:none">🎧 Solo audio</span>
     <div id="toast" class="toast"></div>
   </div>

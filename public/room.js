@@ -6,8 +6,10 @@
   const player = $("player");
   const overlay = $("overlay");
   const controls = $("controls");
-  const ticker = $("ticker");
+  const studioBar = $("studio-bar");
   const tickerText = $("ticker-text");
+  const viewerCountEl = $("viewer-count");
+  const liveTimerEl = $("live-timer");
   const toastEl = $("toast");
   const sub = $("sub");
   const connectSpinner = $("connect-spinner");
@@ -39,7 +41,9 @@
   let preferredFacing = "user";
   let shownMicToast = false;
   let shownCamToast = false;
+  let shownBadConnToast = false;
   let qualityTimer = null;
+  let liveTimerInterval = null;
 
   // El creador publica 3 calidades de video (alta = la cámara tal cual, media
   // y baja = la misma imagen redibujada más chica en un <canvas> oculto). Así
@@ -85,6 +89,24 @@
 
   function buzz() {
     if (navigator.vibrate) navigator.vibrate(10);
+  }
+
+  // Cronómetro de "cuánto llevo en vivo" — nace en el momento exacto en que
+  // arranca a transmitir, o (si recarga la página a medio stream) desde la
+  // hora real que ya guarda el servidor, para que nunca se vea en ceros.
+  function startLiveTimer(startedAtMs) {
+    clearInterval(liveTimerInterval);
+    const tick = () => {
+      const elapsed = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+      const h = Math.floor(elapsed / 3600);
+      const m = Math.floor((elapsed % 3600) / 60);
+      const s = elapsed % 60;
+      const mm = String(m).padStart(h > 0 ? 2 : 1, "0");
+      const ss = String(s).padStart(2, "0");
+      liveTimerEl.textContent = h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${mm}:${ss}`;
+    };
+    tick();
+    liveTimerInterval = setInterval(tick, 1000);
   }
 
   function videoConstraints() {
@@ -199,7 +221,7 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "viewers") {
-        // podría mostrarse "N viendo" si se agrega en el overlay
+        if (isOwner) viewerCountEl.textContent = `👁 ${msg.count}`;
       } else if (msg.type === "kicked") {
         handleKicked();
       } else if (msg.type === "entrada") {
@@ -404,8 +426,8 @@
     await pc.setRemoteDescription({ type: "answer", sdp: res.answer_sdp });
     hideOverlaySmoothly();
     showControlsWithEntrance();
-    ticker.style.display = "block";
-    $("btn-stop").style.display = "inline-block";
+    studioBar.style.display = "flex";
+    startLiveTimer(Date.now());
     showCreatorToolbar();
     revealChatUI();
     maybeSetupWaveform(stream);
@@ -567,6 +589,12 @@
         : level === "ok"
         ? "Tu conexión está algo inestable"
         : "Tu conexión está débil — acércate al router si puedes";
+      // El title de arriba no se ve en celular (no hay hover) — un toast una
+      // sola vez avisa igual quien transmite desde el teléfono.
+      if (level === "bad" && !shownBadConnToast) {
+        shownBadConnToast = true;
+        toast("📶 Tu conexión se ve débil — acércate al router si puedes.", 6000);
+      }
     }, 3000);
   }
 
@@ -805,11 +833,14 @@
       $("btn-enter").style.display = "none";
       $("btn-notify").style.display = "none";
       $("btn-start").style.display = isLive ? "none" : "block";
+      // El slider de "atenuar video" es para que un espectador ajuste lo que
+      // ve — no aplica a quien transmite.
+      $("dim-slider").style.display = "none";
       if (isLive) {
         overlay.style.display = "none";
         controls.style.display = "flex";
-        ticker.style.display = "block";
-        $("btn-stop").style.display = "inline-block";
+        studioBar.style.display = "flex";
+        startLiveTimer(status.live_session.started_at * 1000);
         revealChatUI();
       }
     }
@@ -847,6 +878,7 @@
       const res = await api(`/api/rooms/${slug}/stop`, { body: {} });
       sessionEnded = true;
       if (qualityTimer) clearInterval(qualityTimer);
+      if (liveTimerInterval) clearInterval(liveTimerInterval);
       toast(`Ganaste $${Math.round((res.earned_cents ?? 0) / 100)} · Pico ${res.peak_viewers ?? 0} personas`, 8000);
     });
     guarded($("btn-tip"), async () => {

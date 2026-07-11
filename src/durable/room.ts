@@ -60,8 +60,14 @@ export class RoomDurableObject implements DurableObject {
     await this.state.storage.put("state", data);
   }
 
+  // No cuenta la conexión del propio creador — si no, "cuánta gente me está
+  // viendo" y el "pico de espectadores" al terminar quedarían inflados por su
+  // propia pestaña abierta.
   private viewerCount(): number {
-    return this.state.getWebSockets().length;
+    return this.state.getWebSockets().filter((ws) => {
+      const attachment = ws.deserializeAttachment() as { isOwner?: boolean } | null;
+      return !attachment?.isOwner;
+    }).length;
   }
 
   broadcast(msg: unknown) {
@@ -90,7 +96,8 @@ export class RoomDurableObject implements DurableObject {
       // un dispositivo nuevo empieza a ver la transmisión.
       const uid = url.searchParams.get("uid");
       const cid = url.searchParams.get("cid");
-      if (uid && cid) server.serializeAttachment({ uid, cid });
+      const isOwner = url.searchParams.get("owner") === "1";
+      if (uid && cid) server.serializeAttachment({ uid, cid, isOwner });
       const count = this.viewerCount();
       this.peakViewers = Math.max(this.peakViewers, count);
       await this.persist();
@@ -105,7 +112,7 @@ export class RoomDurableObject implements DurableObject {
     if (url.pathname === "/kick-other-devices" && request.method === "POST") {
       const { uid, keep_cid } = await request.json<{ uid: string; keep_cid: string }>();
       for (const ws of this.state.getWebSockets()) {
-        const attachment = ws.deserializeAttachment() as { uid?: string; cid?: string } | null;
+        const attachment = ws.deserializeAttachment() as { uid?: string; cid?: string; isOwner?: boolean } | null;
         if (attachment?.uid === uid && attachment.cid !== keep_cid) {
           try {
             ws.send(JSON.stringify({ type: "kicked" }));

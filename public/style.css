@@ -380,24 +380,41 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   from { opacity: 0; transform: translate(-50%, 10px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
-.controls button { font-size: 1.4rem; background: none; border: none; color: #fff; cursor: pointer; padding: 4px 8px; }
-.ctrl-btn.off { opacity: .5; }
+.controls button { font-size: 1.4rem; background: none; border: none; color: #fff; cursor: pointer; padding: 4px 8px; border-radius: 50%; transition: background .2s; }
+/* Mic y cámara son los controles que el creador más toca en vivo — llevan un
+   fondo propio para pesar más que los secundarios (pantalla, cambiar de
+   cámara, chat), y su estado "apagado" es un tinte rojo inconfundible de un
+   vistazo, no solo una opacidad más baja que hay que comparar con cuidado. */
+#btn-mic, #btn-cam { background: rgba(255,255,255,.1); }
+.ctrl-btn.off { background: rgba(229,72,77,.32); }
 .ctrl-btn.active { text-shadow: 0 0 10px var(--green, #56EF9F); }
 .cam-select {
   background: rgba(0,18,64,.7); color: #fff; border: .5px solid rgba(86,239,159,.3); border-radius: 999px;
   padding: 4px 10px; font-size: .8rem; font-family: inherit; max-width: 120px;
 }
-.ticker {
-  position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; background: rgba(0,18,64,0.75); color: var(--green);
-  font-weight: 800; padding: 8px 14px; border-radius: 10px; border: .5px solid rgba(86,239,159,.2);
-  display: flex; align-items: center; gap: 8px;
+/* Barra de estudio: todo lo que el creador quiere monitorear de un vistazo
+   mientras transmite —en vivo desde cuándo, cuánta gente, cuánto ganó, su
+   conexión— vive en una sola tarjeta, en vez de piezas sueltas flotando por
+   separado como antes (ticker + botón de terminar cada uno por su lado). */
+.studio-bar {
+  position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px;
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap; justify-content: flex-end;
+  background: rgba(0,18,64,0.78); color: var(--green);
+  font-weight: 800; font-size: 13px; padding: 8px 12px; border-radius: 999px;
+  border: .5px solid rgba(86,239,159,.2); max-width: calc(100vw - 32px);
 }
-/* Botón de terminar transmisión: secundario a propósito — no debe competir
-   con la barra de controles principal ni ser el primer botón que se toca. */
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #E5484D; flex-shrink: 0;
+  animation: conn-pulse 1.6s ease-in-out infinite;
+}
+#live-timer { color: #fff; font-variant-numeric: tabular-nums; }
+#viewer-count { color: #cfe0ff; font-size: 12.5px; font-weight: 700; }
+/* Botón de terminar transmisión: secundario a propósito, al final de la barra
+   de estudio — no debe competir con la barra de controles principal ni ser
+   el primer botón que se toca. */
 .btn-stop-secondary {
-  position: absolute; top: calc(60px + env(safe-area-inset-top)); right: 16px;
-  background: rgba(0,18,64,.55); color: rgba(255,255,255,.65);
-  font-size: .72rem; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+  background: rgba(255,255,255,.08); color: rgba(255,255,255,.65);
+  font-size: .72rem; font-weight: 600; padding: 5px 11px; border-radius: 999px;
   border: .5px solid rgba(255,255,255,.15); cursor: pointer; font-family: inherit;
 }
 .btn-stop-secondary:hover { color: #fff; border-color: rgba(255,255,255,.3); }
@@ -429,6 +446,17 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 }
 @media (max-width: 480px) {
   .chat-panel { left: 8px; right: 8px; max-height: 38vh; }
+}
+/* En pantallas grandes hay espacio de sobra — en vez de estirar la misma
+   barra/panel de borde a borde, se les da un tamaño y posición pensados para
+   escritorio (mismo HTML, solo layout distinto). */
+@media (min-width: 900px) {
+  .studio-bar { top: 24px; right: 24px; font-size: 14px; padding: 10px 16px; gap: 12px; }
+  .chat-panel {
+    left: auto; right: 24px; width: 360px;
+    bottom: calc(104px + env(safe-area-inset-bottom)); max-height: 46vh;
+  }
+  .controls { bottom: calc(32px + env(safe-area-inset-bottom)); }
 }
 .conn-quality {
   display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
