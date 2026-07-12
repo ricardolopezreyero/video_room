@@ -42,8 +42,8 @@ describe("POST /api/wallet/retiro", () => {
     expect((await res.json()) as { error: string }).toEqual({ error: "cuenta_no_conectada" });
   });
 
-  it("rechaza bajo el mínimo de $200", async () => {
-    const uid = await createUser({ creatorBalanceCents: 5000 });
+  it("rechaza bajo el mínimo real de Stripe para MXN ($10)", async () => {
+    const uid = await createUser({ creatorBalanceCents: 500 });
     await connectUser(uid);
     const res = await app.request(
       "/api/wallet/retiro",
@@ -51,7 +51,20 @@ describe("POST /api/wallet/retiro", () => {
       env
     );
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({ error: "minimo_200" });
+    expect((await res.json()) as { error: string; minimo_cents: number }).toEqual({ error: "bajo_minimo", minimo_cents: 1000 });
+  });
+
+  it("acepta exactamente el mínimo de $10 (no lo rechaza por bajo_minimo)", async () => {
+    const uid = await createUser({ creatorBalanceCents: 1000 });
+    await connectUser(uid);
+    const res = await app.request(
+      "/api/wallet/retiro",
+      { method: "POST", headers: { Cookie: await cookieFor(uid) } },
+      env
+    );
+    // La cuenta de Stripe es falsa, así que igual falla — pero lo importante
+    // aquí es que NO lo bloquea el mínimo (confirma que $10 exactos sí alcanza).
+    expect((await res.json()) as { error: string }).not.toEqual(expect.objectContaining({ error: "bajo_minimo" }));
   });
 
   // connectUser() guarda una cuenta de Stripe Connect FALSA (no existe de

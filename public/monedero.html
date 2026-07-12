@@ -60,6 +60,18 @@ function animateBalance(el, fromCents, toCents, duration) {
   requestAnimationFrame(tick);
 }
 
+// Ráfaga de billetes al retirar con éxito — mismo lenguaje visual que los
+// corazones flotantes de la sala en vivo, adaptado aquí para el momento de
+// cobrar de verdad.
+function spawnFloatingCash() {
+  const cash = document.createElement('div');
+  cash.className = 'floating-cash';
+  cash.textContent = '💵';
+  cash.style.left = (30 + Math.random() * 40) + '%';
+  document.body.appendChild(cash);
+  setTimeout(() => cash.remove(), 2400);
+}
+
 async function main() {
   const params = new URLSearchParams(location.search);
   const recarga = params.get('recarga');
@@ -96,18 +108,19 @@ async function main() {
     </div>
     <div class="balance-box">
       <div class="label">Balance de creador (separado — esto es lo que has ganado)</div>
-      <div class="amount green">$${(me.creator_balance_cents/100).toFixed(0)}</div>
+      <div class="amount green" id="creator-balance-amount">$${(me.creator_balance_cents/100).toFixed(0)}</div>
+      ${me.total_retirado_cents > 0 ? `<p class="muted" id="total-retirado" style="margin-top:2px;">💸 Ya has retirado $${Math.round(me.total_retirado_cents/100).toLocaleString('es-MX')} en total</p>` : ''}
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
         ${me.stripe_connect_payouts_enabled
-          ? '<button class="btn-navy" id="btn-retiro">Retirar a mi banco</button>'
+          ? `<button class="btn-navy${me.creator_balance_cents >= me.min_retiro_cents ? ' ready-to-withdraw' : ''}" id="btn-retiro">Retirar a mi banco</button>`
           : '<button class="btn-navy" id="btn-connect">🏦 Conectar cuenta bancaria</button>'}
         <a href="/estadisticas"><button class="btn-ghost">Ver mis estadísticas</button></a>
         <a href="/transacciones"><button class="btn-ghost">Ver transacciones</button></a>
       </div>
       <p class="muted" style="margin-top:12px;">
         ${me.stripe_connect_payouts_enabled
-          ? 'Mínimo $200, llega directo a tu banco vía Stripe. Cada recarga, entrada, propina y retiro queda guardado para siempre — nada se borra.'
-          : 'Conecta tu cuenta bancaria una sola vez (lo hace Stripe, nunca vemos tus datos) para poder retirar lo que ganes.'}
+          ? `Desde $${Math.round(me.min_retiro_cents/100)} MXN — pruébalo con lo que tengas ahorita, llega directo a tu banco vía Stripe. Cada recarga, entrada, propina y retiro queda guardado para siempre — nada se borra.`
+          : 'Conecta tu cuenta bancaria una sola vez (lo hace Stripe, nunca vemos tus datos) para poder retirar lo que ganes — desde $' + Math.round(me.min_retiro_cents/100) + ' MXN.'}
       </p>
     </div>
     <div class="balance-box">
@@ -158,10 +171,30 @@ async function main() {
       btnRetiro.disabled = true;
       const r = await fetch('/api/wallet/retiro', { method: 'POST' });
       const j = await r.json();
-      if (j.error === 'minimo_200') alert('Necesitas al menos $200 en tu balance de creador.');
+      if (j.error === 'bajo_minimo') alert(`Necesitas al menos $${Math.round((j.minimo_cents ?? me.min_retiro_cents)/100)} en tu balance de creador.`);
       else if (j.error === 'cuenta_no_conectada') alert('Primero conecta tu cuenta bancaria.');
       else if (j.error === 'transferencia_fallida') alert('No se pudo completar la transferencia. Tu saldo sigue intacto — intenta de nuevo en un momento.');
-      else if (j.ok) { alert('¡Listo! El dinero va en camino a tu banco.'); main(); return; }
+      else if (j.ok) {
+        // El momento de cobrar de verdad es una recompensa, no un aviso más:
+        // el balance baja animado a $0, una ráfaga de billetes flota sobre la
+        // pantalla, vibra en celular, y el mensaje cambia si es su primer
+        // retiro de la vida — un hito memorable en vez de un trámite más.
+        const esPrimerRetiro = (me.total_retirado_cents || 0) === 0;
+        const montoTexto = '$' + Math.round(j.monto_cents / 100).toLocaleString('es-MX');
+        animateBalance(document.getElementById('creator-balance-amount'), me.creator_balance_cents, 0, 900);
+        for (let i = 0; i < 5; i++) setTimeout(spawnFloatingCash, i * 110);
+        if (navigator.vibrate) navigator.vibrate([15, 40, 15]);
+        showToast(
+          esPrimerRetiro
+            ? `🎉 ¡Tu primer retiro, ${montoTexto}! Ya está en camino a tu banco.`
+            : `💸 ${montoTexto} van en camino a tu banco.`,
+          5000
+        );
+        document.getElementById('app-toast').classList.add('celebrate');
+        setTimeout(() => document.getElementById('app-toast').classList.remove('celebrate'), 5000);
+        setTimeout(main, 1600);
+        return;
+      }
       else alert('No se pudo procesar el retiro. Intenta de nuevo.');
       btnRetiro.disabled = false;
     };

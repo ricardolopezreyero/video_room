@@ -16,11 +16,26 @@ export const wallet = new Hono<{ Bindings: Env }>();
 
 // Centavos, en múltiplos de $20 (el costo de una hora de sala): $20,$60,$120,$240,$480,$960,$1920
 const AMOUNTS = [2000, 6000, 12000, 24000, 48000, 96000, 192000];
-const MIN_RETIRO_CENTS = 20000;
+// $10 MXN es el piso real de Stripe para pesos mexicanos — el mismo número
+// que exige tanto un Transfer como un payout a banco ("el importe más bajo
+// que podemos soportar con nuestros socios bancarios" en México). Bajar de
+// ahí no truena la llamada, pero el dinero se quedaría atorado en el balance
+// de Stripe sin llegar nunca al banco — así que este sí es el mínimo real,
+// no uno inventado. Se deja bajo a propósito: todos van a querer probar que
+// el retiro de verdad funciona antes de confiarle un monto grande.
+const MIN_RETIRO_CENTS = 1000;
 
 wallet.get("/api/wallet/me", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: "no_session" }, 401);
+  // Total retirado de por vida: los montos de retiro se guardan negativos en
+  // el ledger, y como esa fila solo se inserta cuando el transfer de verdad
+  // tuvo éxito (ver /api/wallet/retiro), este número nunca cuenta un retiro
+  // que falló y se reembolsó — es la cifra que solo crece, a propósito, para
+  // que el creador la vea subir cada vez que retira.
+  const totalRetirado = await c.env.DB.prepare(
+    "SELECT COALESCE(SUM(-amount_cents), 0) as total FROM ledger WHERE user_id = ? AND type = 'retiro'"
+  ).bind(user.id).first<{ total: number }>();
   return c.json({
     id: user.id,
     balance_cents: user.balance_cents,
@@ -28,6 +43,8 @@ wallet.get("/api/wallet/me", async (c) => {
     name: user.name,
     avatar_url: user.avatar_url,
     stripe_connect_payouts_enabled: !!user.stripe_connect_payouts_enabled,
+    total_retirado_cents: totalRetirado?.total ?? 0,
+    min_retiro_cents: MIN_RETIRO_CENTS,
   });
 });
 
@@ -159,7 +176,7 @@ wallet.post("/api/wallet/retiro", async (c) => {
     return c.json({ error: "cuenta_no_conectada" }, 400);
   }
   if (user.creator_balance_cents < MIN_RETIRO_CENTS) {
-    return c.json({ error: "minimo_200" }, 400);
+    return c.json({ error: "bajo_minimo", minimo_cents: MIN_RETIRO_CENTS }, 400);
   }
   const amount = user.creator_balance_cents;
 
