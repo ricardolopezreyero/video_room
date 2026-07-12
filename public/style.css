@@ -290,6 +290,20 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .amount-grid button:hover { border-color: rgba(86,239,159,.35); transform: translateY(-2px); }
 .amount-grid button.featured { border-color: var(--green); color: var(--green); font-weight: 800; }
 .amount-grid button.wide { grid-column: 1 / -1; }
+/* En celular todo se ve más ordenado centrado en vez de pegado a la
+   izquierda — títulos, montos, párrafos y las filas de botones. El input
+   de minutos se deja alineado a la izquierda, más natural para escribir. */
+@media (max-width: 480px) {
+  .app-wrap { text-align: center; }
+  .app-wrap div[style*="display:flex"] { justify-content: center; }
+  .app-wrap input { text-align: left; }
+  /* Filas de lista (donadores, campañas, transacciones) ya traen su propio
+     acomodo en columnas — centrar el texto ahí las rompe, no las ordena. */
+  .donor-row, .donor-info, .donor-name, .donor-meta,
+  .tx-table, .tx-table th, .tx-table td {
+    text-align: left;
+  }
+}
 
 /* ---------- Transacciones ---------- */
 .tx-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 16px; }
