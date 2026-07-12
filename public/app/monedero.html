@@ -272,7 +272,7 @@ function renderRoom(room) {
         Tienes <strong style="color:#fff;">${room.notify_count}</strong> persona${room.notify_count === 1 ? '' : 's'} esperando que le${room.notify_count === 1 ? '' : 's'} avises.
       </p>
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <input id="starting-minutes" type="number" min="1" max="1440" value="60" inputmode="numeric"
+        <input id="starting-minutes" type="number" min="1" max="1440" value="${localStorage.getItem('vr_notify_minutes') || '60'}" inputmode="numeric"
           style="width:90px; padding:12px; border-radius:10px; border:.5px solid rgba(255,255,255,.15); background:rgba(255,255,255,.04); color:#fff; box-sizing:border-box;">
         <span class="muted">minutos</span>
         <button class="btn-primary" id="btn-notify-starting">Avisar que empiezo</button>
@@ -322,10 +322,7 @@ function renderRoom(room) {
       alert('Pon un número de minutos válido (1 a 1440).');
       return;
     }
-    if (room.notify_count === 0) {
-      alert('Todavía nadie te ha pedido que le avises. Comparte tu link para que la gente active "Avísame cuando abra".');
-      return;
-    }
+    localStorage.setItem('vr_notify_minutes', String(minutes));
     btnNotifyStarting.disabled = true;
     const r = await fetch(`/api/rooms/${room.slug}/notify-starting`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
