@@ -9,6 +9,7 @@ import { rooms } from "./routes/rooms";
 import { calls } from "./routes/calls";
 import { stats } from "./routes/stats";
 import { notifications } from "./routes/notifications";
+import { phrase } from "./routes/phrase";
 import { renderRoomPage } from "./lib/room-page";
 import { verifyUnsubscribeToken } from "./lib/unsubscribe";
 import { currentUser } from "./lib/current-user";
@@ -70,6 +71,7 @@ app.route("/", rooms);
 app.route("/", calls);
 app.route("/", stats);
 app.route("/", notifications);
+app.route("/", phrase);
 
 // Las salas vivían en /r/:slug — ahora viven en la raíz (videoroom.live/:slug,
 // links más cortos y pegados al dominio). Los links viejos siguen sirviendo

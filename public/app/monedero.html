@@ -116,6 +116,10 @@ async function main() {
       </div>
       <p class="muted">Tu saldo sirve para entrar a salas y mandar dinero a creadores.</p>
     </div>
+    <div class="balance-box phrase-box">
+      <div class="label">Frase</div>
+      <div class="phrase-text" id="phrase-text">…</div>
+    </div>
     <div class="balance-box">
       <div class="label">Balance de creador (separado — esto es lo que has ganado)</div>
       <div class="amount green" id="creator-balance-amount">$${(me.creator_balance_cents/100).toFixed(0)}</div>
@@ -138,6 +142,7 @@ async function main() {
       <div id="room-info">Cargando…</div>
     </div>
   `;
+  loadPhrase('phrase-text', false);
 
   // Venimos de Stripe: animamos el saldo subiendo del valor de antes al de ahora.
   if (recarga === 'ok') {
@@ -401,10 +406,40 @@ function setupNavShortcuts(slug) {
   };
 }
 
+// Frase del día: la misma para todos, cambia sola cada 24h a las 3:33pm CDMX
+// (21:33 UTC — México ya no usa horario de verano). Si la pestaña sigue
+// abierta cuando llega ese momento, la nueva frase entra deslizándose.
+function nextPhraseBoundaryMs(fromMs) {
+  const d = new Date(fromMs);
+  let boundary = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 21, 33, 0);
+  if (boundary <= fromMs) boundary += 24 * 60 * 60 * 1000;
+  return boundary;
+}
+async function loadPhrase(elId, animate) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  try {
+    const res = await fetch('/api/phrase');
+    if (!res.ok) return;
+    const { text } = await res.json();
+    el.textContent = text;
+    if (animate) {
+      el.classList.remove('sliding');
+      void el.offsetWidth;
+      el.classList.add('sliding');
+    }
+  } catch {}
+}
+function schedulePhraseRefresh(elId) {
+  const delay = nextPhraseBoundaryMs(Date.now()) - Date.now() + 500;
+  setTimeout(() => { loadPhrase(elId, true); schedulePhraseRefresh(elId); }, delay);
+}
+
 loadNotifications();
 setInterval(loadNotifications, 30000);
 
 main();
+schedulePhraseRefresh('phrase-text');
 </script>
 </body>
 </html>
