@@ -56,7 +56,7 @@ rooms.post("/api/rooms/:slug/notify-starting", async (c) => {
     return c.json({ error: "minutos_invalidos" }, 400);
   }
 
-  const count = await notifyRoomStartingSoon(c.env, room, minutes, user.name, user.avatar_url);
+  const count = await notifyRoomStartingSoon(c.env, room, minutes, user.name, user.avatar_url, user.email);
   return c.json({ ok: true, count });
 });
 
@@ -108,7 +108,7 @@ rooms.post("/api/rooms/:slug/start", async (c) => {
   await stub.fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId }) });
 
   // No bloquea la respuesta: el creador no debe esperar a que salgan los correos.
-  c.executionCtx.waitUntil(notifyRoomLive(c.env, room, sessionId, user.name, user.avatar_url));
+  c.executionCtx.waitUntil(notifyRoomLive(c.env, room, sessionId, user.name, user.avatar_url, user.email));
 
   return c.json({ session_id: sessionId });
 });

@@ -225,6 +225,47 @@ export function startingSoonEmail(opts: {
   return { subject, html, text };
 }
 
+// Copia de confirmación para el creador — le llega siempre que dispara un
+// aviso ("ya estoy en vivo" o "empiezo en X minutos"), tenga o no seguidores
+// esperando, para que compruebe con sus propios ojos que el envío sí salió.
+export function creatorNotifyConfirmationEmail(opts: {
+  appUrl: string;
+  creatorName: string;
+  creatorAvatar: string | null;
+  roomTitle: string;
+  roomUrl: string;
+  followerCount: number;
+  kind: "live" | "starting_soon";
+  minutes?: number;
+}): { subject: string; html: string; text: string } {
+  const { appUrl, creatorName, creatorAvatar, roomTitle, roomUrl, followerCount, kind, minutes } = opts;
+  const when = kind === "starting_soon" && minutes
+    ? (minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} hora${minutes / 60 === 1 ? "" : "s"}` : `${minutes} minutos`)
+    : null;
+  const headline = kind === "live" ? "Ya avisamos que estás en vivo" : `Ya avisamos que empiezas en ${when}`;
+  const subject = `✅ ${headline}`;
+  const bodyText = followerCount > 0
+    ? `Le mandamos este aviso a <strong>${followerCount} persona${followerCount === 1 ? "" : "s"}</strong> que pidió que le avisaras sobre <strong>${escapeHtml(roomTitle)}</strong>. Esta copia es para que confirmes que el envío sí salió.`
+    : `Todavía nadie te ha pedido que le avises sobre <strong>${escapeHtml(roomTitle)}</strong>, así que este aviso no salió a nadie más — pero así se ve cuando sí tengas gente esperando. Esta copia es para que confirmes que el botón funciona.`;
+
+  const html = renderShell({
+    appUrl,
+    preheader: headline,
+    badgeText: kind === "live" ? "🔴 En vivo ahora" : `⏰ Empieza en ${when}`,
+    avatarUrl: creatorAvatar,
+    creatorName,
+    headline,
+    bodyText,
+    ctaLabel: "Ver tu sala",
+    linkUrl: roomUrl,
+    fineprint: "Esta copia solo te llega a ti, para que confirmes que el aviso se mandó.",
+  });
+
+  const text = `${headline}.\n\n${followerCount > 0 ? `Se mandó a ${followerCount} persona(s).` : "Nadie más lo recibió todavía porque no tienes seguidores esperando."}\n\nVer tu sala: ${roomUrl}\n\n— Video Room`;
+
+  return { subject, html, text };
+}
+
 // Recibo de recarga — se dispara desde el webhook de Stripe justo después de
 // acreditar el saldo, para que quede constancia por correo de cada movimiento
 // de dinero real, igual que un banco.
