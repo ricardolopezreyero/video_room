@@ -3,6 +3,7 @@ import type { Env } from "../env";
 
 interface TipEvent {
   from: string;
+  avatar_url?: string | null;
   amount_cents: number;
   message?: string;
 }
@@ -180,14 +181,15 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/comment" && request.method === "POST") {
-      const { id, user_id, name, body, is_owner } = await request.json<{
+      const { id, user_id, name, avatar_url, body, is_owner } = await request.json<{
         id: string;
         user_id: string;
         name: string;
+        avatar_url?: string | null;
         body: string;
         is_owner?: boolean;
       }>();
-      this.broadcast({ type: "comment", id, user_id, name, body, is_owner: !!is_owner, ts: Date.now() });
+      this.broadcast({ type: "comment", id, user_id, name, avatar_url: avatar_url ?? null, body, is_owner: !!is_owner, ts: Date.now() });
       return Response.json({ ok: true });
     }
 
@@ -238,6 +240,7 @@ export class RoomDurableObject implements DurableObject {
       this.broadcast({
         type: "tip",
         from: tip.from,
+        avatar_url: tip.avatar_url ?? null,
         amount_cents: tip.amount_cents,
         message: tip.message ?? "",
         ticker_cents: this.totalCents,
@@ -268,7 +271,12 @@ export class RoomDurableObject implements DurableObject {
         const attachment = ws.deserializeAttachment() as { isOwner?: boolean } | null;
         if (attachment?.isOwner) {
           if (data.type === "pin" && typeof data.name === "string" && typeof data.body === "string") {
-            this.broadcast({ type: "pinned", name: data.name.slice(0, 60), body: data.body.slice(0, 240) });
+            this.broadcast({
+              type: "pinned",
+              name: data.name.slice(0, 60),
+              body: data.body.slice(0, 240),
+              avatar_url: typeof data.avatar_url === "string" ? data.avatar_url : null,
+            });
           } else if (data.type === "unpin") {
             this.broadcast({ type: "unpinned" });
           }

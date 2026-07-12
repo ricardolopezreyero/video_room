@@ -80,6 +80,7 @@ export function renderRoomPage(opts: {
       </div>
       <div id="pinned-msg" class="pinned-msg" style="display:none">
         <span class="pin-icon" aria-hidden="true">📌</span>
+        <img id="pinned-avatar" class="pinned-avatar" style="display:none">
         <span id="pinned-text"></span>
         <button id="btn-unpin" style="display:none" title="Quitar">✕</button>
       </div>

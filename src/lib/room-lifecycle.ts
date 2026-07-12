@@ -27,14 +27,15 @@ export async function endLiveSession(
   const summary = await res.json<{ earned_cents: number; peak_viewers: number; hearts: number }>();
 
   const sendSummary = (async () => {
-    const owner = await env.DB.prepare("SELECT email, name FROM users WHERE id = ?")
+    const owner = await env.DB.prepare("SELECT email, name, avatar_url FROM users WHERE id = ?")
       .bind(room.owner_id)
-      .first<{ email: string; name: string }>();
+      .first<{ email: string; name: string; avatar_url: string | null }>();
     if (!owner) return;
     const durationMinutes = Math.max(0, Math.round((endedAt - session.started_at) / 60));
     const { subject, html, text } = streamSummaryEmail({
       appUrl: env.APP_URL,
       name: owner.name,
+      avatarUrl: owner.avatar_url,
       roomTitle: room.title,
       durationMinutes,
       earnedCents: summary.earned_cents,

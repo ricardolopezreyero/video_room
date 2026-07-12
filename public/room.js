@@ -288,7 +288,7 @@
           tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
         }
       } else if (msg.type === "tip") {
-        showTipBand(msg.from, msg.amount_cents, msg.message);
+        showTipBand(msg.from, msg.avatar_url, msg.amount_cents, msg.message);
         if (isOwner) {
           toast(`+$${Math.round(msg.amount_cents * 0.9 / 100)} · ${msg.from} te mandó dinero 💵`);
           tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
@@ -296,11 +296,14 @@
       } else if (msg.type === "hearts") {
         spawnFloatingHeart();
       } else if (msg.type === "comment") {
-        appendChatMessage(msg.id, msg.user_id, msg.name, msg.body, msg.is_owner);
+        appendChatMessage(msg.id, msg.user_id, msg.name, msg.avatar_url, msg.body, msg.is_owner);
       } else if (msg.type === "comment_liked") {
         updateCommentLikes(msg.comment_id, msg.likes);
       } else if (msg.type === "pinned") {
         $("pinned-text").textContent = `${msg.name}: ${msg.body}`;
+        const pinnedAvatar = $("pinned-avatar");
+        if (msg.avatar_url) { pinnedAvatar.src = msg.avatar_url; pinnedAvatar.style.display = "block"; }
+        else pinnedAvatar.style.display = "none";
         $("pinned-msg").style.display = "flex";
       } else if (msg.type === "unpinned") {
         $("pinned-msg").style.display = "none";
@@ -320,10 +323,18 @@
     };
   }
 
-  function showTipBand(from, amountCents, message) {
+  function showTipBand(from, avatarUrl, amountCents, message) {
     const band = document.createElement("div");
     band.className = "tip-band";
-    band.textContent = `${from} mandó $${Math.round(amountCents / 100)}${message ? ` — "${message}"` : ""}`;
+    if (avatarUrl) {
+      const img = document.createElement("img");
+      img.className = "tip-band-avatar";
+      img.src = avatarUrl;
+      band.appendChild(img);
+    }
+    const textEl = document.createElement("span");
+    textEl.textContent = `${from} mandó $${Math.round(amountCents / 100)}${message ? ` — "${message}"` : ""}`;
+    band.appendChild(textEl);
     document.body.appendChild(band);
     setTimeout(() => band.remove(), amountCents >= 50000 ? 6000 : 4000);
   }
@@ -331,11 +342,15 @@
   // Los comentarios son eventos fugaces: solo viven en el DOM mientras la
   // pestaña está abierta. Se arman con createElement/textContent (nunca
   // innerHTML) para que no haya forma de inyectar HTML desde un comentario.
-  function appendChatMessage(commentId, userId, name, body, isOwnerMsg) {
+  function appendChatMessage(commentId, userId, name, avatarUrl, body, isOwnerMsg) {
     const feed = $("chat-feed");
     const row = document.createElement("div");
     row.className = isOwnerMsg ? "chat-msg owner" : "chat-msg";
     if (commentId) row.dataset.commentId = commentId;
+    const avatarEl = document.createElement(avatarUrl ? "img" : "span");
+    avatarEl.className = "chat-msg-avatar";
+    if (avatarUrl) avatarEl.src = avatarUrl;
+    row.appendChild(avatarEl);
     const nameEl = document.createElement("span");
     nameEl.className = "chat-msg-name";
     nameEl.textContent = name;
@@ -356,7 +371,7 @@
       pinBtn.textContent = "📌";
       pinBtn.title = "Destacar este comentario";
       pinBtn.onclick = () => {
-        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pin", name, body }));
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pin", name, body, avatar_url: avatarUrl }));
       };
       row.appendChild(pinBtn);
       // Moderación: Like/Silenciar/Expulsar/Bloquear — solo sobre comentarios

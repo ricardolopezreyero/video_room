@@ -136,9 +136,9 @@ wallet.post("/webhook/stripe", async (c) => {
       // procesamos (idem_key) — sin este chequeo, un reintento de webhook
       // mandaría un segundo recibo de recarga por el mismo pago.
       if (credited) {
-        const user = await c.env.DB.prepare("SELECT email, name, balance_cents FROM users WHERE id = ?")
+        const user = await c.env.DB.prepare("SELECT email, name, avatar_url, balance_cents FROM users WHERE id = ?")
           .bind(userId)
-          .first<{ email: string; name: string; balance_cents: number }>();
+          .first<{ email: string; name: string; avatar_url: string | null; balance_cents: number }>();
         if (user) {
           c.executionCtx.waitUntil(
             sendEmail(c.env.RESEND_API_KEY, {
@@ -146,6 +146,7 @@ wallet.post("/webhook/stripe", async (c) => {
               ...walletRechargeEmail({
                 appUrl: c.env.APP_URL,
                 name: user.name,
+                avatarUrl: user.avatar_url,
                 amountCents,
                 newBalanceCents: user.balance_cents,
               }),

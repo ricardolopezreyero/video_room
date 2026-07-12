@@ -231,10 +231,11 @@ export function startingSoonEmail(opts: {
 export function walletRechargeEmail(opts: {
   appUrl: string;
   name: string;
+  avatarUrl: string | null;
   amountCents: number;
   newBalanceCents: number;
 }): { subject: string; html: string; text: string } {
-  const { appUrl, name, amountCents, newBalanceCents } = opts;
+  const { appUrl, name, avatarUrl, amountCents, newBalanceCents } = opts;
   const amount = Math.round(amountCents / 100);
   const balance = Math.round(newBalanceCents / 100);
   const monederoUrl = `${appUrl}/app/monedero`;
@@ -244,7 +245,7 @@ export function walletRechargeEmail(opts: {
     appUrl,
     preheader: `Tu recarga de $${amount} ya está en tu saldo, lista para usarse.`,
     badgeText: "✅ Recarga exitosa",
-    avatarUrl: null,
+    avatarUrl,
     creatorName: name,
     headline: `Agregaste $${amount} a tu saldo`,
     bodyText: `Tu recarga de <strong>$${amount} MXN</strong> ya está disponible. Tu saldo total ahora es <strong>$${balance} MXN</strong>.`,
@@ -265,13 +266,14 @@ export function walletRechargeEmail(opts: {
 export function streamSummaryEmail(opts: {
   appUrl: string;
   name: string;
+  avatarUrl: string | null;
   roomTitle: string;
   durationMinutes: number;
   earnedCents: number;
   peakViewers: number;
   hearts: number;
 }): { subject: string; html: string; text: string } {
-  const { appUrl, name, roomTitle, durationMinutes, earnedCents, peakViewers, hearts } = opts;
+  const { appUrl, name, avatarUrl, roomTitle, durationMinutes, earnedCents, peakViewers, hearts } = opts;
   const earned = Math.round(earnedCents / 100);
   const duration = durationMinutes < 1 ? "menos de 1 minuto" : `${durationMinutes} minuto${durationMinutes === 1 ? "" : "s"}`;
   const statsUrl = `${appUrl}/app/estadisticas`;
@@ -281,7 +283,7 @@ export function streamSummaryEmail(opts: {
     appUrl,
     preheader: `${peakViewers} persona${peakViewers === 1 ? "" : "s"} en el pico, $${earned} ganados. Ve el detalle completo.`,
     badgeText: "📊 Resumen de tu transmisión",
-    avatarUrl: null,
+    avatarUrl,
     creatorName: name,
     headline: "Tu transmisión terminó",
     bodyText: `Estuviste en vivo ${duration} en <strong>${escapeHtml(roomTitle)}</strong>. ${peakViewers} persona${peakViewers === 1 ? "" : "s"} en el pico, ${hearts} corazón${hearts === 1 ? "" : "es"}, y ganaste <strong>$${earned} MXN</strong>.`,

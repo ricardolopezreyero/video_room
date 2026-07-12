@@ -11,8 +11,10 @@ notifications.get("/api/notifications", async (c) => {
 
   const items = await c.env.DB.prepare(
     `SELECT n.id as id, n.title as title, n.body as body, n.created_at as created_at,
-            n.read_at as read_at, r.slug as room_slug
-     FROM notifications n JOIN rooms r ON r.id = n.room_id
+            n.read_at as read_at, r.slug as room_slug, u.avatar_url as creator_avatar
+     FROM notifications n
+     JOIN rooms r ON r.id = n.room_id
+     JOIN users u ON u.id = r.owner_id
      WHERE n.user_id = ?
      ORDER BY n.created_at DESC
      LIMIT 20`

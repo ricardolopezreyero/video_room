@@ -307,9 +307,12 @@ function renderNotifDropdown() {
     return;
   }
   el.innerHTML = notifData.items.map((n) => `
-    <a class="bell-item" href="/${encodeURIComponent(n.room_slug)}">
-      <div class="t">${escapeHtml(n.title)}</div>
-      <div class="b">${escapeHtml(n.body)}</div>
+    <a class="bell-item bell-item-notif" href="/${encodeURIComponent(n.room_slug)}">
+      ${n.creator_avatar ? `<img class="bell-item-avatar" src="${escapeHtml(n.creator_avatar)}">` : '<div class="bell-item-avatar"></div>'}
+      <div class="bell-item-text">
+        <div class="t">${escapeHtml(n.title)}</div>
+        <div class="b">${escapeHtml(n.body)}</div>
+      </div>
     </a>`).join('');
 }
 

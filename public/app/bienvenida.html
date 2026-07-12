@@ -12,6 +12,7 @@
 <body class="app-shell">
 <div class="onboarding-wrap">
   <div class="onboarding-card">
+    <img id="onboard-avatar" class="onboarding-avatar" style="display:none">
     <div class="onboarding-emoji" id="card-emoji">🔴</div>
     <h2 id="card-title">Transmite y cobra</h2>
     <p id="card-desc">Crea tu sala, comparte tu link y cobra $20 por hora desde tu primer espectador. La mitad es tuya, al instante.</p>
@@ -52,10 +53,31 @@ function showStep(i) {
   fillEl.style.width = '100%';
 }
 
+let firstName = '';
+
+// La foto y el nombre reales de Google, en el momento exacto en que se cierra
+// el onboarding — que la última pantalla se sienta de quien la está viendo y
+// no de un carrusel genérico de features.
+fetch('/api/wallet/me').then((r) => (r.ok ? r.json() : null)).then((me) => {
+  if (!me || !me.name) return;
+  firstName = me.name.split(' ')[0];
+  if (me.avatar_url) {
+    const avatarEl = document.getElementById('onboard-avatar');
+    avatarEl.src = me.avatar_url;
+    avatarEl.alt = me.name;
+  }
+}).catch(() => {});
+
 function finish() {
   labelEl.textContent = 'Listo para entrar';
-  emojiEl.textContent = '✅';
-  titleEl.textContent = '¡Listo!';
+  const avatarEl = document.getElementById('onboard-avatar');
+  if (avatarEl.src) {
+    avatarEl.style.display = 'block';
+    emojiEl.style.display = 'none';
+  } else {
+    emojiEl.textContent = '✅';
+  }
+  titleEl.textContent = firstName ? `¡Listo, ${firstName}!` : '¡Listo!';
   descEl.textContent = 'Tu cuenta y tu sala ya están creadas.';
   setTimeout(() => { window.location.href = '/app/monedero?bienvenida=1'; }, 700);
 }

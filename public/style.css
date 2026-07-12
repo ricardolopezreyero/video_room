@@ -92,6 +92,11 @@ button.logo { background: none; border: none; cursor: pointer; font-family: inhe
 .bell-item:hover { background: rgba(255,255,255,.04); }
 .bell-item .t { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
 .bell-item .b { font-size: 12px; color: #9aa1b0; }
+/* La foto de quien transmite hace que cada aviso se sienta de una persona
+   real, no de un sistema genérico — mismo trato que el resto de la app. */
+.bell-item-notif { display: flex; align-items: flex-start; gap: 10px; }
+.bell-item-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: var(--navy); flex-shrink: 0; margin-top: 1px; }
+.bell-item-text { flex: 1; min-width: 0; }
 .bell-empty { padding: 24px 16px; text-align: center; color: #6b7280; font-size: 12.5px; line-height: 1.5; }
 .nav .nav-cta { padding: 9px 18px; font-size: 12px; }
 @media (max-width: 720px) {
@@ -376,6 +381,13 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 }
 .onboarding-card { max-width: 380px; animation: fIn .4s var(--ease); }
 .onboarding-emoji { font-size: 60px; margin-bottom: 18px; line-height: 1; }
+/* Se muestra solo en el último paso ("¡Listo, Nombre!"), en vez del emoji
+   genérico — el cierre del onboarding se siente de la persona real, no de un
+   carrusel de features. */
+.onboarding-avatar {
+  width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+  border: 3px solid var(--green, #56EF9F); margin-bottom: 18px; background: var(--navy);
+}
 .onboarding-card h2 { font-size: 24px; font-weight: 800; letter-spacing: -.5px; margin: 0 0 12px; }
 .onboarding-card p { color: #9aa1b0; font-size: 15px; line-height: 1.6; margin: 0; }
 .onboarding-dots { display: flex; gap: 6px; justify-content: center; margin-top: 24px; }
@@ -509,6 +521,7 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   padding: 6px 10px; font-size: 12.5px; color: #fff;
 }
 .pinned-msg .pin-icon { flex-shrink: 0; }
+.pinned-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 #pinned-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #btn-unpin { background: none; border: none; color: rgba(255,255,255,.5); cursor: pointer; font-size: 13px; flex-shrink: 0; }
 #btn-unpin:hover { color: #fff; }
@@ -524,6 +537,10 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   background: rgba(86,239,159,.12); border-left: 3px solid var(--green, #56EF9F);
   border-radius: 6px; padding: 3px 8px; margin-left: -8px;
 }
+/* La foto de quien escribe hace que el chat se sienta de personas reales, no
+   de nombres sueltos — mismo círculo de 18px que el resto de la app. Si no
+   hay foto (cuenta sin avatar de Google) se ve un círculo vacío, no un hueco. */
+.chat-msg-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: rgba(255,255,255,.1); }
 .chat-msg-name { font-weight: 800; color: var(--green, #56EF9F); flex-shrink: 0; }
 .chat-msg-body { color: #e8edf8; flex: 1; min-width: 0; }
 .pin-trigger {
@@ -590,7 +607,9 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .tip-band {
   position: absolute; bottom: calc(90px + env(safe-area-inset-bottom)); left: 0; right: 0; background: rgba(43,200,120,.94); color: #0D1117;
   padding: 14px 20px; font-weight: 800; font-size: 1.05rem; text-align: center;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
 }
+.tip-band-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 2px solid #0D1117; flex-shrink: 0; }
 .sheet { position: fixed; inset: 0; background: rgba(13,17,23,.6); display: flex; align-items: flex-end; z-index: 50; }
 .sheet-inner { background: var(--navy-deep); width: 100%; border-radius: 20px 20px 0 0; padding: 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); color: #fff; }
 .sheet-inner h3 { margin-top: 0; }

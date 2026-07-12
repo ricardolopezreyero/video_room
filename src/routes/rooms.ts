@@ -235,7 +235,7 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/tip", {
     method: "POST",
-    body: JSON.stringify({ from: user.name, amount_cents, message: (message ?? "").slice(0, 60) }),
+    body: JSON.stringify({ from: user.name, avatar_url: user.avatar_url, amount_cents, message: (message ?? "").slice(0, 60) }),
   });
 
   return c.json({ ok: true, creator_cut_cents: creatorCut });
@@ -278,7 +278,14 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/comment", {
     method: "POST",
-    body: JSON.stringify({ id: commentId, user_id: user.id, name: user.name, body, is_owner: user.id === room.owner_id }),
+    body: JSON.stringify({
+      id: commentId,
+      user_id: user.id,
+      name: user.name,
+      avatar_url: user.avatar_url,
+      body,
+      is_owner: user.id === room.owner_id,
+    }),
   });
 
   return c.json({ ok: true });
