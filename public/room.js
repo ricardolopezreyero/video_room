@@ -16,6 +16,16 @@
   const sub = $("sub");
   const connectSpinner = $("connect-spinner");
   const originalSub = sub.textContent;
+  // Los permisos de cámara/pantalla a veces se quedan colgados (el picker
+  // nativo no resuelve ni rechaza la promesa) — sin esto, el botón que lo
+  // disparó queda deshabilitado para siempre, ya que guarded() solo se
+  // reactiva cuando la función que envuelve finalmente termina.
+  function withTimeout(promise, ms) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+    ]);
+  }
   // Identifica esta pestaña/dispositivo — se manda al WebSocket y a /subscribe
   // para que una misma cuenta solo pueda estar viendo activamente desde un
   // lugar a la vez (ver handleKicked()).
@@ -182,10 +192,12 @@
     setTimeout(() => controls.classList.remove("entering"), 450);
   }
 
-  // Esta misma cuenta empezó a ver la transmisión desde otro dispositivo — se
-  // apaga el video aquí (sin cobrar de nuevo) y se explica qué pasó. Si
-  // quieren recuperarlo en esta pantalla, "Entrar" vuelve a jalarlo.
-  function handleKicked() {
+  // Tres motivos posibles cierran el mismo socket con el mismo mensaje
+  // {type:"kicked"}: esta cuenta empezó a ver desde otro dispositivo (sin
+  // motivo explícito), el creador la expulsó (temporal, puede reintentar), o
+  // el creador la bloqueó (permanente — ya no puede volver a entrar, /pass y
+  // /comment lo rechazan del lado del servidor).
+  function handleKicked(reason) {
     if (pc) { try { pc.close(); } catch {} pc = null; }
     stopViewerQualityMonitor();
     player.srcObject = null;
@@ -195,21 +207,47 @@
     overlay.classList.remove("fade-out", "connecting");
     overlay.style.display = "flex";
     connectSpinner.style.display = "none";
-    sub.textContent = "Tu sesión se movió a otro dispositivo. Toca \"Entrar\" si quieres seguir viendo aquí.";
-    $("btn-enter").style.display = "block";
-    toast("📱 Otro dispositivo con tu cuenta empezó a ver esta sala.", 6000);
+    if (reason === "blocked") {
+      sub.textContent = "El anfitrión te bloqueó de esta sala. Ya no puedes volver a entrar.";
+      $("btn-enter").style.display = "none";
+      $("btn-notify").style.display = "none";
+      toast("🚫 El anfitrión te bloqueó de esta sala.", 6000);
+    } else if (reason === "kicked") {
+      sub.textContent = "El anfitrión te sacó de la sala en vivo. Puedes volver a entrar si quieres.";
+      $("btn-enter").style.display = "block";
+      toast("👢 El anfitrión te sacó de la sala.", 6000);
+    } else {
+      sub.textContent = "Tu sesión se movió a otro dispositivo. Toca \"Entrar\" si quieres seguir viendo aquí.";
+      $("btn-enter").style.display = "block";
+      toast("📱 Otro dispositivo con tu cuenta empezó a ver esta sala.", 6000);
+    }
   }
 
   function requireLogin() {
     window.location.href = "/login";
   }
 
+  // Sin un límite de tiempo, una red inestable (mucho más común en vivo desde
+  // el celular, saliendo de wifi o con poca señal) deja el fetch colgado para
+  // siempre — el botón que lo disparó (guarded() lo deshabilita mientras
+  // espera) nunca se vuelve a habilitar. 12s es generoso pero finito: mejor
+  // fallar y poder reintentar que quedarse esperando sin saberlo.
   async function api(path, opts = {}) {
-    const res = await fetch(path, {
-      method: opts.body ? "POST" : "GET",
-      headers: { "Content-Type": "application/json" },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    let res;
+    try {
+      res = await fetch(path, {
+        method: opts.body ? "POST" : "GET",
+        headers: { "Content-Type": "application/json" },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        signal: controller.signal,
+      });
+    } catch {
+      throw new Error("red_inestable");
+    } finally {
+      clearTimeout(timeout);
+    }
     if (res.status === 401) {
       requireLogin();
       throw new Error("no_session");
@@ -243,22 +281,24 @@
         if (isOwner) viewerCountEl.textContent = `👁 ${msg.count}`;
         else presenceCountEl.textContent = msg.count;
       } else if (msg.type === "kicked") {
-        handleKicked();
+        handleKicked(msg.reason);
       } else if (msg.type === "entrada") {
         if (isOwner) {
           toast(`+$10 · ${msg.name} entró`);
-          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)} esta sesión`;
+          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
         }
       } else if (msg.type === "tip") {
         showTipBand(msg.from, msg.amount_cents, msg.message);
         if (isOwner) {
           toast(`+$${Math.round(msg.amount_cents * 0.9 / 100)} · ${msg.from} te mandó dinero 💵`);
-          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)} esta sesión`;
+          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
         }
       } else if (msg.type === "hearts") {
         spawnFloatingHeart();
       } else if (msg.type === "comment") {
-        appendChatMessage(msg.name, msg.body, msg.is_owner);
+        appendChatMessage(msg.id, msg.user_id, msg.name, msg.body, msg.is_owner);
+      } else if (msg.type === "comment_liked") {
+        updateCommentLikes(msg.comment_id, msg.likes);
       } else if (msg.type === "pinned") {
         $("pinned-text").textContent = `${msg.name}: ${msg.body}`;
         $("pinned-msg").style.display = "flex";
@@ -291,10 +331,11 @@
   // Los comentarios son eventos fugaces: solo viven en el DOM mientras la
   // pestaña está abierta. Se arman con createElement/textContent (nunca
   // innerHTML) para que no haya forma de inyectar HTML desde un comentario.
-  function appendChatMessage(name, body, isOwnerMsg) {
+  function appendChatMessage(commentId, userId, name, body, isOwnerMsg) {
     const feed = $("chat-feed");
     const row = document.createElement("div");
     row.className = isOwnerMsg ? "chat-msg owner" : "chat-msg";
+    if (commentId) row.dataset.commentId = commentId;
     const nameEl = document.createElement("span");
     nameEl.className = "chat-msg-name";
     nameEl.textContent = name;
@@ -303,6 +344,10 @@
     bodyEl.textContent = ` ${body}`;
     row.appendChild(nameEl);
     row.appendChild(bodyEl);
+    const likeEl = document.createElement("span");
+    likeEl.className = "like-count";
+    likeEl.style.display = "none";
+    row.appendChild(likeEl);
     // Fijar un comentario es una herramienta del creador para que se note que
     // está atendiendo algo puntual — el botón solo existe en su propia pantalla.
     if (isOwner) {
@@ -314,11 +359,182 @@
         if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pin", name, body }));
       };
       row.appendChild(pinBtn);
+      // Moderación: Like/Silenciar/Expulsar/Bloquear — solo sobre comentarios
+      // de otras personas, nunca sobre los propios del creador.
+      if (commentId && userId && !isOwnerMsg) {
+        const kebabBtn = document.createElement("button");
+        kebabBtn.className = "kebab-trigger";
+        kebabBtn.textContent = "⋮";
+        kebabBtn.title = "Moderar";
+        kebabBtn.onclick = (ev) => openCommentActions(ev, commentId, userId, name);
+        row.appendChild(kebabBtn);
+      }
     }
     feed.appendChild(row);
     feed.scrollTop = feed.scrollHeight;
     while (feed.children.length > 200) feed.removeChild(feed.firstChild);
   }
+
+  function updateCommentLikes(commentId, likes) {
+    if (!commentId) return;
+    const row = $("chat-feed").querySelector(`[data-comment-id="${CSS.escape(commentId)}"]`);
+    const likeEl = row && row.querySelector(".like-count");
+    if (!likeEl) return;
+    likeEl.textContent = likes > 0 ? `❤️ ${likes}` : "";
+    likeEl.style.display = likes > 0 ? "inline" : "none";
+  }
+
+  // Popover compartido de moderación: se reposiciona junto al comentario que
+  // se tocó en vez de tener un menú propio por cada fila del chat.
+  const commentActionsEl = $("comment-actions");
+  let moderationTarget = null;
+
+  function closeCommentActions() {
+    commentActionsEl.style.display = "none";
+    moderationTarget = null;
+  }
+
+  function openCommentActions(ev, commentId, userId, name) {
+    ev.stopPropagation();
+    moderationTarget = { commentId, userId, name };
+    commentActionsEl.style.display = "block";
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const menuWidth = commentActionsEl.offsetWidth || 170;
+    let left = rect.right - menuWidth;
+    left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
+    commentActionsEl.style.left = `${left}px`;
+    let top = rect.top - commentActionsEl.offsetHeight - 6;
+    if (top < 8) top = rect.bottom + 6;
+    commentActionsEl.style.top = `${top}px`;
+  }
+
+  document.addEventListener("click", (ev) => {
+    if (commentActionsEl.style.display === "block" && !commentActionsEl.contains(ev.target)) closeCommentActions();
+  });
+
+  commentActionsEl.querySelectorAll("button[data-action]").forEach((btn) => {
+    btn.onclick = async () => {
+      if (!moderationTarget) return;
+      const { commentId, userId, name } = moderationTarget;
+      const action = btn.dataset.action;
+      closeCommentActions();
+      if (action === "like") {
+        await api(`/api/rooms/${slug}/like-comment`, { body: { comment_id: commentId } });
+      } else if (action === "mute") {
+        await api(`/api/rooms/${slug}/mute`, { body: { user_id: userId } });
+        toast(`🔇 Silenciado: ${name}`);
+      } else if (action === "kick") {
+        await api(`/api/rooms/${slug}/kick`, { body: { user_id: userId } });
+        toast(`👢 Expulsado: ${name}`);
+      } else if (action === "block") {
+        if (!confirm(`¿Bloquear a ${name}? Ya no va a poder entrar a tu sala ni ver la transmisión.`)) return;
+        await api(`/api/rooms/${slug}/block`, { body: { user_id: userId } });
+        toast(`🚫 Bloqueado: ${name}`);
+      }
+    };
+  });
+
+  // Panel de espectadores conectados ahora mismo, ordenado de mayor a menor
+  // donador — exclusivo del creador, con las mismas acciones de moderación
+  // pero aplicadas desde la lista completa en vez de un comentario puntual.
+  async function openViewersSheet() {
+    const sheet = $("viewers-sheet");
+    const list = $("viewers-list");
+    list.innerHTML = "";
+    sheet.style.display = "flex";
+    const res = await api(`/api/rooms/${slug}/viewers`);
+    const viewers = res.viewers || [];
+    if (viewers.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "viewers-empty";
+      empty.textContent = "Nadie conectado en este momento.";
+      list.appendChild(empty);
+      return;
+    }
+    viewers.forEach((v, i) => {
+      const li = document.createElement("li");
+      li.className = "donor-row";
+
+      const rank = document.createElement("div");
+      rank.className = "donor-rank";
+      rank.textContent = String(i + 1);
+      li.appendChild(rank);
+
+      if (v.avatar_url) {
+        const img = document.createElement("img");
+        img.className = "donor-avatar";
+        img.src = v.avatar_url;
+        li.appendChild(img);
+      } else {
+        const ph = document.createElement("div");
+        ph.className = "donor-avatar";
+        li.appendChild(ph);
+      }
+
+      const info = document.createElement("div");
+      info.className = "donor-info";
+      const nameEl = document.createElement("div");
+      nameEl.className = "donor-name";
+      nameEl.textContent = v.name;
+      info.appendChild(nameEl);
+      li.appendChild(info);
+
+      const total = document.createElement("div");
+      total.className = "donor-total";
+      total.textContent = `$${Math.round(v.total_cents / 100)}`;
+      li.appendChild(total);
+
+      const actions = document.createElement("div");
+      actions.className = "viewer-row-actions";
+
+      const muteBtn = document.createElement("button");
+      muteBtn.textContent = "🔇";
+      muteBtn.title = v.is_muted ? "Reactivar" : "Silenciar";
+      muteBtn.classList.toggle("active", v.is_muted);
+      muteBtn.onclick = async () => {
+        await api(`/api/rooms/${slug}/${v.is_muted ? "unmute" : "mute"}`, { body: { user_id: v.user_id } });
+        v.is_muted = !v.is_muted;
+        muteBtn.title = v.is_muted ? "Reactivar" : "Silenciar";
+        muteBtn.classList.toggle("active", v.is_muted);
+      };
+      actions.appendChild(muteBtn);
+
+      const kickBtn = document.createElement("button");
+      kickBtn.textContent = "👢";
+      kickBtn.title = "Expulsar";
+      kickBtn.onclick = async () => {
+        await api(`/api/rooms/${slug}/kick`, { body: { user_id: v.user_id } });
+        li.remove();
+      };
+      actions.appendChild(kickBtn);
+
+      const blockBtn = document.createElement("button");
+      blockBtn.textContent = "🚫";
+      blockBtn.className = "danger";
+      blockBtn.title = v.is_blocked ? "Desbloquear" : "Bloquear";
+      blockBtn.classList.toggle("active", v.is_blocked);
+      blockBtn.onclick = async () => {
+        if (!v.is_blocked && !confirm(`¿Bloquear a ${v.name}? Ya no va a poder entrar a tu sala ni ver la transmisión.`)) return;
+        await api(`/api/rooms/${slug}/${v.is_blocked ? "unblock" : "block"}`, { body: { user_id: v.user_id } });
+        v.is_blocked = !v.is_blocked;
+        if (v.is_blocked) {
+          li.remove();
+        } else {
+          blockBtn.title = "Bloquear";
+          blockBtn.classList.remove("active");
+        }
+      };
+      actions.appendChild(blockBtn);
+
+      li.appendChild(actions);
+      list.appendChild(li);
+    });
+  }
+
+  $("viewers-close").onclick = () => { $("viewers-sheet").style.display = "none"; };
+  $("viewers-sheet").addEventListener("click", (ev) => {
+    if (ev.target.id === "viewers-sheet") $("viewers-sheet").style.display = "none";
+  });
 
   async function sendComment() {
     const input = $("chat-input");
@@ -481,7 +697,14 @@
     $("btn-hand").style.display = "none";
     $("btn-mic").style.display = "inline-block";
     $("btn-cam").style.display = "inline-block";
-    if ("getDisplayMedia" in navigator.mediaDevices) {
+    // Compartir pantalla es un caso de escritorio (mostrar una presentación,
+    // una terminal de trading) — en touch, además de no tener mucho sentido
+    // (¿compartir la pantalla de tu propio celular?), el picker nativo de
+    // captura de pantalla en móvil resultó poco confiable: cancelarlo dejaba
+    // el botón y el de cambiar de cámara sin responder. Se oculta en touch en
+    // vez de arriesgar esa combinación.
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+    if (!isTouchDevice && "getDisplayMedia" in navigator.mediaDevices) {
       $("btn-screen").style.display = "inline-block";
     }
     setupCameraSwitcher();
@@ -517,9 +740,12 @@
     if (usingScreenShare) return stopScreenShare();
     let screenStream;
     try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false });
+      screenStream = await withTimeout(
+        navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false }),
+        15000
+      );
     } catch {
-      return; // el creador canceló el selector nativo
+      return; // el creador canceló el selector nativo, o tardó demasiado
     }
     const screenTrack = screenStream.getVideoTracks()[0];
     await videoSender.replaceTrack(screenTrack);
@@ -547,9 +773,12 @@
     $("chat-panel").style.display = chatVisible ? "flex" : "none";
     let camStream;
     try {
-      camStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false });
+      camStream = await withTimeout(
+        navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false }),
+        10000
+      );
     } catch {
-      return toast("No se pudo reactivar la cámara.");
+      return toast("No se pudo reactivar la cámara. Vuelve a tocar el botón de pantalla para intentar de nuevo.", 6000);
     }
     const camTrack = camStream.getVideoTracks()[0];
     camTrack.enabled = camOn;
@@ -587,9 +816,9 @@
     const constraints = flip ? { ...videoConstraints() } : { ...videoConstraints(), deviceId: { exact: deviceId } };
     let newStream;
     try {
-      newStream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+      newStream = await withTimeout(navigator.mediaDevices.getUserMedia({ video: constraints, audio: false }), 10000);
     } catch {
-      return toast("No se pudo cambiar de cámara.");
+      return toast("No se pudo cambiar de cámara. Intenta de nuevo.", 5000);
     }
     const newTrack = newStream.getVideoTracks()[0];
     newTrack.enabled = camOn;
@@ -884,6 +1113,10 @@
       // El slider de "atenuar video" es para que un espectador ajuste lo que
       // ve — no aplica a quien transmite.
       $("dim-slider").style.display = "none";
+      // Ver quién está conectado (ordenado por donación) es solo del creador
+      // — reusa el mismo conteo que ya tenía en el studio-bar como entrada.
+      viewerCountEl.classList.add("clickable");
+      viewerCountEl.onclick = openViewersSheet;
       if (isLive) {
         overlay.style.display = "none";
         controls.style.display = "flex";
@@ -923,7 +1156,17 @@
       }
     });
     guarded($("btn-stop"), async () => {
-      const res = await api(`/api/rooms/${slug}/stop`, { body: {} });
+      let res;
+      try {
+        res = await api(`/api/rooms/${slug}/stop`, { body: {} });
+      } catch {
+        // Con conexión mala esto puede tardar hasta 12s antes de fallar —
+        // el botón se queda deshabilitado ese rato (evita un doble tap que
+        // mande dos "stop"), pero nunca más que eso, y queda claro que puede
+        // volver a tocarlo.
+        return toast("No se pudo terminar la transmisión — revisa tu conexión y vuelve a tocar \"Terminar\".", 7000);
+      }
+      if (res.error) return toast("No se pudo terminar la transmisión. Vuelve a tocar \"Terminar\".", 6000);
       sessionEnded = true;
       if (qualityTimer) clearInterval(qualityTimer);
       if (liveTimerInterval) clearInterval(liveTimerInterval);

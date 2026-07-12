@@ -180,9 +180,54 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/comment" && request.method === "POST") {
-      const { name, body, is_owner } = await request.json<{ name: string; body: string; is_owner?: boolean }>();
-      this.broadcast({ type: "comment", name, body, is_owner: !!is_owner, ts: Date.now() });
+      const { id, user_id, name, body, is_owner } = await request.json<{
+        id: string;
+        user_id: string;
+        name: string;
+        body: string;
+        is_owner?: boolean;
+      }>();
+      this.broadcast({ type: "comment", id, user_id, name, body, is_owner: !!is_owner, ts: Date.now() });
       return Response.json({ ok: true });
+    }
+
+    // El creador acaba de darle like a un comentario (fuera de este DO, en
+    // D1) — solo reenvía el conteo actualizado a todos en vivo.
+    if (url.pathname === "/comment-liked" && request.method === "POST") {
+      const { comment_id, likes } = await request.json<{ comment_id: string; likes: number }>();
+      this.broadcast({ type: "comment_liked", comment_id, likes });
+      return Response.json({ ok: true });
+    }
+
+    // Expulsar (temporal) o bloquear (permanente, ya validado en D1 antes de
+    // llegar aquí) a un espectador específico — a diferencia de
+    // /kick-other-devices, que apaga las OTRAS conexiones de la MISMA cuenta,
+    // esto corta la conexión de OTRA persona por decisión del creador.
+    if (url.pathname === "/kick-user" && request.method === "POST") {
+      const { user_id, reason } = await request.json<{ user_id: string; reason?: string }>();
+      for (const ws of this.state.getWebSockets()) {
+        const attachment = ws.deserializeAttachment() as { uid?: string; isOwner?: boolean } | null;
+        if (attachment?.uid === user_id && !attachment.isOwner) {
+          try {
+            ws.send(JSON.stringify({ type: "kicked", reason: reason ?? "kicked" }));
+            ws.close(4001, reason ?? "kicked");
+          } catch {
+            // ya estaba cerrada
+          }
+        }
+      }
+      return Response.json({ ok: true });
+    }
+
+    // ids únicos de espectadores conectados ahora mismo (sin el creador) —
+    // rooms.ts cruza esto con D1 para armar la lista ordenada por donación.
+    if (url.pathname === "/connected-uids") {
+      const uids = new Set<string>();
+      for (const ws of this.state.getWebSockets()) {
+        const attachment = ws.deserializeAttachment() as { uid?: string; isOwner?: boolean } | null;
+        if (attachment?.uid && !attachment.isOwner) uids.add(attachment.uid);
+      }
+      return Response.json({ uids: [...uids] });
     }
 
     if (url.pathname === "/tip" && request.method === "POST") {

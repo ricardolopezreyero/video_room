@@ -6,17 +6,27 @@
 <title>Tus estadísticas — Video Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="icon" href="/og-default.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="app-shell">
 <nav class="nav">
-  <a href="/" class="logo"><img src="https://assets.cdn.filesafe.space/E6Gh1sE1RnPtadmL7wmG/media/698e530bc08665d629146a14.png" alt="SuperLeads" style="height:22px"><span>Video Room</span></a>
-  <div class="links">
-    <a href="/monedero">Monedero</a>
-    <a href="/transacciones">Transacciones</a>
-    <a href="/faq">FAQ</a>
+  <div class="logo-wrap">
+    <button class="logo" id="btn-logo-menu" aria-haspopup="true" aria-label="Menú">
+      <span>Video Room</span>
+    </button>
+    <div class="bell-dropdown logo-dropdown" id="logo-dropdown">
+      <a class="bell-item" href="/">Inicio</a>
+      <a class="bell-item" href="/app/monedero">Monedero</a>
+      <a class="bell-item" href="/app/transacciones">Transacciones</a>
+      <a class="bell-item" href="/app/faq">FAQ</a>
+    </div>
   </div>
-  <div style="display:flex; align-items:center; gap:14px;">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button class="icon-btn" id="btn-copy-link-nav" title="Copiar link de tu sala" aria-label="Copiar link de tu sala" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+    </button>
+    <a href="#" id="btn-transmit-nav" style="display:none;"><button class="btn-primary nav-cta">🔴 Transmitir</button></a>
     <div class="bell-wrap" id="bell-wrap" style="display:none;">
       <button class="icon-btn" id="btn-bell" title="Notificaciones" aria-label="Notificaciones">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
@@ -37,7 +47,15 @@
   <h1>Tus números</h1>
   <div id="content">Cargando…</div>
 </div>
+<div class="app-toast" id="app-toast"></div>
 <script>
+function showToast(msg, ms) {
+  const el = document.getElementById('app-toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms || 3200);
+}
+
 const RANGE_LABELS = { today: 'Hoy', '7d': '7 días', '30d': '30 días', all: 'Todo' };
 let currentRange = '30d';
 let viewMode = 'vivo'; // 'demo' | 'vivo'
@@ -87,12 +105,13 @@ async function load() {
   if (!data.has_room) {
     content.innerHTML = `
       <div class="empty-state">
-        No encontramos tu sala. Ve a tu <a href="/monedero" style="color:var(--green)">monedero</a> — si el problema sigue, escríbenos.
+        No encontramos tu sala. Ve a tu <a href="/app/monedero" style="color:var(--green)">monedero</a> — si el problema sigue, escríbenos.
       </div>`;
     return;
   }
 
   lastData = data;
+  setupNavShortcuts(data.room_slug);
   // Solo la primera vez: si no hay actividad real todavía, arrancamos en Demo
   // para que la persona vea cómo se ve su panel con movimiento, no puros ceros.
   // Después de esa primera decisión, respetamos lo que la persona elija.
@@ -137,7 +156,7 @@ function render() {
     : `<div class="empty-state">Comparte tu link con <code>?utm_source=instagram&amp;utm_campaign=lanzamiento</code> (o la campaña que uses) y aquí vas a ver cuánta gente entró por cada una.</div>`;
 
   content.innerHTML = `
-    <p class="muted">Sala: videoroom.superleads.mx/r/${escapeHtml(data.room_slug)}</p>
+    <p class="muted">Sala: videoroom.live/${escapeHtml(data.room_slug)}</p>
     <div class="filter-pills" id="view-pills" style="margin-bottom:0;">
       <button data-view="demo" class="${viewMode === 'demo' ? 'active' : ''}">Demo</button>
       <button data-view="vivo" class="${viewMode === 'vivo' ? 'active' : ''}">En vivo</button>
@@ -217,7 +236,7 @@ function renderNotifDropdown() {
     return;
   }
   el.innerHTML = notifData.items.map((n) => `
-    <a class="bell-item" href="/r/${encodeURIComponent(n.room_slug)}">
+    <a class="bell-item" href="/${encodeURIComponent(n.room_slug)}">
       <div class="t">${escapeHtml(n.title)}</div>
       <div class="b">${escapeHtml(n.body)}</div>
     </a>`).join('');
@@ -234,6 +253,26 @@ document.getElementById('btn-bell').onclick = async () => {
     notifData.unread_count = 0;
   }
 };
+
+document.getElementById('btn-logo-menu').onclick = () => {
+  document.getElementById('logo-dropdown').classList.toggle('show');
+};
+
+// Transmitir y copiar link son las dos acciones que un creador necesita a la
+// mano en todo momento — quedan fijas en la barra de arriba en vez de vivir
+// solo en el monedero.
+function setupNavShortcuts(slug) {
+  const fullUrl = 'https://videoroom.live/' + slug;
+  const transmitBtn = document.getElementById('btn-transmit-nav');
+  transmitBtn.href = '/' + slug;
+  transmitBtn.style.display = 'inline-block';
+  const copyBtn = document.getElementById('btn-copy-link-nav');
+  copyBtn.style.display = 'flex';
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(fullUrl);
+    showToast('🔗 Link copiado.');
+  };
+}
 
 load();
 loadUserChip();

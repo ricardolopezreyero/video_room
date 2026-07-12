@@ -4,20 +4,20 @@
 /
   Content-Type: text/html; charset=utf-8
 
-/monedero
+/app/monedero
   Content-Type: text/html; charset=utf-8
 
-/estadisticas
+/app/estadisticas
   Content-Type: text/html; charset=utf-8
 
-/transacciones
+/app/transacciones
   Content-Type: text/html; charset=utf-8
 
-/manifiesto
+/app/manifiesto
   Content-Type: text/html; charset=utf-8
 
-/faq
+/app/faq
   Content-Type: text/html; charset=utf-8
 
-/bienvenida
+/app/bienvenida
   Content-Type: text/html; charset=utf-8

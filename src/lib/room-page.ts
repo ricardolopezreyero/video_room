@@ -1,3 +1,4 @@
+// RLR
 import type { Room } from "./db";
 
 function escapeHtml(input: string): string {
@@ -24,6 +25,14 @@ export function renderRoomPage(opts: {
   const desc = live
     ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · Entra por $20/hora · Nada se graba`
     : `${safeTitle} todavía no transmite. Toca para que te avisemos por correo en cuanto abra.`;
+  // Copy para buscadores/redes — distinta del "desc" de arriba (ese es el
+  // texto de estado dentro de la propia sala). Aquí buscamos que quien la
+  // encuentre en Google entienda de un vistazo que es la sala privada de esta
+  // persona y que puede entrar, esté en vivo o no en este momento.
+  const seoDesc = live
+    ? `${safeTitle} está en vivo ahora mismo en su sala privada de Video Room. Entra por $20 la hora — nada se graba.`
+    : `Esta es la sala privada de ${safeTitle} en Video Room. Te avisamos por correo en cuanto empiece a transmitir — entra cuando quieras.`;
+  const canonicalUrl = `${appUrl}/${encodeURIComponent(room.slug)}`;
   const avatarHtml = safeAvatar
     ? `<img src="${safeAvatar}" alt="${safeTitle}" class="room-avatar">`
     : "";
@@ -34,12 +43,21 @@ export function renderRoomPage(opts: {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>${title}</title>
+<meta name="description" content="${seoDesc}">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="${canonicalUrl}">
 <meta property="og:title" content="${title}">
-<meta property="og:description" content="${desc}">
+<meta property="og:description" content="${seoDesc}">
 <meta property="og:image" content="${ogImage}">
+<meta property="og:url" content="${canonicalUrl}">
 <meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="${title}">
+<meta name="twitter:description" content="${seoDesc}">
+<meta name="twitter:image" content="${ogImage}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="icon" href="/og-default.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body data-slug="${room.slug}" data-live="${live}">
@@ -94,12 +112,29 @@ export function renderRoomPage(opts: {
       <span class="live-dot" aria-hidden="true"></span>
       <span id="live-timer">0:00</span>
       <span id="viewer-count" title="Espectadores en este momento">👁 0</span>
-      <span id="ticker-text">$0 esta sesión</span>
+      <span id="ticker-text" title="Ganado en esta transmisión">$0</span>
       <span id="conn-quality" class="conn-quality" title="Calidad de tu conexión"></span>
       <button id="btn-stop" class="btn-stop-secondary">Terminar</button>
     </div>
     <span id="audio-only-badge" class="audio-only-badge" style="display:none">🎧 Solo audio</span>
     <div id="toast" class="toast"></div>
+    <!-- Menú de moderación por comentario (solo creador): un mismo popover
+         compartido que room.js posiciona junto al comentario que tocaron. -->
+    <div id="comment-actions" class="comment-actions" style="display:none">
+      <button id="ca-like" data-action="like">❤️ Like</button>
+      <button id="ca-mute" data-action="mute">🔇 Silenciar</button>
+      <button id="ca-kick" data-action="kick">👢 Expulsar</button>
+      <button id="ca-block" class="danger" data-action="block">🚫 Bloquear</button>
+    </div>
+    <!-- Espectadores conectados ahora mismo, ordenados de mayor a menor
+         donador — exclusivo del creador (room.js lo abre al tocar el conteo). -->
+    <div id="viewers-sheet" class="sheet" style="display:none">
+      <div class="sheet-inner">
+        <h3>👥 Conectados ahora</h3>
+        <ul id="viewers-list" class="donor-list"></ul>
+        <button id="viewers-close">Cerrar</button>
+      </div>
+    </div>
   </div>
   <script src="/room.js" defer></script>
 </body>

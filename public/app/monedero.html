@@ -6,18 +6,27 @@
 <title>Tu monedero — Video Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="icon" href="/og-default.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="app-shell">
 <nav class="nav">
-  <a href="/" class="logo"><img src="https://assets.cdn.filesafe.space/E6Gh1sE1RnPtadmL7wmG/media/698e530bc08665d629146a14.png" alt="SuperLeads" style="height:22px"><span>Video Room</span></a>
-  <div class="links">
-    <a href="/">Inicio</a>
-    <a href="/estadisticas">Estadísticas</a>
-    <a href="/transacciones">Transacciones</a>
-    <a href="/faq">FAQ</a>
+  <div class="logo-wrap">
+    <button class="logo" id="btn-logo-menu" aria-haspopup="true" aria-label="Menú">
+      <span>Video Room</span>
+    </button>
+    <div class="bell-dropdown logo-dropdown" id="logo-dropdown">
+      <a class="bell-item" href="/">Inicio</a>
+      <a class="bell-item" href="/app/estadisticas">Estadísticas</a>
+      <a class="bell-item" href="/app/transacciones">Transacciones</a>
+      <a class="bell-item" href="/app/faq">FAQ</a>
+    </div>
   </div>
-  <div style="display:flex; align-items:center; gap:14px;">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button class="icon-btn" id="btn-copy-link-nav" title="Copiar link de tu sala" aria-label="Copiar link de tu sala" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+    </button>
+    <a href="#" id="btn-transmit-nav" style="display:none;"><button class="btn-primary nav-cta">🔴 Transmitir</button></a>
     <div class="bell-wrap" id="bell-wrap" style="display:none;">
       <button class="icon-btn" id="btn-bell" title="Notificaciones" aria-label="Notificaciones">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
@@ -76,7 +85,7 @@ function spawnFloatingCash() {
 async function main() {
   const params = new URLSearchParams(location.search);
   const recarga = params.get('recarga');
-  if (recarga) history.replaceState(null, '', '/monedero');
+  if (recarga) history.replaceState(null, '', '/app/monedero');
 
   const res = await fetch('/api/wallet/me');
   const content = document.getElementById('content');
@@ -115,8 +124,8 @@ async function main() {
         ${me.stripe_connect_payouts_enabled
           ? `<button class="btn-navy${me.creator_balance_cents >= me.min_retiro_cents ? ' ready-to-withdraw' : ''}" id="btn-retiro">Retirar a mi banco</button>`
           : '<button class="btn-navy" id="btn-connect">🏦 Conectar cuenta bancaria</button>'}
-        <a href="/estadisticas"><button class="btn-ghost">Ver mis estadísticas</button></a>
-        <a href="/transacciones"><button class="btn-ghost">Ver transacciones</button></a>
+        <a href="/app/estadisticas"><button class="btn-ghost">Ver mis estadísticas</button></a>
+        <a href="/app/transacciones"><button class="btn-ghost">Ver transacciones</button></a>
       </div>
       <p class="muted" style="margin-top:12px;">
         ${me.stripe_connect_payouts_enabled
@@ -144,7 +153,7 @@ async function main() {
   // Venimos de vuelta del onboarding de Stripe Connect.
   const connect = params.get('connect');
   if (connect) {
-    history.replaceState(null, '', '/monedero');
+    history.replaceState(null, '', '/app/monedero');
     if (connect === 'ok') showToast('✅ Cuenta bancaria conectada. Ya puedes retirar.', 4500);
     else if (connect === 'pendiente') showToast('Casi listo — a Stripe todavía le falta un dato tuyo. Vuelve a intentar "Conectar cuenta".', 5500);
     else if (connect === 'error') showToast('No se pudo conectar tu cuenta. Intenta de nuevo.');
@@ -222,7 +231,7 @@ async function loadRoom(autoCopy) {
   const room = await res.json();
   renderRoom(room);
   if (autoCopy) {
-    const fullUrl = 'https://videoroom.superleads.mx/r/' + room.slug;
+    const fullUrl = 'https://videoroom.live/' + room.slug;
     navigator.clipboard.writeText(fullUrl).then(() => {
       showToast('🔗 Tu link ya está copiado — compártelo cuando quieras.', 4500);
     }).catch(() => {
@@ -233,7 +242,8 @@ async function loadRoom(autoCopy) {
 
 function renderRoom(room) {
   const el = document.getElementById('room-info');
-  const url = 'videoroom.superleads.mx/r/' + room.slug;
+  const url = 'videoroom.live/' + room.slug;
+  setupNavShortcuts(room.slug);
   const ageMsg = room.age_days <= 0
     ? 'La acabas de recibir.'
     : `La tienes desde hace ${room.age_days} día${room.age_days === 1 ? '' : 's'}.`;
@@ -244,7 +254,7 @@ function renderRoom(room) {
     <div class="amount" style="font-size:20px;">${url}</div>
     <p class="muted">${ageMsg}${numericMsg}</p>
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-      <a href="/r/${room.slug}"><button class="btn-primary">🔴 Transmitir en vivo</button></a>
+      <a href="/${room.slug}"><button class="btn-primary">🔴 Transmitir en vivo</button></a>
       <button class="btn-ghost" id="btn-copy-link">Copiar link</button>
       <button class="btn-ghost" id="btn-edit-slug">Editar URL</button>
     </div>
@@ -297,6 +307,7 @@ function renderRoom(room) {
     btnSaveSlug.disabled = false;
     if (j.error === 'slug_ocupado') return alert('Esa URL ya está en uso, prueba con otra.');
     if (j.error === 'slug_numerico_reservado') return alert('Las URLs numéricas las asigna el sistema, elige un nombre con letras.');
+    if (j.error === 'slug_reservado') return alert('Ese nombre está reservado, prueba con otro.');
     if (j.error === 'slug_invalido') return alert('Ese nombre no es válido.');
     if (j.error) return alert('No se pudo cambiar la URL.');
     loadRoom(false);
@@ -349,7 +360,7 @@ function renderNotifDropdown() {
     return;
   }
   el.innerHTML = notifData.items.map((n) => `
-    <a class="bell-item" href="/r/${encodeURIComponent(n.room_slug)}">
+    <a class="bell-item" href="/${encodeURIComponent(n.room_slug)}">
       <div class="t">${escapeHtml(n.title)}</div>
       <div class="b">${escapeHtml(n.body)}</div>
     </a>`).join('');
@@ -366,6 +377,26 @@ document.getElementById('btn-bell').onclick = async () => {
     notifData.unread_count = 0;
   }
 };
+
+document.getElementById('btn-logo-menu').onclick = () => {
+  document.getElementById('logo-dropdown').classList.toggle('show');
+};
+
+// Transmitir y copiar link son las dos acciones que un creador necesita a la
+// mano en todo momento — antes vivían enterradas en la tarjeta de "Tu sala"
+// y había que bajar a buscarlas. Ahora quedan fijas en la barra de arriba.
+function setupNavShortcuts(slug) {
+  const fullUrl = 'https://videoroom.live/' + slug;
+  const transmitBtn = document.getElementById('btn-transmit-nav');
+  transmitBtn.href = '/' + slug;
+  transmitBtn.style.display = 'inline-block';
+  const copyBtn = document.getElementById('btn-copy-link-nav');
+  copyBtn.style.display = 'flex';
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(fullUrl);
+    showToast('🔗 Link copiado.');
+  };
+}
 
 loadNotifications();
 setInterval(loadNotifications, 30000);

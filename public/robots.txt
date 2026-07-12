@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://videoroom.live/sitemap.xml

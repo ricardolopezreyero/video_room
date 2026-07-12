@@ -88,7 +88,7 @@ auth.get("/auth/google/callback", async (c) => {
     path: "/",
   });
   deleteCookie(c, "vr_oauth_state");
-  return c.redirect(isNewUser ? "/bienvenida" : "/monedero");
+  return c.redirect(isNewUser ? "/app/bienvenida" : "/app/monedero");
 });
 
 auth.get("/auth/logout", (c) => {

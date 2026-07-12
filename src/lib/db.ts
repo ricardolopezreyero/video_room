@@ -41,6 +41,11 @@ export async function isBlocked(db: D1Database, roomId: string, userId: string):
   return !!row;
 }
 
+export async function isMuted(db: D1Database, roomId: string, userId: string): Promise<boolean> {
+  const row = await db.prepare("SELECT 1 FROM muted_viewers WHERE room_id = ? AND user_id = ?").bind(roomId, userId).first();
+  return !!row;
+}
+
 export async function creditLedger(
   db: D1Database,
   userId: string,

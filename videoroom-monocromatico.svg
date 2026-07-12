@@ -1,0 +1,8 @@
+<svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(20,20) scale(0.65)">
+    <rect x="30" y="30" width="180" height="180" rx="40" fill="#111111"/>
+    <polygon points="98,76 98,164 158,120" fill="#FFFFFF"/>
+    <circle cx="203" cy="47" r="21" fill="#FFFFFF" stroke="#111111" stroke-width="6"/>
+  </g>
+  <text x="210" y="130" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="800" fill="#111111">Video<tspan dx="14" font-weight="400" fill="#111111">Room</tspan></text>
+</svg>

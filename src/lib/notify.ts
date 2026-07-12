@@ -29,7 +29,7 @@ export async function notifyRoomLive(
   const followers = await getFollowers(env, room.id);
   if (followers.length === 0) return;
 
-  const roomUrl = `${env.APP_URL}/r/${room.slug}`;
+  const roomUrl = `${env.APP_URL}/${room.slug}`;
   const title = `🔴 ${creatorName} ya está en vivo`;
   const body = `Entra a ${room.title} antes de que se acabe.`;
 
@@ -44,6 +44,7 @@ export async function notifyRoomLive(
     followers.map(async (f) => {
       const unsubscribeUrl = `${env.APP_URL}/unsubscribe?token=${await signUnsubscribeToken(env.SESSION_SECRET, f.id, room.id)}`;
       const { subject, html, text } = liveNotificationEmail({
+        appUrl: env.APP_URL,
         creatorName,
         creatorAvatar,
         roomTitle: room.title,
@@ -67,12 +68,13 @@ export async function notifyRoomStartingSoon(
   const followers = await getFollowers(env, room.id);
   if (followers.length === 0) return 0;
 
-  const roomUrl = `${env.APP_URL}/r/${room.slug}`;
+  const roomUrl = `${env.APP_URL}/${room.slug}`;
 
   await Promise.all(
     followers.map(async (f) => {
       const unsubscribeUrl = `${env.APP_URL}/unsubscribe?token=${await signUnsubscribeToken(env.SESSION_SECRET, f.id, room.id)}`;
       const { subject, html, text } = startingSoonEmail({
+        appUrl: env.APP_URL,
         creatorName,
         creatorAvatar,
         roomTitle: room.title,

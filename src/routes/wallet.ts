@@ -10,6 +10,7 @@ import {
   stripeCreateTransfer,
   StripeApiError,
 } from "../lib/stripe";
+import { sendEmail, walletRechargeEmail } from "../lib/email";
 import type { Env } from "../env";
 
 export const wallet = new Hono<{ Bindings: Env }>();
@@ -64,7 +65,7 @@ wallet.post("/api/wallet/connect/start", async (c) => {
     }
     const link = await stripeCreateAccountLink(c.env.STRIPE_SECRET_KEY, {
       accountId,
-      refreshUrl: `${c.env.APP_URL}/monedero?connect=refresh`,
+      refreshUrl: `${c.env.APP_URL}/app/monedero?connect=refresh`,
       returnUrl: `${c.env.APP_URL}/api/wallet/connect/return`,
     });
     return c.json({ url: link.url });
@@ -80,16 +81,16 @@ wallet.post("/api/wallet/connect/start", async (c) => {
 wallet.get("/api/wallet/connect/return", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.redirect(`${c.env.APP_URL}/login`);
-  if (!user.stripe_connect_account_id) return c.redirect(`${c.env.APP_URL}/monedero?connect=error`);
+  if (!user.stripe_connect_account_id) return c.redirect(`${c.env.APP_URL}/app/monedero?connect=error`);
 
   try {
     const account = await stripeGetAccount(c.env.STRIPE_SECRET_KEY, user.stripe_connect_account_id);
     await c.env.DB.prepare("UPDATE users SET stripe_connect_payouts_enabled = ? WHERE id = ?")
       .bind(account.payouts_enabled ? 1 : 0, user.id)
       .run();
-    return c.redirect(`${c.env.APP_URL}/monedero?connect=${account.payouts_enabled ? "ok" : "pendiente"}`);
+    return c.redirect(`${c.env.APP_URL}/app/monedero?connect=${account.payouts_enabled ? "ok" : "pendiente"}`);
   } catch {
-    return c.redirect(`${c.env.APP_URL}/monedero?connect=error`);
+    return c.redirect(`${c.env.APP_URL}/app/monedero?connect=error`);
   }
 });
 
@@ -103,8 +104,8 @@ wallet.post("/api/wallet/checkout", async (c) => {
     const session = await stripeCreateCheckoutSession(c.env.STRIPE_SECRET_KEY, {
       amountCents: amount_cents,
       userId: user.id,
-      successUrl: `${c.env.APP_URL}/monedero?recarga=ok`,
-      cancelUrl: `${c.env.APP_URL}/monedero?recarga=cancelada`,
+      successUrl: `${c.env.APP_URL}/app/monedero?recarga=ok`,
+      cancelUrl: `${c.env.APP_URL}/app/monedero?recarga=cancelada`,
     });
     return c.json({ url: session.url });
   } catch {
@@ -130,7 +131,28 @@ wallet.post("/webhook/stripe", async (c) => {
     const userId = session.metadata?.user_id;
     const amountCents = Number(session.metadata?.amount_cents ?? 0);
     if (userId && amountCents > 0) {
-      await creditLedger(c.env.DB, userId, amountCents, "recarga", session.id, `recarga:${session.id}`, "balance_cents");
+      const credited = await creditLedger(c.env.DB, userId, amountCents, "recarga", session.id, `recarga:${session.id}`, "balance_cents");
+      // credited=false significa que Stripe reintentó una entrega que ya
+      // procesamos (idem_key) — sin este chequeo, un reintento de webhook
+      // mandaría un segundo recibo de recarga por el mismo pago.
+      if (credited) {
+        const user = await c.env.DB.prepare("SELECT email, name, balance_cents FROM users WHERE id = ?")
+          .bind(userId)
+          .first<{ email: string; name: string; balance_cents: number }>();
+        if (user) {
+          c.executionCtx.waitUntil(
+            sendEmail(c.env.RESEND_API_KEY, {
+              to: user.email,
+              ...walletRechargeEmail({
+                appUrl: c.env.APP_URL,
+                name: user.name,
+                amountCents,
+                newBalanceCents: user.balance_cents,
+              }),
+            })
+          );
+        }
+      }
     }
   }
   return c.json({ received: true });

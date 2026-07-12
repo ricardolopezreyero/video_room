@@ -1,7 +1,8 @@
+// RLR
 import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
-import { creditLedger, newId, isBlocked, type Room, type Session, type User } from "../lib/db";
-import { slugify, isNumericSlug, nextAvailableSlug } from "../lib/slugs";
+import { creditLedger, newId, isBlocked, isMuted, type Room, type Session, type User } from "../lib/db";
+import { slugify, isNumericSlug, isReservedSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
 import { endLiveSession } from "../lib/room-lifecycle";
@@ -71,6 +72,7 @@ rooms.post("/api/rooms/:slug/rename", async (c) => {
   if (!newSlug) return c.json({ error: "slug_invalido" }, 400);
   if (newSlug === slug) return c.json({ error: "mismo_slug" }, 400);
   if (isNumericSlug(newSlug)) return c.json({ error: "slug_numerico_reservado" }, 400);
+  if (isReservedSlug(newSlug)) return c.json({ error: "slug_reservado" }, 400);
 
   const taken = await c.env.DB.prepare("SELECT id FROM rooms WHERE slug = ?").bind(newSlug).first();
   if (taken) return c.json({ error: "slug_ocupado" }, 400);
@@ -263,16 +265,20 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
       "SELECT id FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ?"
     ).bind(session.id, user.id, now).first();
     if (!validPass) return c.json({ error: "sin_pase" }, 402);
+    // Silenciado: a diferencia de bloqueado, la persona no se entera — su
+    // comentario "se manda" pero nunca llega a nadie ni queda guardado.
+    if (await isMuted(c.env.DB, room.id, user.id)) return c.json({ ok: true });
   }
 
+  const commentId = newId("cmt");
   await c.env.DB.prepare(
     "INSERT INTO comments (id, session_id, user_id, body) VALUES (?, ?, ?, ?)"
-  ).bind(newId("cmt"), session.id, user.id, body).run();
+  ).bind(commentId, session.id, user.id, body).run();
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/comment", {
     method: "POST",
-    body: JSON.stringify({ name: user.name, body, is_owner: user.id === room.owner_id }),
+    body: JSON.stringify({ id: commentId, user_id: user.id, name: user.name, body, is_owner: user.id === room.owner_id }),
   });
 
   return c.json({ ok: true });
@@ -287,7 +293,18 @@ rooms.post("/api/rooms/:slug/block", async (c) => {
 
   const { user_id: targetUserId } = await c.req.json<{ user_id: string }>().catch(() => ({ user_id: "" }));
   if (!targetUserId) return c.json({ error: "user_id_requerido" }, 400);
-  await c.env.DB.prepare("INSERT OR IGNORE INTO blocked_viewers (room_id, user_id) VALUES (?, ?)").bind(room.id, targetUserId).run();
+  // Bloquear es permanente: además de impedir que vuelva a entrar (ya
+  // validado en /pass y /comment vía isBlocked), se le quita cualquier aviso
+  // pendiente y se corta su conexión en vivo ahora mismo — "no le vuelve a
+  // mandar nada" no puede ser parcial.
+  await c.env.DB.batch([
+    c.env.DB.prepare("INSERT OR IGNORE INTO blocked_viewers (room_id, user_id) VALUES (?, ?)").bind(room.id, targetUserId),
+    c.env.DB.prepare("DELETE FROM notify_me WHERE room_id = ? AND user_id = ?").bind(room.id, targetUserId),
+  ]);
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/kick-user", { method: "POST", body: JSON.stringify({ user_id: targetUserId, reason: "blocked" }) });
+
   return c.json({ ok: true });
 });
 
@@ -310,6 +327,127 @@ rooms.post("/api/rooms/:slug/notify-me", async (c) => {
   const slug = c.req.param("slug");
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
   if (!room) return c.json({ error: "not_found" }, 404);
+  if (await isBlocked(c.env.DB, room.id, user.id)) return c.json({ error: "bloqueado" }, 403);
   await c.env.DB.prepare("INSERT OR IGNORE INTO notify_me (room_id, user_id) VALUES (?, ?)").bind(room.id, user.id).run();
   return c.json({ ok: true });
+});
+
+rooms.post("/api/rooms/:slug/mute", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { user_id: targetUserId } = await c.req.json<{ user_id: string }>().catch(() => ({ user_id: "" }));
+  if (!targetUserId) return c.json({ error: "user_id_requerido" }, 400);
+  await c.env.DB.prepare("INSERT OR IGNORE INTO muted_viewers (room_id, user_id) VALUES (?, ?)").bind(room.id, targetUserId).run();
+  return c.json({ ok: true });
+});
+
+rooms.post("/api/rooms/:slug/unmute", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { user_id: targetUserId } = await c.req.json<{ user_id: string }>().catch(() => ({ user_id: "" }));
+  if (!targetUserId) return c.json({ error: "user_id_requerido" }, 400);
+  await c.env.DB.prepare("DELETE FROM muted_viewers WHERE room_id = ? AND user_id = ?").bind(room.id, targetUserId).run();
+  return c.json({ ok: true });
+});
+
+// A diferencia de bloquear, expulsar no deja ningún registro permanente — solo
+// corta la conexión de este momento. La persona puede volver a entrar (y a
+// pagar) si quiere.
+rooms.post("/api/rooms/:slug/kick", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { user_id: targetUserId } = await c.req.json<{ user_id: string }>().catch(() => ({ user_id: "" }));
+  if (!targetUserId) return c.json({ error: "user_id_requerido" }, 400);
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/kick-user", { method: "POST", body: JSON.stringify({ user_id: targetUserId, reason: "kicked" }) });
+  return c.json({ ok: true });
+});
+
+rooms.post("/api/rooms/:slug/like-comment", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { comment_id: commentId } = await c.req.json<{ comment_id: string }>().catch(() => ({ comment_id: "" }));
+  if (!commentId) return c.json({ error: "comment_id_requerido" }, 400);
+  await c.env.DB.prepare("UPDATE comments SET likes = likes + 1 WHERE id = ?").bind(commentId).run();
+  const updated = await c.env.DB.prepare("SELECT likes FROM comments WHERE id = ?").bind(commentId).first<{ likes: number }>();
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/comment-liked", {
+    method: "POST",
+    body: JSON.stringify({ comment_id: commentId, likes: updated?.likes ?? 0 }),
+  });
+  return c.json({ ok: true, likes: updated?.likes ?? 0 });
+});
+
+// Lista de espectadores conectados ahora mismo, ordenada de mayor a menor
+// donador (entradas + propinas de ESTA transmisión) — exclusiva del creador,
+// para que sepa a quién está atendiendo antes de moderar.
+rooms.get("/api/rooms/:slug/viewers", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
+    .bind(room.id)
+    .first<Session>();
+  if (!session) return c.json({ viewers: [] });
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const connRes = await stub.fetch("https://do/connected-uids");
+  const { uids } = await connRes.json<{ uids: string[] }>();
+  if (uids.length === 0) return c.json({ viewers: [] });
+
+  const placeholders = uids.map(() => "?").join(",");
+  const [usersRes, entradasRes, tipsRes, blockedRes, mutedRes] = await Promise.all([
+    c.env.DB.prepare(`SELECT id, name, avatar_url FROM users WHERE id IN (${placeholders})`)
+      .bind(...uids).all<{ id: string; name: string; avatar_url: string | null }>(),
+    c.env.DB.prepare(
+      `SELECT user_id, COUNT(*) * 2000 as cents FROM passes WHERE session_id = ? AND user_id IN (${placeholders}) GROUP BY user_id`
+    ).bind(session.id, ...uids).all<{ user_id: string; cents: number }>(),
+    c.env.DB.prepare(
+      `SELECT from_user as user_id, COALESCE(SUM(amount_cents), 0) as cents FROM tips WHERE session_id = ? AND from_user IN (${placeholders}) GROUP BY from_user`
+    ).bind(session.id, ...uids).all<{ user_id: string; cents: number }>(),
+    c.env.DB.prepare(`SELECT user_id FROM blocked_viewers WHERE room_id = ? AND user_id IN (${placeholders})`)
+      .bind(room.id, ...uids).all<{ user_id: string }>(),
+    c.env.DB.prepare(`SELECT user_id FROM muted_viewers WHERE room_id = ? AND user_id IN (${placeholders})`)
+      .bind(room.id, ...uids).all<{ user_id: string }>(),
+  ]);
+
+  const centsByUser = new Map<string, number>();
+  for (const row of entradasRes.results) centsByUser.set(row.user_id, (centsByUser.get(row.user_id) ?? 0) + row.cents);
+  for (const row of tipsRes.results) centsByUser.set(row.user_id, (centsByUser.get(row.user_id) ?? 0) + row.cents);
+  const blockedSet = new Set(blockedRes.results.map((r) => r.user_id));
+  const mutedSet = new Set(mutedRes.results.map((r) => r.user_id));
+
+  const viewers = usersRes.results
+    .map((u) => ({
+      user_id: u.id,
+      name: u.name,
+      avatar_url: u.avatar_url,
+      total_cents: centsByUser.get(u.id) ?? 0,
+      is_muted: mutedSet.has(u.id),
+      is_blocked: blockedSet.has(u.id),
+    }))
+    .sort((a, b) => b.total_cents - a.total_cents);
+
+  return c.json({ viewers });
 });
