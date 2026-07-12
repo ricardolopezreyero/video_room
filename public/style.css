@@ -202,6 +202,34 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
 .faq-item h3 { margin-bottom: 4px; color: var(--navy); font-size: 15px; font-weight: 800; }
 .faq-item p { color: var(--muted); font-size: 13.5px; line-height: 1.7; margin: 0; }
 
+/* ---------- FAQ completa (preguntas frecuentes) ---------- */
+.faq-category-nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 24px 0 8px; }
+.faq-category-nav a {
+  padding: 8px 16px; border-radius: 999px; border: .5px solid var(--border);
+  background: #fff; color: var(--navy); font-size: 12.5px; font-weight: 700;
+  text-decoration: none; transition: border-color .2s var(--ease), color .2s;
+}
+.faq-category-nav a:hover { border-color: var(--green); color: var(--green-d); }
+.faq-category-title {
+  color: var(--navy); font-size: 22px; font-weight: 800; letter-spacing: -.5px;
+  margin: 48px 0 4px; scroll-margin-top: 90px;
+}
+.faq-category-sub { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
+.faq-list { margin: 0 0 8px; }
+.faq-list details { border-bottom: .5px solid var(--border); padding: 16px 0; }
+.faq-list details:first-of-type { border-top: .5px solid var(--border); }
+.faq-list summary {
+  cursor: pointer; font-weight: 700; color: var(--navy); font-size: 15px;
+  list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.faq-list summary::-webkit-details-marker { display: none; }
+.faq-list summary::after {
+  content: "+"; font-size: 22px; font-weight: 400; color: var(--blue-mid);
+  flex-shrink: 0; line-height: 1;
+}
+.faq-list details[open] summary::after { content: "–"; }
+.faq-list details p { color: var(--muted); font-size: 13.5px; line-height: 1.7; margin: 10px 0 0; }
+
 /* ---------- App shell (monedero / estadísticas) ---------- */
 .app-shell { background: var(--navy-deep); min-height: 100vh; color: #fff; }
 .app-wrap { max-width: 720px; margin: 0 auto; padding: 40px 24px 64px; }

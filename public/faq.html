@@ -3,10 +3,87 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Preguntas frecuentes — Video Room</title>
+<title>Preguntas frecuentes: cómo cobrar por transmitir en vivo — Video Room</title>
+<meta name="description" content="Todo lo que necesitas saber para monetizar tus transmisiones en vivo: cuánto ganas, cómo retiras tu dinero desde $10 pesos, cómo funciona la privacidad, la seguridad y la interacción con tu audiencia.">
+<meta property="og:title" content="Preguntas frecuentes — Video Room">
+<meta property="og:description" content="Cuánto ganas, cómo retiras tu dinero, y cómo funciona todo lo demás para monetizar tus transmisiones en vivo.">
+<meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "¿Cómo empiezo a cobrar por transmitir en vivo?", "acceptedAnswer": { "@type": "Answer", "text": "Inicias sesión con tu cuenta de Google, la app te da una sala con tu propio link al instante, y en cuanto prendes tu cámara y compartes ese link, cualquiera que entre te paga. No hay proceso de aprobación ni espera." } },
+    { "@type": "Question", "name": "¿Necesito seguidores o un canal ya armado para empezar?", "acceptedAnswer": { "@type": "Answer", "text": "No. No hay mínimo de seguidores, ni un nivel que subir, ni requisito de audiencia previa. Tu primera transmisión puede ser hoy mismo, con cero seguidores." } },
+    { "@type": "Question", "name": "¿Cuánto cuesta empezar a transmitir?", "acceptedAnswer": { "@type": "Answer", "text": "Nada. No pagas inscripción, mensualidad ni cuota por usar la plataforma — solo ganamos cuando tú ganas." } },
+    { "@type": "Question", "name": "¿Qué necesito para transmitir — equipo especial, estudio?", "acceptedAnswer": { "@type": "Answer", "text": "Solo tu cámara y micrófono normales (celular o computadora) y una conexión a internet razonable. Nada de estudio, luces profesionales ni equipo especializado." } },
+    { "@type": "Question", "name": "¿Puedo compartir mi pantalla en vez de mi cámara?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, puedes cambiar entre cámara y pantalla compartida cuando quieras durante la transmisión, sin cortar la sala." } },
+    { "@type": "Question", "name": "¿Puedo cambiar de cámara mientras transmito?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. Si tienes más de una cámara conectada (o cámara frontal y trasera en celular), puedes cambiar entre ellas sin salir de la transmisión." } },
+    { "@type": "Question", "name": "¿Mi link de sala cambia cada vez que transmito?", "acceptedAnswer": { "@type": "Answer", "text": "No. Tu URL es tuya de forma permanente — la compartes una vez y sirve para siempre, transmitas hoy o en un mes." } },
+    { "@type": "Question", "name": "¿Qué pasa si nadie entra a mi sala?", "acceptedAnswer": { "@type": "Answer", "text": "Puedes seguir transmitiendo el tiempo que quieras. No hay cierre automático por falta de audiencia — te recomendamos avisar a tu gente antes de empezar para que no te agarren en frío." } },
+
+    { "@type": "Question", "name": "¿Cuánto cuesta entrar a mi sala?", "acceptedAnswer": { "@type": "Answer", "text": "$20 pesos mexicanos por hora, por persona." } },
+    { "@type": "Question", "name": "¿Cuánto me quedo yo de cada entrada?", "acceptedAnswer": { "@type": "Answer", "text": "La mitad: $10 de cada $20 son tuyos, al instante, sin importar cuántas entradas lleves." } },
+    { "@type": "Question", "name": "¿Cómo funcionan las propinas?", "acceptedAnswer": { "@type": "Answer", "text": "Cualquiera en tu sala puede mandarte dinero cuando quiera, con un mensaje si quiere, y aparece en pantalla para todos. De cada $10 en propinas, $9 son tuyos." } },
+    { "@type": "Question", "name": "¿Hay algún costo oculto, mensualidad o comisión escondida?", "acceptedAnswer": { "@type": "Answer", "text": "No. Nunca pagas por transmitir. El único porcentaje que se descuenta es el que ya está incluido en el 50/50 de entradas y el 90/10 de propinas — nada más." } },
+    { "@type": "Question", "name": "¿Puedo cambiar el precio de entrada de mi sala?", "acceptedAnswer": { "@type": "Answer", "text": "Hoy el precio de entrada ($20 pesos la hora) es el mismo para todas las salas de la plataforma." } },
+    { "@type": "Question", "name": "¿Cómo veo cuánto llevo ganado?", "acceptedAnswer": { "@type": "Answer", "text": "Tu panel de Estadísticas te muestra lo ganado hoy, en la semana, o desde siempre, además de cuánta gente entró y quiénes son tus mayores donadores. Mientras transmites, también ves un contador en vivo de lo que llevas esa sesión." } },
+    { "@type": "Question", "name": "¿Qué pasa con el dinero mientras no lo retiro?", "acceptedAnswer": { "@type": "Answer", "text": "Se queda guardado en tu balance de creador, separado de tu saldo personal, esperando a que lo retires cuando quieras." } },
+
+    { "@type": "Question", "name": "¿Cómo retiro el dinero que gano?", "acceptedAnswer": { "@type": "Answer", "text": "Desde tu Monedero conectas tu cuenta bancaria una sola vez (lo hace Stripe, un proveedor de pagos internacional — nosotros nunca vemos tus datos bancarios) y después el botón de retirar manda el dinero directo a tu cuenta." } },
+    { "@type": "Question", "name": "¿Cuál es el monto mínimo para retirar?", "acceptedAnswer": { "@type": "Answer", "text": "$10 pesos. Es literalmente el mínimo técnico que permite Stripe para pagar a un banco mexicano — lo bajamos a propósito para que puedas probar que de verdad paga antes de confiarle un monto grande." } },
+    { "@type": "Question", "name": "¿Cuánto tarda en llegar el dinero a mi cuenta?", "acceptedAnswer": { "@type": "Answer", "text": "El envío se dispara al instante desde nuestro lado; el tiempo final de llegada depende del calendario de pagos de Stripe hacia tu banco." } },
+    { "@type": "Question", "name": "¿Necesito una cuenta bancaria especial o una empresa para retirar?", "acceptedAnswer": { "@type": "Answer", "text": "No, tu cuenta bancaria personal normal funciona." } },
+    { "@type": "Question", "name": "¿Qué pasa si un retiro falla?", "acceptedAnswer": { "@type": "Answer", "text": "Tu balance regresa exactamente a como estaba antes — nunca se pierde ni queda cobrado sin llegar a ningún lado. Puedes volver a intentarlo cuando quieras." } },
+    { "@type": "Question", "name": "¿Puedo retirar todas las veces que quiera?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, no hay límite de retiros — cada vez que tu balance llegue al mínimo, puedes volver a retirar." } },
+    { "@type": "Question", "name": "¿Cobran comisión por retirar?", "acceptedAnswer": { "@type": "Answer", "text": "No hay una comisión de retiro aparte — lo que ves en tu balance de creador es lo que se transfiere." } },
+    { "@type": "Question", "name": "¿Por qué tengo que conectar mi cuenta bancaria antes de retirar?", "acceptedAnswer": { "@type": "Answer", "text": "Es un paso de una sola vez con Stripe (el mismo procesador que usan Amazon y Shopify) para verificar quién eres y a dónde mandar tu dinero. Nunca guardamos tus datos bancarios nosotros mismos." } },
+    { "@type": "Question", "name": "¿Es seguro dar mis datos bancarios?", "acceptedAnswer": { "@type": "Answer", "text": "Sí — el formulario de conexión lo aloja Stripe directamente, no nuestra plataforma, y tus datos bancarios nunca pasan ni se guardan en nuestros servidores." } },
+
+    { "@type": "Question", "name": "¿Cómo entro a ver una transmisión?", "acceptedAnswer": { "@type": "Answer", "text": "Inicias sesión con tu cuenta de Google, y con el link de la sala que quieres ver, tocas Entrar — la primera vez te pide recargar saldo si no tienes." } },
+    { "@type": "Question", "name": "¿Qué compra exactamente mi pago de $20?", "acceptedAnswer": { "@type": "Answer", "text": "Una hora completa en esa sala específica, desde el momento en que entras. Dentro de esa hora puedes salir y volver a entrar sin pagar de nuevo." } },
+    { "@type": "Question", "name": "¿En qué moneda pago?", "acceptedAnswer": { "@type": "Answer", "text": "Todo funciona en pesos mexicanos (MXN)." } },
+    { "@type": "Question", "name": "¿Cómo recargo saldo?", "acceptedAnswer": { "@type": "Answer", "text": "Desde tu Monedero, en montos fijos ($20, $60, $120, $240, $480, $960 o $1,920) pagando con tarjeta a través de Stripe." } },
+    { "@type": "Question", "name": "¿Me devuelven mi dinero si salgo antes de que se acabe mi hora?", "acceptedAnswer": { "@type": "Answer", "text": "No, tu hora es tuya completa, pero no hay reembolso por el tiempo que no uses." } },
+    { "@type": "Question", "name": "¿Puedo mandarle dinero al creador además de pagar la entrada?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, en cualquier momento puedes mandarle una propina con un mensaje, en el monto que quieras." } },
+    { "@type": "Question", "name": "¿Puedo hablar o salir en cámara durante la transmisión?", "acceptedAnswer": { "@type": "Answer", "text": "El video en vivo es siempre solo del creador. Tú participas por chat de texto, con reacciones, o pidiendo la palabra si el creador lo permite." } },
+    { "@type": "Question", "name": "¿Qué pasa si mi conexión a internet es mala?", "acceptedAnswer": { "@type": "Answer", "text": "Puedes bajar la calidad de video manualmente (alta, media, baja o solo audio) desde un selector, o dejar que la app la ajuste sola según qué tan buena esté tu conexión en cada momento." } },
+
+    { "@type": "Question", "name": "¿Cómo sé cuánta gente está viendo la transmisión?", "acceptedAnswer": { "@type": "Answer", "text": "Tanto el creador como cada espectador ven un contador en tiempo real de cuánta gente hay en la sala en ese momento." } },
+    { "@type": "Question", "name": "¿Qué son los corazones que flotan en la pantalla?", "acceptedAnswer": { "@type": "Answer", "text": "Es la reacción rápida de la app: doble-toque (o doble clic) en el video manda un corazón que todos ven flotar y desvanecerse — así el chat de texto queda libre para preguntas de verdad." } },
+    { "@type": "Question", "name": "¿El creador puede destacar mi comentario?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, el creador puede fijar cualquier comentario para que aparezca destacado arriba del chat mientras lo responde en voz — una forma de que sepas que de verdad te escuchó." } },
+    { "@type": "Question", "name": "¿Cómo distingo cuándo escribe el creador en el chat?", "acceptedAnswer": { "@type": "Answer", "text": "Sus mensajes se resaltan automáticamente con un color y borde distintos — nunca se confunden con los de un espectador más." } },
+    { "@type": "Question", "name": "¿Hay un cronómetro de cuánto lleva la transmisión en vivo?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, el creador ve un cronómetro en vivo de cuánto lleva transmitiendo, junto con cuánto ha ganado esa sesión." } },
+    { "@type": "Question", "name": "¿Puedo pedir la palabra para hablar por voz?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, hay un botón para levantar la mano que le avisa directamente al creador — es una señal privada, no aparece en el chat de todos." } },
+    { "@type": "Question", "name": "¿Los comentarios y reacciones quedan guardados después?", "acceptedAnswer": { "@type": "Answer", "text": "No. Todo lo que pasa en el chat de una sesión se borra por completo en cuanto la transmisión termina." } },
+
+    { "@type": "Question", "name": "¿Se graba mi transmisión?", "acceptedAnswer": { "@type": "Answer", "text": "No. No existe ninguna función de grabación de video ni audio en la plataforma — lo que pasa en vivo, se queda en vivo." } },
+    { "@type": "Question", "name": "¿Se guardan los comentarios del chat?", "acceptedAnswer": { "@type": "Answer", "text": "No, se borran por completo al cerrar la sala — a propósito, para que todos puedan comentar con total confianza." } },
+    { "@type": "Question", "name": "¿Puedo bloquear a alguien de mi sala?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. Desde tu panel de Estadísticas puedes bloquear a cualquier persona que haya entrado o te haya mandado dinero." } },
+    { "@type": "Question", "name": "¿Qué le pasa exactamente a alguien que bloqueo?", "acceptedAnswer": { "@type": "Answer", "text": "Ya no puede volver a entrar a tu sala, comentar, ni reconectarse para seguir viendo tu transmisión — no importa que ya haya pagado esa hora." } },
+    { "@type": "Question", "name": "¿Alguien puede compartir su acceso pagado con otra persona?", "acceptedAnswer": { "@type": "Answer", "text": "No de forma simultánea: una misma cuenta solo puede estar viendo activamente desde un dispositivo a la vez. Si esa cuenta se conecta desde un segundo dispositivo, el primero se desconecta solo." } },
+    { "@type": "Question", "name": "¿Cómo protegen mis datos de pago?", "acceptedAnswer": { "@type": "Answer", "text": "Todos los pagos y retiros los procesa Stripe, el mismo proveedor que usan Amazon y Shopify. Nunca vemos ni guardamos el número completo de tu tarjeta ni tus datos bancarios." } },
+    { "@type": "Question", "name": "¿Hay un directorio público donde cualquiera pueda encontrar mi sala?", "acceptedAnswer": { "@type": "Answer", "text": "No. Solo quien tenga tu link puede llegar a tu sala — no hay buscador ni feed público mostrando salas." } },
+    { "@type": "Question", "name": "¿Qué tipo de contenido está prohibido?", "acceptedAnswer": { "@type": "Answer", "text": "Todo lo ilegal: contenido que involucre a menores, violencia real, fraude, o venta de sustancias ilegales, entre otros." } },
+
+    { "@type": "Question", "name": "¿Cómo inicio sesión?", "acceptedAnswer": { "@type": "Answer", "text": "Con tu cuenta de Google, en un tap — no hay contraseña que crear ni recordar." } },
+    { "@type": "Question", "name": "¿Uso la misma cuenta para ver salas y para transmitir la mía?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, es una sola cuenta. Tu saldo (para pagar entradas y propinas) y tu balance de creador (lo que ganas) se muestran siempre por separado." } },
+    { "@type": "Question", "name": "¿Puedo ver la misma sala desde dos dispositivos a la vez?", "acceptedAnswer": { "@type": "Answer", "text": "No al mismo tiempo — un pase es válido para un dispositivo activo a la vez. Si te conectas desde uno nuevo, el anterior se apaga solo, sin cobrarte de nuevo." } },
+    { "@type": "Question", "name": "¿Cada cuánto tengo que volver a iniciar sesión?", "acceptedAnswer": { "@type": "Answer", "text": "Tu sesión dura mucho tiempo y se renueva sola mientras uses la app de vez en cuando — no vas a tener que iniciar sesión todos los días." } },
+    { "@type": "Question", "name": "¿Puedo cerrar sesión cuando quiera?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, hay un botón de cerrar sesión disponible en cualquier página de la app." } },
+
+    { "@type": "Question", "name": "¿Funciona en celular?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, toda la plataforma está pensada para funcionar igual de bien en celular que en computadora, tanto para transmitir como para ver." } },
+    { "@type": "Question", "name": "¿Necesito instalar una aplicación?", "acceptedAnswer": { "@type": "Answer", "text": "No. Todo funciona directo desde el navegador — nada que descargar ni instalar." } },
+    { "@type": "Question", "name": "¿Qué navegador necesito?", "acceptedAnswer": { "@type": "Answer", "text": "Cualquier navegador moderno (Chrome, Safari, Edge, Firefox) en celular o computadora." } },
+    { "@type": "Question", "name": "¿Qué pasa si se me corta la conexión mientras transmito?", "acceptedAnswer": { "@type": "Answer", "text": "Si tu transmisión se queda colgada sin que la cierres a propósito, el sistema la cierra solo después de un rato, para que nadie pague por entrar a una sala que en realidad ya no está transmitiendo." } },
+    { "@type": "Question", "name": "¿Puedo ver solo el audio si mi conexión es muy lenta?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, el selector de calidad de video incluye una opción de solo audio para cuando el video no vale la pena por la conexión." } },
+    { "@type": "Question", "name": "¿Dónde veo el historial completo de mis movimientos de dinero?", "acceptedAnswer": { "@type": "Answer", "text": "En la página de Transacciones, con cada recarga, entrada, propina y retiro — y puedes descargar tu historial completo en un archivo CSV en cualquier momento." } }
+  ]
+}
+</script>
 </head>
 <body>
 <nav class="nav">
@@ -20,40 +97,123 @@
 </nav>
 
 <section class="section-light">
-  <div class="section-content" style="max-width:720px;">
+  <div class="section-content" style="max-width:760px;">
     <div class="eyebrow" style="justify-content:flex-start"><div class="ew-dot"></div><div class="ew-t" style="color:var(--blue)">Ayuda</div></div>
-    <h2 style="color:var(--navy); margin-bottom:32px;">Preguntas frecuentes</h2>
+    <h2 style="color:var(--navy); margin-bottom:8px;">Preguntas frecuentes</h2>
+    <p style="color:var(--muted); font-size:14.5px; line-height:1.7; margin-bottom:0;">
+      Todo lo que necesitas saber para monetizar tus transmisiones — cuánto ganas, cómo retiras tu dinero, y cómo funciona la privacidad y la interacción con tu audiencia. Toca cualquier pregunta para ver la respuesta.
+    </p>
 
-    <h3 style="color:var(--blue-mid); font-size:14px; text-transform:uppercase; letter-spacing:.5px; margin-top:32px;">Para creadores</h3>
-    <div class="faq-item"><h3>¿Cuánto gano exactamente?</h3><p>$10 de cada entrada de $20 (por espectador, por hora) y $9 de cada $10 en propinas. Sin niveles, sin requisitos, igual para todos desde el primer minuto.</p></div>
-    <div class="faq-item"><h3>¿Cuándo puedo retirar mi dinero?</h3><p>Cuando tu balance llegue a $200. Lo mandas a tu cuenta bancaria y llega en 1-2 días hábiles. Tu balance es en pesos — lo que ves es lo que retiras.</p></div>
-    <div class="faq-item"><h3>¿Necesito seguidores o cumplir requisitos?</h3><p>No. Necesitas una cuenta de Google y algo que valga la pena ver en vivo. Tu primera transmisión puede ser hoy mismo.</p></div>
-    <div class="faq-item"><h3>¿Qué pasa si nadie entra?</h3><p>Si nadie entra en los primeros 5 minutos, la transmisión se cierra sola y no pasa nada. Tip: comparte tu link antes de arrancar y anuncia tu hora.</p></div>
-    <div class="faq-item"><h3>¿Mi sala desaparece si no transmito?</h3><p>No. Tu URL es tuya para siempre. Cuando no estás en vivo, quien la visite puede pedir que le avisemos cuando abras.</p></div>
-    <div class="faq-item"><h3>¿Puedo compartir mi pantalla?</h3><p>Sí, cámara o pantalla, y cambias entre ambas cuando quieras.</p></div>
-    <div class="faq-item"><h3>¿Puedo sacar a alguien de mi sala?</h3><p>Sí, con un tap y sin reembolso. Tu sala, tus reglas.</p></div>
-    <div class="faq-item"><h3>¿Cobran comisión oculta, membresía o algo?</h3><p>No. No pagas nada por transmitir, nunca. Solo ganamos cuando tú ganas.</p></div>
+    <nav class="faq-category-nav" aria-label="Categorías de preguntas frecuentes">
+      <a href="#empezar">Empezar a monetizar</a>
+      <a href="#ganancias">Cuánto ganas</a>
+      <a href="#retiros">Retiros</a>
+      <a href="#espectadores">Para espectadores</a>
+      <a href="#interaccion">Interacción en vivo</a>
+      <a href="#privacidad">Privacidad y seguridad</a>
+      <a href="#cuenta">Cuenta y dispositivos</a>
+      <a href="#tecnico">Técnico y soporte</a>
+    </nav>
 
-    <h3 style="color:var(--blue-mid); font-size:14px; text-transform:uppercase; letter-spacing:.5px; margin-top:32px;">Para espectadores</h3>
-    <div class="faq-item"><h3>¿Por qué pagar por algo que en otras apps es gratis?</h3><p>Porque no es lo mismo. Aquí el creador está en vivo, para un grupo que pagó por estar, sin grabación y sin algoritmo.</p></div>
-    <div class="faq-item"><h3>¿Qué compra mi $20?</h3><p>Una hora en esa sala, desde que entras. Puedes salir y volver dentro de tu hora sin pagar de nuevo.</p></div>
-    <div class="faq-item"><h3>¿Puedo hablar o salir en video?</h3><p>Puedes hablar por voz si pides la palabra y el creador te la da. Video, solo el creador — siempre.</p></div>
-    <div class="faq-item"><h3>¿Qué pasa si se me acaba el saldo a media transmisión?</h3><p>Te avisamos 5 minutos antes con recarga de 1 tap. Si no recargas, tienes 2 minutos de gracia en solo-audio antes de salir.</p></div>
-    <div class="faq-item"><h3>¿Me pueden regresar mi dinero si salgo antes de la hora?</h3><p>No. Tu hora es tuya completa, pero no hay reembolsos por tiempo no usado.</p></div>
-    <div class="faq-item"><h3>¿Las propinas son obligatorias o con "monedas"?</h3><p>Ni una ni otra. Mandas dinero si quieres, cuanto quieras, en pesos, desde tu mismo saldo.</p></div>
+    <h3 class="faq-category-title" id="empezar">Empezar a monetizar</h3>
+    <p class="faq-category-sub">Para creadores que quieren transmitir por primera vez.</p>
+    <div class="faq-list">
+      <details><summary>¿Cómo empiezo a cobrar por transmitir en vivo?</summary><p>Inicias sesión con tu cuenta de Google, la app te da una sala con tu propio link al instante, y en cuanto prendes tu cámara y compartes ese link, cualquiera que entre te paga. No hay proceso de aprobación ni espera.</p></details>
+      <details><summary>¿Necesito seguidores o un canal ya armado para empezar?</summary><p>No. No hay mínimo de seguidores, ni un nivel que subir, ni requisito de audiencia previa. Tu primera transmisión puede ser hoy mismo, con cero seguidores.</p></details>
+      <details><summary>¿Cuánto cuesta empezar a transmitir?</summary><p>Nada. No pagas inscripción, mensualidad ni cuota por usar la plataforma — solo ganamos cuando tú ganas.</p></details>
+      <details><summary>¿Qué necesito para transmitir — equipo especial, estudio?</summary><p>Solo tu cámara y micrófono normales (celular o computadora) y una conexión a internet razonable. Nada de estudio, luces profesionales ni equipo especializado.</p></details>
+      <details><summary>¿Puedo compartir mi pantalla en vez de mi cámara?</summary><p>Sí, puedes cambiar entre cámara y pantalla compartida cuando quieras durante la transmisión, sin cortar la sala.</p></details>
+      <details><summary>¿Puedo cambiar de cámara mientras transmito?</summary><p>Sí. Si tienes más de una cámara conectada (o cámara frontal y trasera en celular), puedes cambiar entre ellas sin salir de la transmisión.</p></details>
+      <details><summary>¿Mi link de sala cambia cada vez que transmito?</summary><p>No. Tu URL es tuya de forma permanente — la compartes una vez y sirve para siempre, transmitas hoy o en un mes.</p></details>
+      <details><summary>¿Qué pasa si nadie entra a mi sala?</summary><p>Puedes seguir transmitiendo el tiempo que quieras. No hay cierre automático por falta de audiencia — te recomendamos avisar a tu gente antes de empezar para que no te agarren en frío.</p></details>
+    </div>
 
-    <h3 style="color:var(--blue-mid); font-size:14px; text-transform:uppercase; letter-spacing:.5px; margin-top:32px;">Privacidad y seguridad</h3>
-    <div class="faq-item"><h3>¿Se graban las transmisiones?</h3><p>No. Nada se graba, ni por nosotros ni dentro de la app. Comentarios y likes también desaparecen al terminar la sesión.</p></div>
-    <div class="faq-item"><h3>¿Quién puede entrar a una sala?</h3><p>Solo quien tenga el link, cuenta de Google y saldo. No hay directorio público.</p></div>
-    <div class="faq-item"><h3>¿Mi pago es seguro?</h3><p>Los pagos los procesa Stripe (el mismo procesador de Amazon y Shopify). Nosotros nunca vemos ni guardamos tu tarjeta.</p></div>
-    <div class="faq-item"><h3>¿Qué contenido está prohibido?</h3><p>Lo ilegal, punto: contenido sexual con menores, violencia real, fraude, venta de sustancias.</p></div>
+    <h3 class="faq-category-title" id="ganancias">Cuánto ganas y cómo se reparte</h3>
+    <p class="faq-category-sub">El dinero de entradas, propinas y cómo se calcula todo.</p>
+    <div class="faq-list">
+      <details><summary>¿Cuánto cuesta entrar a mi sala?</summary><p>$20 pesos mexicanos por hora, por persona.</p></details>
+      <details><summary>¿Cuánto me quedo yo de cada entrada?</summary><p>La mitad: $10 de cada $20 son tuyos, al instante, sin importar cuántas entradas lleves.</p></details>
+      <details><summary>¿Cómo funcionan las propinas?</summary><p>Cualquiera en tu sala puede mandarte dinero cuando quiera, con un mensaje si quiere, y aparece en pantalla para todos. De cada $10 en propinas, $9 son tuyos.</p></details>
+      <details><summary>¿Hay algún costo oculto, mensualidad o comisión escondida?</summary><p>No. Nunca pagas por transmitir. El único porcentaje que se descuenta es el que ya está incluido en el 50/50 de entradas y el 90/10 de propinas — nada más.</p></details>
+      <details><summary>¿Puedo cambiar el precio de entrada de mi sala?</summary><p>Hoy el precio de entrada ($20 pesos la hora) es el mismo para todas las salas de la plataforma.</p></details>
+      <details><summary>¿Cómo veo cuánto llevo ganado?</summary><p>Tu panel de Estadísticas te muestra lo ganado hoy, en la semana, o desde siempre, además de cuánta gente entró y quiénes son tus mayores donadores. Mientras transmites, también ves un contador en vivo de lo que llevas esa sesión.</p></details>
+      <details><summary>¿Qué pasa con el dinero mientras no lo retiro?</summary><p>Se queda guardado en tu balance de creador, separado de tu saldo personal, esperando a que lo retires cuando quieras.</p></details>
+    </div>
 
-    <h3 style="color:var(--blue-mid); font-size:14px; text-transform:uppercase; letter-spacing:.5px; margin-top:32px;">Dinero y cuentas</h3>
-    <div class="faq-item"><h3>¿En qué moneda funciona todo?</h3><p>Pesos mexicanos. Recargas en pesos, ves pesos, retiras pesos.</p></div>
-    <div class="faq-item"><h3>¿Puedo usar la misma cuenta para ver y transmitir?</h3><p>Sí, es una sola cuenta. Tu saldo y tu balance de creador se muestran por separado.</p></div>
-    <div class="faq-item"><h3>¿Puedo ver la misma sala en dos dispositivos?</h3><p>Un pase = un dispositivo a la vez.</p></div>
-    <div class="faq-item"><h3>¿Se puede perder o borrar mi historial de pagos?</h3><p>No. Cada recarga, entrada, propina y retiro queda guardado para siempre en tu historial — nunca se borra ni se sobrescribe.</p></div>
-    <div class="faq-item"><h3>¿Facturan?</h3><p>Los creadores que lo requieran podrán solicitar comprobantes desde su panel (v1: proceso manual por correo).</p></div>
+    <h3 class="faq-category-title" id="retiros">Retiros: de tu balance a tu banco</h3>
+    <p class="faq-category-sub">Cómo funciona el dinero de verdad, saliendo de la app.</p>
+    <div class="faq-list">
+      <details><summary>¿Cómo retiro el dinero que gano?</summary><p>Desde tu Monedero conectas tu cuenta bancaria una sola vez (lo hace Stripe, un proveedor de pagos internacional — nosotros nunca vemos tus datos bancarios) y después el botón de retirar manda el dinero directo a tu cuenta.</p></details>
+      <details><summary>¿Cuál es el monto mínimo para retirar?</summary><p>$10 pesos. Es literalmente el mínimo técnico que permite Stripe para pagar a un banco mexicano — lo bajamos a propósito para que puedas probar que de verdad paga antes de confiarle un monto grande.</p></details>
+      <details><summary>¿Cuánto tarda en llegar el dinero a mi cuenta?</summary><p>El envío se dispara al instante desde nuestro lado; el tiempo final de llegada depende del calendario de pagos de Stripe hacia tu banco.</p></details>
+      <details><summary>¿Necesito una cuenta bancaria especial o una empresa para retirar?</summary><p>No, tu cuenta bancaria personal normal funciona.</p></details>
+      <details><summary>¿Qué pasa si un retiro falla?</summary><p>Tu balance regresa exactamente a como estaba antes — nunca se pierde ni queda cobrado sin llegar a ningún lado. Puedes volver a intentarlo cuando quieras.</p></details>
+      <details><summary>¿Puedo retirar todas las veces que quiera?</summary><p>Sí, no hay límite de retiros — cada vez que tu balance llegue al mínimo, puedes volver a retirar.</p></details>
+      <details><summary>¿Cobran comisión por retirar?</summary><p>No hay una comisión de retiro aparte — lo que ves en tu balance de creador es lo que se transfiere.</p></details>
+      <details><summary>¿Por qué tengo que conectar mi cuenta bancaria antes de retirar?</summary><p>Es un paso de una sola vez con Stripe (el mismo procesador que usan Amazon y Shopify) para verificar quién eres y a dónde mandar tu dinero. Nunca guardamos tus datos bancarios nosotros mismos.</p></details>
+      <details><summary>¿Es seguro dar mis datos bancarios?</summary><p>Sí — el formulario de conexión lo aloja Stripe directamente, no nuestra plataforma, y tus datos bancarios nunca pasan ni se guardan en nuestros servidores.</p></details>
+    </div>
+
+    <h3 class="faq-category-title" id="espectadores">Para espectadores</h3>
+    <p class="faq-category-sub">Entrar, pagar y participar en la sala de un creador.</p>
+    <div class="faq-list">
+      <details><summary>¿Cómo entro a ver una transmisión?</summary><p>Inicias sesión con tu cuenta de Google, y con el link de la sala que quieres ver, tocas Entrar — la primera vez te pide recargar saldo si no tienes.</p></details>
+      <details><summary>¿Qué compra exactamente mi pago de $20?</summary><p>Una hora completa en esa sala específica, desde el momento en que entras. Dentro de esa hora puedes salir y volver a entrar sin pagar de nuevo.</p></details>
+      <details><summary>¿En qué moneda pago?</summary><p>Todo funciona en pesos mexicanos (MXN).</p></details>
+      <details><summary>¿Cómo recargo saldo?</summary><p>Desde tu Monedero, en montos fijos ($20, $60, $120, $240, $480, $960 o $1,920) pagando con tarjeta a través de Stripe.</p></details>
+      <details><summary>¿Me devuelven mi dinero si salgo antes de que se acabe mi hora?</summary><p>No, tu hora es tuya completa, pero no hay reembolso por el tiempo que no uses.</p></details>
+      <details><summary>¿Puedo mandarle dinero al creador además de pagar la entrada?</summary><p>Sí, en cualquier momento puedes mandarle una propina con un mensaje, en el monto que quieras.</p></details>
+      <details><summary>¿Puedo hablar o salir en cámara durante la transmisión?</summary><p>El video en vivo es siempre solo del creador. Tú participas por chat de texto, con reacciones, o pidiendo la palabra si el creador lo permite.</p></details>
+      <details><summary>¿Qué pasa si mi conexión a internet es mala?</summary><p>Puedes bajar la calidad de video manualmente (alta, media, baja o solo audio) desde un selector, o dejar que la app la ajuste sola según qué tan buena esté tu conexión en cada momento.</p></details>
+    </div>
+
+    <h3 class="faq-category-title" id="interaccion">Interacción en vivo</h3>
+    <p class="faq-category-sub">Cómo se siente estar en una sala, no solo verla.</p>
+    <div class="faq-list">
+      <details><summary>¿Cómo sé cuánta gente está viendo la transmisión?</summary><p>Tanto el creador como cada espectador ven un contador en tiempo real de cuánta gente hay en la sala en ese momento.</p></details>
+      <details><summary>¿Qué son los corazones que flotan en la pantalla?</summary><p>Es la reacción rápida de la app: doble-toque (o doble clic) en el video manda un corazón que todos ven flotar y desvanecerse — así el chat de texto queda libre para preguntas de verdad.</p></details>
+      <details><summary>¿El creador puede destacar mi comentario?</summary><p>Sí, el creador puede fijar cualquier comentario para que aparezca destacado arriba del chat mientras lo responde en voz — una forma de que sepas que de verdad te escuchó.</p></details>
+      <details><summary>¿Cómo distingo cuándo escribe el creador en el chat?</summary><p>Sus mensajes se resaltan automáticamente con un color y borde distintos — nunca se confunden con los de un espectador más.</p></details>
+      <details><summary>¿Hay un cronómetro de cuánto lleva la transmisión en vivo?</summary><p>Sí, el creador ve un cronómetro en vivo de cuánto lleva transmitiendo, junto con cuánto ha ganado esa sesión.</p></details>
+      <details><summary>¿Puedo pedir la palabra para hablar por voz?</summary><p>Sí, hay un botón para levantar la mano que le avisa directamente al creador — es una señal privada, no aparece en el chat de todos.</p></details>
+      <details><summary>¿Los comentarios y reacciones quedan guardados después?</summary><p>No. Todo lo que pasa en el chat de una sesión se borra por completo en cuanto la transmisión termina.</p></details>
+    </div>
+
+    <h3 class="faq-category-title" id="privacidad">Privacidad, seguridad y moderación</h3>
+    <p class="faq-category-sub">Nada se graba, y tú tienes el control de tu sala.</p>
+    <div class="faq-list">
+      <details><summary>¿Se graba mi transmisión?</summary><p>No. No existe ninguna función de grabación de video ni audio en la plataforma — lo que pasa en vivo, se queda en vivo.</p></details>
+      <details><summary>¿Se guardan los comentarios del chat?</summary><p>No, se borran por completo al cerrar la sala — a propósito, para que todos puedan comentar con total confianza.</p></details>
+      <details><summary>¿Puedo bloquear a alguien de mi sala?</summary><p>Sí. Desde tu panel de Estadísticas puedes bloquear a cualquier persona que haya entrado o te haya mandado dinero.</p></details>
+      <details><summary>¿Qué le pasa exactamente a alguien que bloqueo?</summary><p>Ya no puede volver a entrar a tu sala, comentar, ni reconectarse para seguir viendo tu transmisión — no importa que ya haya pagado esa hora.</p></details>
+      <details><summary>¿Alguien puede compartir su acceso pagado con otra persona?</summary><p>No de forma simultánea: una misma cuenta solo puede estar viendo activamente desde un dispositivo a la vez. Si esa cuenta se conecta desde un segundo dispositivo, el primero se desconecta solo.</p></details>
+      <details><summary>¿Cómo protegen mis datos de pago?</summary><p>Todos los pagos y retiros los procesa Stripe, el mismo proveedor que usan Amazon y Shopify. Nunca vemos ni guardamos el número completo de tu tarjeta ni tus datos bancarios.</p></details>
+      <details><summary>¿Hay un directorio público donde cualquiera pueda encontrar mi sala?</summary><p>No. Solo quien tenga tu link puede llegar a tu sala — no hay buscador ni feed público mostrando salas.</p></details>
+      <details><summary>¿Qué tipo de contenido está prohibido?</summary><p>Todo lo ilegal: contenido que involucre a menores, violencia real, fraude, o venta de sustancias ilegales, entre otros.</p></details>
+    </div>
+
+    <h3 class="faq-category-title" id="cuenta">Cuenta y dispositivos</h3>
+    <p class="faq-category-sub">Cómo entras, y qué tan segura está tu cuenta.</p>
+    <div class="faq-list">
+      <details><summary>¿Cómo inicio sesión?</summary><p>Con tu cuenta de Google, en un tap — no hay contraseña que crear ni recordar.</p></details>
+      <details><summary>¿Uso la misma cuenta para ver salas y para transmitir la mía?</summary><p>Sí, es una sola cuenta. Tu saldo (para pagar entradas y propinas) y tu balance de creador (lo que ganas) se muestran siempre por separado.</p></details>
+      <details><summary>¿Puedo ver la misma sala desde dos dispositivos a la vez?</summary><p>No al mismo tiempo — un pase es válido para un dispositivo activo a la vez. Si te conectas desde uno nuevo, el anterior se apaga solo, sin cobrarte de nuevo.</p></details>
+      <details><summary>¿Cada cuánto tengo que volver a iniciar sesión?</summary><p>Tu sesión dura mucho tiempo y se renueva sola mientras uses la app de vez en cuando — no vas a tener que iniciar sesión todos los días.</p></details>
+      <details><summary>¿Puedo cerrar sesión cuando quiera?</summary><p>Sí, hay un botón de cerrar sesión disponible en cualquier página de la app.</p></details>
+    </div>
+
+    <h3 class="faq-category-title" id="tecnico">Aspectos técnicos y soporte</h3>
+    <p class="faq-category-sub">Compatibilidad, conexión y dónde ver tu historial.</p>
+    <div class="faq-list">
+      <details><summary>¿Funciona en celular?</summary><p>Sí, toda la plataforma está pensada para funcionar igual de bien en celular que en computadora, tanto para transmitir como para ver.</p></details>
+      <details><summary>¿Necesito instalar una aplicación?</summary><p>No. Todo funciona directo desde el navegador — nada que descargar ni instalar.</p></details>
+      <details><summary>¿Qué navegador necesito?</summary><p>Cualquier navegador moderno (Chrome, Safari, Edge, Firefox) en celular o computadora.</p></details>
+      <details><summary>¿Qué pasa si se me corta la conexión mientras transmito?</summary><p>Si tu transmisión se queda colgada sin que la cierres a propósito, el sistema la cierra solo después de un rato, para que nadie pague por entrar a una sala que en realidad ya no está transmitiendo.</p></details>
+      <details><summary>¿Puedo ver solo el audio si mi conexión es muy lenta?</summary><p>Sí, el selector de calidad de video incluye una opción de solo audio para cuando el video no vale la pena por la conexión.</p></details>
+      <details><summary>¿Dónde veo el historial completo de mis movimientos de dinero?</summary><p>En la página de Transacciones, con cada recarga, entrada, propina y retiro — y puedes descargar tu historial completo en un archivo CSV en cualquier momento.</p></details>
+    </div>
+
+    <p style="margin-top:40px; color:var(--muted); font-size:13.5px;">¿No encontraste tu respuesta? Escríbenos y con gusto te ayudamos.</p>
   </div>
 </section>
 
