@@ -36,6 +36,7 @@
   let pc = null;
   let ws = null;
   let sessionEnded = false;
+  let ownerStreamStopped = false;
   let chatVisible = true;
   let waveformStarted = false;
   let connectingTimer = null;
@@ -197,6 +198,21 @@
   // motivo explícito), el creador la expulsó (temporal, puede reintentar), o
   // el creador la bloqueó (permanente — ya no puede volver a entrar, /pass y
   // /comment lo rechazan del lado del servidor).
+  // Al terminar la transmisión, el creador ya sabe que se acabó — no tiene
+  // sentido que su cámara/mic sigan encendidos varios segundos más mientras
+  // se espera el aviso a los espectadores. Apaga todo de inmediato; el
+  // recargar la página (para dejar todo limpio) puede esperar un poco más,
+  // lo justo para leer cuánto ganó.
+  function stopOwnerMediaNow() {
+    if (ownerStreamStopped) return;
+    ownerStreamStopped = true;
+    if (cameraTrack) { try { cameraTrack.stop(); } catch {} }
+    if (micTrack) { try { micTrack.stop(); } catch {} }
+    if (pc) { try { pc.close(); } catch {} pc = null; }
+    player.srcObject = null;
+    setTimeout(() => location.reload(), 2500);
+  }
+
   function handleKicked(reason) {
     if (pc) { try { pc.close(); } catch {} pc = null; }
     stopViewerQualityMonitor();
@@ -311,8 +327,12 @@
         if (isOwner) toast(`🎤 ${msg.name} levantó la mano`, 5000);
       } else if (msg.type === "ended") {
         sessionEnded = true;
-        toast("La transmisión terminó. Como prometimos, nada quedó grabado.", 6000);
-        setTimeout(() => location.reload(), 6000);
+        if (isOwner) {
+          stopOwnerMediaNow();
+        } else {
+          toast("La transmisión terminó. Como prometimos, nada quedó grabado.", 6000);
+          setTimeout(() => location.reload(), 6000);
+        }
       }
     };
     // El socket puede caerse por cambios de red (wifi/datos, la app pasa a segundo
@@ -712,14 +732,11 @@
     $("btn-hand").style.display = "none";
     $("btn-mic").style.display = "inline-block";
     $("btn-cam").style.display = "inline-block";
-    // Compartir pantalla es un caso de escritorio (mostrar una presentación,
-    // una terminal de trading) — en touch, además de no tener mucho sentido
-    // (¿compartir la pantalla de tu propio celular?), el picker nativo de
-    // captura de pantalla en móvil resultó poco confiable: cancelarlo dejaba
-    // el botón y el de cambiar de cámara sin responder. Se oculta en touch en
-    // vez de arriesgar esa combinación.
-    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-    if (!isTouchDevice && "getDisplayMedia" in navigator.mediaDevices) {
+    // Se muestra si el navegador de verdad soporta compartir pantalla (en la
+    // mayoría de navegadores móviles ni siquiera existe la API, así que ahí
+    // no aparece solo). El withTimeout() de toggleScreenShare()/stopScreenShare()
+    // ya evita que cancelar el picker nativo deje los botones sin responder.
+    if ("getDisplayMedia" in navigator.mediaDevices) {
       $("btn-screen").style.display = "inline-block";
     }
     setupCameraSwitcher();
@@ -1185,7 +1202,8 @@
       sessionEnded = true;
       if (qualityTimer) clearInterval(qualityTimer);
       if (liveTimerInterval) clearInterval(liveTimerInterval);
-      toast(`Ganaste $${Math.round((res.earned_cents ?? 0) / 100)} · Pico ${res.peak_viewers ?? 0} personas`, 8000);
+      stopOwnerMediaNow();
+      toast(`Ganaste $${Math.round((res.earned_cents ?? 0) / 100)} · Pico ${res.peak_viewers ?? 0} personas`, 2400);
     });
     guarded($("btn-tip"), async () => {
       if (!me) return requireLogin();
