@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
-import { creditLedger, newId, type Room, type Session, type User } from "../lib/db";
+import { creditLedger, newId, isBlocked, type Room, type Session, type User } from "../lib/db";
 import { slugify, isNumericSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
+import { endLiveSession } from "../lib/room-lifecycle";
 import type { Env } from "../env";
 
 export const rooms = new Hono<{ Bindings: Env }>();
@@ -122,14 +123,8 @@ rooms.post("/api/rooms/:slug/stop", async (c) => {
     .first<Session>();
   if (!live) return c.json({ error: "no_live_session" }, 400);
 
-  await c.env.DB.prepare("UPDATE sessions SET status = 'ended', ended_at = unixepoch() WHERE id = ?").bind(live.id).run();
-  // Los comentarios son eventos fugaces: se borran al cerrar la sala, sin
-  // excepciones, y en segundo plano para no retrasar la respuesta al creador.
-  c.executionCtx.waitUntil(c.env.DB.prepare("DELETE FROM comments WHERE session_id = ?").bind(live.id).run());
-
-  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  const summary = await stub.fetch("https://do/stop", { method: "POST" });
-  return c.json(await summary.json());
+  const summary = await endLiveSession(c.env, room, live, (p) => c.executionCtx.waitUntil(p));
+  return c.json(summary);
 });
 
 rooms.get("/api/rooms/:slug/status", async (c) => {
@@ -155,6 +150,9 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
     .bind(room.id)
     .first<Session>();
   if (!session) return c.json({ error: "sala_cerrada" }, 400);
+  if (user.id !== room.owner_id && (await isBlocked(c.env.DB, room.id, user.id))) {
+    return c.json({ error: "bloqueado" }, 403);
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const validPass = await c.env.DB.prepare(
@@ -259,6 +257,7 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
   if (!session) return c.json({ error: "sala_cerrada" }, 400);
 
   if (user.id !== room.owner_id) {
+    if (await isBlocked(c.env.DB, room.id, user.id)) return c.json({ error: "bloqueado" }, 403);
     const now = Math.floor(Date.now() / 1000);
     const validPass = await c.env.DB.prepare(
       "SELECT id FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ?"
@@ -276,6 +275,32 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
     body: JSON.stringify({ name: user.name, body, is_owner: user.id === room.owner_id }),
   });
 
+  return c.json({ ok: true });
+});
+
+rooms.post("/api/rooms/:slug/block", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { user_id: targetUserId } = await c.req.json<{ user_id: string }>().catch(() => ({ user_id: "" }));
+  if (!targetUserId) return c.json({ error: "user_id_requerido" }, 400);
+  await c.env.DB.prepare("INSERT OR IGNORE INTO blocked_viewers (room_id, user_id) VALUES (?, ?)").bind(room.id, targetUserId).run();
+  return c.json({ ok: true });
+});
+
+rooms.post("/api/rooms/:slug/unblock", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { user_id: targetUserId } = await c.req.json<{ user_id: string }>().catch(() => ({ user_id: "" }));
+  if (!targetUserId) return c.json({ error: "user_id_requerido" }, 400);
+  await c.env.DB.prepare("DELETE FROM blocked_viewers WHERE room_id = ? AND user_id = ?").bind(room.id, targetUserId).run();
   return c.json({ ok: true });
 });
 

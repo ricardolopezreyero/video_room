@@ -101,6 +101,7 @@ stats.get("/api/stats", async (c) => {
     ).bind(...topDonorIds.map((d) => d.user_id)).all<{ id: string; name: string; avatar_url: string | null }>();
     const namesById = new Map(namesRes.results.map((u) => [u.id, u]));
     topDonors = topDonorIds.map((d) => ({
+      user_id: d.user_id,
       name: namesById.get(d.user_id)?.name ?? "Alguien",
       avatar_url: namesById.get(d.user_id)?.avatar_url ?? null,
       total_cents: d.entradas_cents + d.propinas_cents,

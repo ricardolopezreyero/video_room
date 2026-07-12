@@ -1,5 +1,34 @@
 const STRIPE_API = "https://api.stripe.com/v1";
 
+// Envuelve errores de la API de Stripe para que quien llame pueda distinguir
+// "Connect no está habilitado en la cuenta de la plataforma" (algo que solo
+// Ricardo puede resolver en su Dashboard de Stripe) de cualquier otro error.
+export class StripeApiError extends Error {
+  raw: string;
+  constructor(raw: string) {
+    super(`Stripe error: ${raw}`);
+    this.raw = raw;
+  }
+  get isConnectNotEnabled(): boolean {
+    return /not.*enabled.*connect|connect.*not.*enabled|signed up for Connect/i.test(this.raw);
+  }
+}
+
+async function stripeRequest(
+  secretKey: string,
+  method: "GET" | "POST",
+  path: string,
+  body?: URLSearchParams,
+  idempotencyKey?: string
+): Promise<any> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${secretKey}` };
+  if (body) headers["Content-Type"] = "application/x-www-form-urlencoded";
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  const res = await fetch(`${STRIPE_API}${path}`, { method, headers, body });
+  if (!res.ok) throw new StripeApiError(await res.text());
+  return res.json();
+}
+
 export async function stripeCreateCheckoutSession(
   secretKey: string,
   params: { amountCents: number; userId: string; successUrl: string; cancelUrl: string }
@@ -33,6 +62,64 @@ export async function stripeCreateCheckoutSession(
   });
   if (!res.ok) throw new Error(`Stripe error: ${await res.text()}`);
   return res.json();
+}
+
+// Cuenta Express de Stripe Connect: Stripe se encarga del formulario de alta
+// (identidad + datos bancarios) y de mandar los payouts al banco del creador
+// según su propio calendario — nosotros solo guardamos el id de la cuenta.
+export async function stripeCreateConnectAccount(secretKey: string, email: string): Promise<{ id: string }> {
+  return stripeRequest(
+    secretKey,
+    "POST",
+    "/accounts",
+    new URLSearchParams({
+      type: "express",
+      email,
+      "capabilities[transfers][requested]": "true",
+      country: "MX",
+    })
+  );
+}
+
+export async function stripeCreateAccountLink(
+  secretKey: string,
+  params: { accountId: string; refreshUrl: string; returnUrl: string }
+): Promise<{ url: string }> {
+  return stripeRequest(
+    secretKey,
+    "POST",
+    "/account_links",
+    new URLSearchParams({
+      account: params.accountId,
+      refresh_url: params.refreshUrl,
+      return_url: params.returnUrl,
+      type: "account_onboarding",
+    })
+  );
+}
+
+export async function stripeGetAccount(secretKey: string, accountId: string): Promise<{ payouts_enabled: boolean }> {
+  return stripeRequest(secretKey, "GET", `/accounts/${accountId}`);
+}
+
+// Mueve dinero real del balance de la plataforma a la cuenta conectada del
+// creador. idempotencyKey evita una transferencia doble si la petición se
+// reintenta después de que Stripe ya la procesó pero la respuesta se perdió.
+export async function stripeCreateTransfer(
+  secretKey: string,
+  params: { amountCents: number; destinationAccountId: string; idempotencyKey: string }
+): Promise<{ id: string }> {
+  return stripeRequest(
+    secretKey,
+    "POST",
+    "/transfers",
+    new URLSearchParams({
+      amount: String(params.amountCents),
+      currency: "mxn",
+      destination: params.destinationAccountId,
+    }),
+    params.idempotencyKey
+  );
 }
 
 async function hmacSha256Hex(secret: string, data: string): Promise<string> {

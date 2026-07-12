@@ -120,6 +120,7 @@ function render() {
             <div class="donor-meta">${d.entradas} entrada${d.entradas === 1 ? '' : 's'} · ${d.propinas} propina${d.propinas === 1 ? '' : 's'}</div>
           </div>
           <div class="donor-total">${fmt(d.total_cents)}</div>
+          ${d.user_id ? `<button class="btn-ghost btn-block-viewer" data-user-id="${escapeHtml(d.user_id)}" style="padding:6px 10px; font-size:11px; margin-left:8px;">Bloquear</button>` : ''}
         </li>`).join('')}</ul>`
     : `<div class="empty-state">Todavía no hay donadores en este periodo. En cuanto alguien entre o te mande dinero, aparece aquí.</div>`;
 
@@ -171,6 +172,20 @@ function render() {
   });
   document.querySelectorAll('#view-pills button').forEach((btn) => {
     btn.onclick = () => { viewMode = btn.dataset.view; render(); };
+  });
+  document.querySelectorAll('.btn-block-viewer').forEach((btn) => {
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      if (!confirm('¿Bloquear a esta persona? Ya no va a poder entrar a tu sala ni ver la transmisión.')) return;
+      btn.disabled = true;
+      const r = await fetch(`/api/rooms/${data.room_slug}/block`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: btn.dataset.userId }),
+      });
+      const j = await r.json();
+      if (j.ok) { btn.closest('.donor-row').style.opacity = '.4'; btn.textContent = 'Bloqueado ✓'; }
+      else { alert('No se pudo bloquear.'); btn.disabled = false; }
+    };
   });
 }
 

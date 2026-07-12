@@ -10,6 +10,8 @@ export interface User {
   avatar_url: string | null;
   balance_cents: number;
   creator_balance_cents: number;
+  stripe_connect_account_id: string | null;
+  stripe_connect_payouts_enabled: number;
   created_at: number;
   signup_utm_source: string | null;
   signup_utm_medium: string | null;
@@ -32,6 +34,11 @@ export interface Session {
   started_at: number;
   ended_at: number | null;
   status: "live" | "ended";
+}
+
+export async function isBlocked(db: D1Database, roomId: string, userId: string): Promise<boolean> {
+  const row = await db.prepare("SELECT 1 FROM blocked_viewers WHERE room_id = ? AND user_id = ?").bind(roomId, userId).first();
+  return !!row;
 }
 
 export async function creditLedger(

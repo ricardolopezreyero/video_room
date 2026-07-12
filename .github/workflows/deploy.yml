@@ -13,6 +13,23 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: npx tsc --noEmit
+      # Las pruebas corren contra Miniflare local, no contra servicios reales
+      # — necesitan un .dev.vars con algo (no se usan de verdad, solo hace
+      # falta que las bindings existan), igual que en desarrollo local.
+      - name: Crear .dev.vars de prueba
+        run: |
+          cat > .dev.vars <<'EOF'
+          GOOGLE_CLIENT_ID=ci-placeholder
+          GOOGLE_CLIENT_SECRET=ci-placeholder
+          SESSION_SECRET=ci-placeholder
+          STRIPE_SECRET_KEY=sk_test_ci-placeholder
+          STRIPE_WEBHOOK_SECRET=ci-placeholder
+          CALLS_APP_ID=ci-placeholder
+          CALLS_APP_TOKEN=ci-placeholder
+          RESEND_API_KEY=ci-placeholder
+          EOF
+      - run: npm test
       - run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

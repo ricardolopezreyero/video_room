@@ -98,11 +98,17 @@ async function main() {
       <div class="label">Balance de creador (separado — esto es lo que has ganado)</div>
       <div class="amount green">$${(me.creator_balance_cents/100).toFixed(0)}</div>
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
-        <button class="btn-navy" id="btn-retiro">Retirar a mi banco</button>
+        ${me.stripe_connect_payouts_enabled
+          ? '<button class="btn-navy" id="btn-retiro">Retirar a mi banco</button>'
+          : '<button class="btn-navy" id="btn-connect">🏦 Conectar cuenta bancaria</button>'}
         <a href="/estadisticas"><button class="btn-ghost">Ver mis estadísticas</button></a>
         <a href="/transacciones"><button class="btn-ghost">Ver transacciones</button></a>
       </div>
-      <p class="muted" style="margin-top:12px;">Mínimo $200, llega en 1-2 días hábiles. Cada recarga, entrada, propina y retiro queda guardado para siempre — nada se borra.</p>
+      <p class="muted" style="margin-top:12px;">
+        ${me.stripe_connect_payouts_enabled
+          ? 'Mínimo $200, llega directo a tu banco vía Stripe. Cada recarga, entrada, propina y retiro queda guardado para siempre — nada se borra.'
+          : 'Conecta tu cuenta bancaria una sola vez (lo hace Stripe, nunca vemos tus datos) para poder retirar lo que ganes.'}
+      </p>
     </div>
     <div class="balance-box">
       <div class="label">Tu sala</div>
@@ -121,6 +127,15 @@ async function main() {
     showToast('Recarga cancelada.');
   }
 
+  // Venimos de vuelta del onboarding de Stripe Connect.
+  const connect = params.get('connect');
+  if (connect) {
+    history.replaceState(null, '', '/monedero');
+    if (connect === 'ok') showToast('✅ Cuenta bancaria conectada. Ya puedes retirar.', 4500);
+    else if (connect === 'pendiente') showToast('Casi listo — a Stripe todavía le falta un dato tuyo. Vuelve a intentar "Conectar cuenta".', 5500);
+    else if (connect === 'error') showToast('No se pudo conectar tu cuenta. Intenta de nuevo.');
+  }
+
   loadRoom(params.get('bienvenida') === '1');
 
   content.querySelectorAll('[data-amt]').forEach((btn) => {
@@ -137,16 +152,33 @@ async function main() {
     };
   });
   const btnRetiro = document.getElementById('btn-retiro');
-  btnRetiro.onclick = async () => {
-    if (btnRetiro.disabled) return;
-    btnRetiro.disabled = true;
-    const r = await fetch('/api/wallet/retiro', { method: 'POST' });
-    const j = await r.json();
-    if (j.error === 'minimo_200') alert('Necesitas al menos $200 en tu balance de creador.');
-    else if (j.ok) { alert('Retiro solicitado. Llega en 1-2 días hábiles.'); main(); return; }
-    else alert('No se pudo procesar el retiro. Intenta de nuevo.');
-    btnRetiro.disabled = false;
-  };
+  if (btnRetiro) {
+    btnRetiro.onclick = async () => {
+      if (btnRetiro.disabled) return;
+      btnRetiro.disabled = true;
+      const r = await fetch('/api/wallet/retiro', { method: 'POST' });
+      const j = await r.json();
+      if (j.error === 'minimo_200') alert('Necesitas al menos $200 en tu balance de creador.');
+      else if (j.error === 'cuenta_no_conectada') alert('Primero conecta tu cuenta bancaria.');
+      else if (j.error === 'transferencia_fallida') alert('No se pudo completar la transferencia. Tu saldo sigue intacto — intenta de nuevo en un momento.');
+      else if (j.ok) { alert('¡Listo! El dinero va en camino a tu banco.'); main(); return; }
+      else alert('No se pudo procesar el retiro. Intenta de nuevo.');
+      btnRetiro.disabled = false;
+    };
+  }
+  const btnConnect = document.getElementById('btn-connect');
+  if (btnConnect) {
+    btnConnect.onclick = async () => {
+      if (btnConnect.disabled) return;
+      btnConnect.disabled = true;
+      const r = await fetch('/api/wallet/connect/start', { method: 'POST' });
+      const j = await r.json();
+      if (j.url) { window.location.href = j.url; return; }
+      if (j.error === 'connect_no_disponible') alert('Los retiros todavía no están disponibles — vuelve a intentar más tarde.');
+      else alert('No se pudo iniciar la conexión con tu banco. Intenta de nuevo.');
+      btnConnect.disabled = false;
+    };
+  }
 }
 
 async function loadRoom(autoCopy) {

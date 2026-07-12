@@ -1,7 +1,15 @@
 import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
 import { creditLedger, newId } from "../lib/db";
-import { stripeCreateCheckoutSession, verifyStripeSignature } from "../lib/stripe";
+import {
+  stripeCreateCheckoutSession,
+  verifyStripeSignature,
+  stripeCreateConnectAccount,
+  stripeCreateAccountLink,
+  stripeGetAccount,
+  stripeCreateTransfer,
+  StripeApiError,
+} from "../lib/stripe";
 import type { Env } from "../env";
 
 export const wallet = new Hono<{ Bindings: Env }>();
@@ -19,7 +27,53 @@ wallet.get("/api/wallet/me", async (c) => {
     creator_balance_cents: user.creator_balance_cents,
     name: user.name,
     avatar_url: user.avatar_url,
+    stripe_connect_payouts_enabled: !!user.stripe_connect_payouts_enabled,
   });
+});
+
+// Crea (si hace falta) la cuenta Express de Stripe Connect del creador y
+// devuelve el link de onboarding alojado por Stripe — ahí es donde suben su
+// identidad y datos bancarios, nunca los vemos nosotros.
+wallet.post("/api/wallet/connect/start", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+
+  try {
+    let accountId = user.stripe_connect_account_id;
+    if (!accountId) {
+      const account = await stripeCreateConnectAccount(c.env.STRIPE_SECRET_KEY, user.email);
+      accountId = account.id;
+      await c.env.DB.prepare("UPDATE users SET stripe_connect_account_id = ? WHERE id = ?").bind(accountId, user.id).run();
+    }
+    const link = await stripeCreateAccountLink(c.env.STRIPE_SECRET_KEY, {
+      accountId,
+      refreshUrl: `${c.env.APP_URL}/monedero?connect=refresh`,
+      returnUrl: `${c.env.APP_URL}/api/wallet/connect/return`,
+    });
+    return c.json({ url: link.url });
+  } catch (err) {
+    if (err instanceof StripeApiError && err.isConnectNotEnabled) {
+      return c.json({ error: "connect_no_disponible" }, 502);
+    }
+    return c.json({ error: "stripe_no_disponible" }, 502);
+  }
+});
+
+// A donde Stripe manda de vuelta al creador tras el onboarding alojado.
+wallet.get("/api/wallet/connect/return", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect(`${c.env.APP_URL}/login`);
+  if (!user.stripe_connect_account_id) return c.redirect(`${c.env.APP_URL}/monedero?connect=error`);
+
+  try {
+    const account = await stripeGetAccount(c.env.STRIPE_SECRET_KEY, user.stripe_connect_account_id);
+    await c.env.DB.prepare("UPDATE users SET stripe_connect_payouts_enabled = ? WHERE id = ?")
+      .bind(account.payouts_enabled ? 1 : 0, user.id)
+      .run();
+    return c.redirect(`${c.env.APP_URL}/monedero?connect=${account.payouts_enabled ? "ok" : "pendiente"}`);
+  } catch {
+    return c.redirect(`${c.env.APP_URL}/monedero?connect=error`);
+  }
 });
 
 wallet.post("/api/wallet/checkout", async (c) => {
@@ -76,6 +130,7 @@ const BALANCE_FIELD_BY_TYPE: Record<string, "balance_cents" | "creator_balance_c
   ganancia_entrada: "creator_balance_cents",
   propina_recibida: "creator_balance_cents",
   retiro: "creator_balance_cents",
+  retiro_fallido_reembolso: "creator_balance_cents",
 };
 
 wallet.get("/api/wallet/transactions", async (c) => {
@@ -100,6 +155,9 @@ wallet.get("/api/wallet/transactions", async (c) => {
 wallet.post("/api/wallet/retiro", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: "no_session" }, 401);
+  if (!user.stripe_connect_account_id || !user.stripe_connect_payouts_enabled) {
+    return c.json({ error: "cuenta_no_conectada" }, 400);
+  }
   if (user.creator_balance_cents < MIN_RETIRO_CENTS) {
     return c.json({ error: "minimo_200" }, 400);
   }
@@ -115,10 +173,22 @@ wallet.post("/api/wallet/retiro", async (c) => {
     return c.json({ error: "no_procesado" }, 409);
   }
 
-  // MVP: registra la solicitud de retiro en el ledger; el pago vía Stripe Connect/transfer se conecta en la siguiente iteración.
-  await c.env.DB.prepare(
-    "INSERT INTO ledger (id, user_id, amount_cents, type, ref_id, idem_key) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind(newId("ldg"), user.id, -amount, "retiro", null, newId("retiro")).run();
-
-  return c.json({ ok: true, monto_cents: amount });
+  const retiroId = newId("retiro");
+  try {
+    const transfer = await stripeCreateTransfer(c.env.STRIPE_SECRET_KEY, {
+      amountCents: amount,
+      destinationAccountId: user.stripe_connect_account_id,
+      idempotencyKey: retiroId,
+    });
+    await c.env.DB.prepare(
+      "INSERT INTO ledger (id, user_id, amount_cents, type, ref_id, idem_key) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(newId("ldg"), user.id, -amount, "retiro", transfer.id, retiroId).run();
+    return c.json({ ok: true, monto_cents: amount });
+  } catch {
+    // La transferencia real falló después de reservar el balance — se
+    // regresa el dinero para que nunca se pierda el rastro, y el creador
+    // puede volver a intentar el retiro cuando quiera.
+    await creditLedger(c.env.DB, user.id, amount, "retiro_fallido_reembolso", null, `retiro_reembolso:${retiroId}`, "creator_balance_cents");
+    return c.json({ error: "transferencia_fallida" }, 502);
+  }
 });

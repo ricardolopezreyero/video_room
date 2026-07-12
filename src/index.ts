@@ -12,7 +12,11 @@ import { notifications } from "./routes/notifications";
 import { renderRoomPage } from "./lib/room-page";
 import { verifyUnsubscribeToken } from "./lib/unsubscribe";
 import { currentUser } from "./lib/current-user";
+import { endLiveSession } from "./lib/room-lifecycle";
+import { sendEmail } from "./lib/email";
 import type { Room, Session } from "./lib/db";
+
+const ADMIN_EMAIL = "Ricardo@superleads.mx";
 
 export { RoomDurableObject } from "./durable/room";
 
@@ -26,6 +30,19 @@ void _rev;
 
 app.onError((err, c) => {
   console.error(err);
+  // Cloudflare Workers Logs ya guarda esto (observability activado en
+  // wrangler.toml), pero eso es reactivo — solo lo ves si vas a buscarlo. Este
+  // correo es la parte proactiva: te enteras de un error real sin tener que
+  // ir a revisar logs. No hay límite de frecuencia a propósito — un error sin
+  // manejar debería ser raro; si no lo es, los correos mismos son la señal.
+  c.executionCtx.waitUntil(
+    sendEmail(c.env.RESEND_API_KEY, {
+      to: ADMIN_EMAIL,
+      subject: `🔴 Error en Video Room: ${c.req.method} ${c.req.path}`,
+      html: `<pre style="white-space:pre-wrap; font-family:monospace;">${String(err?.stack || err)}</pre>`,
+      text: String(err?.stack || err),
+    }).catch(() => {})
+  );
   if (c.req.path.startsWith("/api/") || c.req.path.startsWith("/webhook/")) {
     return c.json({ error: "error_interno" }, 500);
   }
@@ -135,4 +152,45 @@ app.get("/ws/room/:slug", async (c) => {
   return stub.fetch(doUrl.toString(), c.req.raw);
 });
 
-export default app;
+// Umbral generoso: solo atrapa salas realmente abandonadas (el creador cerró
+// la pestaña sin tocar "Terminar" y nadie más nunca la cerró) — nunca
+// interrumpe una transmisión real en curso.
+const STALE_SESSION_SECONDS = 8 * 60 * 60;
+
+// Si nadie cierra una sala "en vivo" a mano, se queda así para siempre: los
+// espectadores nuevos podrían pagar por entrar a una sala que en realidad ya
+// no transmite nada. Este cron la cierra sola pasado el umbral.
+async function cleanupStaleLiveSessions(env: Env): Promise<void> {
+  const cutoff = Math.floor(Date.now() / 1000) - STALE_SESSION_SECONDS;
+  const { results } = await env.DB.prepare(
+    `SELECT s.id as session_id, s.room_id, s.started_at, s.ended_at, s.status,
+            r.id as r_id, r.owner_id, r.slug, r.title, r.blur_preview, r.created_at as r_created_at, r.slug_assigned_at
+     FROM sessions s JOIN rooms r ON r.id = s.room_id
+     WHERE s.status = 'live' AND s.started_at < ?`
+  ).bind(cutoff).all<{
+    session_id: string; room_id: string; started_at: number; ended_at: number | null; status: "live" | "ended";
+    r_id: string; owner_id: string; slug: string; title: string; blur_preview: number; r_created_at: number; slug_assigned_at: number;
+  }>();
+
+  for (const row of results) {
+    const room: Room = {
+      id: row.r_id,
+      owner_id: row.owner_id,
+      slug: row.slug,
+      title: row.title,
+      blur_preview: row.blur_preview,
+      created_at: row.r_created_at,
+      slug_assigned_at: row.slug_assigned_at,
+    };
+    const session: Session = { id: row.session_id, room_id: row.room_id, started_at: row.started_at, ended_at: row.ended_at, status: row.status };
+    await endLiveSession(env, room, session).catch((err) => console.error("cleanupStaleLiveSessions", err));
+  }
+}
+
+export { app, cleanupStaleLiveSessions };
+export default {
+  fetch: app.fetch,
+  scheduled: async (_event: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    ctx.waitUntil(cleanupStaleLiveSessions(env));
+  },
+};

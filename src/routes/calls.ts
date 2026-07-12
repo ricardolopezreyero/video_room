@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
 import type { Env } from "../env";
-import type { Room, Session } from "../lib/db";
+import { isBlocked, type Room, type Session } from "../lib/db";
 
 export const calls = new Hono<{ Bindings: Env }>();
 
@@ -60,6 +60,7 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   if (!room) return c.json({ error: "not_found" }, 404);
 
   if (user.id !== room.owner_id) {
+    if (await isBlocked(c.env.DB, room.id, user.id)) return c.json({ error: "bloqueado" }, 403);
     const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
       .bind(room.id)
       .first<Session>();
