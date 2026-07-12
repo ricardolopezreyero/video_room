@@ -45,8 +45,19 @@ button { touch-action: manipulation; }
   border-bottom: .5px solid rgba(86,239,159,.1);
   backdrop-filter: blur(16px);
 }
-.nav .logo { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; letter-spacing: -.4px; color: #fff; }
+.nav .logo { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; letter-spacing: -.4px; color: #fff; white-space: nowrap; flex-shrink: 0; text-decoration: none; }
 .nav .logo span.green { color: var(--green); }
+@media (max-width: 400px) { .nav .logo { font-size: 15px; } }
+/* Menú de la app (Inicio/Monedero/Estadísticas/Transacciones/FAQ): visible
+   siempre debajo del nav, no escondido en un dropdown que nadie sabría
+   dónde buscar. */
+.app-subnav {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 10px 56px; background: rgba(13,17,23,.97); border-bottom: .5px solid rgba(86,239,159,.08);
+}
+.app-subnav a { font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,.55); transition: color .2s; }
+.app-subnav a:hover { color: var(--green); }
+@media (max-width: 720px) { .app-subnav { padding: 10px 16px; gap: 14px; } }
 .nav .links { display: flex; align-items: center; gap: 28px; }
 .nav .links a { font-size: 13px; font-weight: 500; color: rgba(255,255,255,.55); transition: color .2s var(--ease); }
 .nav .links a:hover { color: #fff; }

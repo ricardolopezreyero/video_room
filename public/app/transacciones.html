@@ -12,17 +12,7 @@
 <body class="app-shell">
 <!-- RLR -->
 <nav class="nav">
-  <div class="logo-wrap">
-    <button class="logo" id="btn-logo-menu" aria-haspopup="true" aria-label="Menú">
-      <span>Video Room</span>
-    </button>
-    <div class="bell-dropdown logo-dropdown" id="logo-dropdown">
-      <a class="bell-item" href="/">Inicio</a>
-      <a class="bell-item" href="/app/monedero">Monedero</a>
-      <a class="bell-item" href="/app/estadisticas">Estadísticas</a>
-      <a class="bell-item" href="/app/faq">FAQ</a>
-    </div>
-  </div>
+  <a class="logo" href="/"><span>Video Room</span></a>
   <div style="display:flex; align-items:center; gap:10px;">
     <button class="icon-btn" id="btn-copy-link-nav" title="Copiar link de tu sala" aria-label="Copiar link de tu sala" style="display:none;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
@@ -44,6 +34,12 @@
     </div>
   </div>
 </nav>
+<div class="app-subnav">
+  <a href="/">Inicio</a>
+  <a href="/app/monedero">Monedero</a>
+  <a href="/app/estadisticas">Estadísticas</a>
+  <a href="/app/faq">FAQ</a>
+</div>
 <div class="app-wrap" id="app">
   <h1>Transacciones</h1>
   <p class="muted" style="margin-top:-8px;">Todo lo que ha pasado con tu dinero, siempre — nada se borra.</p>
@@ -328,9 +324,6 @@ document.getElementById('btn-bell').onclick = async () => {
   }
 };
 
-document.getElementById('btn-logo-menu').onclick = () => {
-  document.getElementById('logo-dropdown').classList.toggle('show');
-};
 
 // Transmitir y copiar link son las dos acciones que un creador necesita a la
 // mano en todo momento — quedan fijas en la barra de arriba en vez de vivir
