@@ -26,7 +26,9 @@ export async function endLiveSession(
 
   const stub = env.ROOM_DO.get(env.ROOM_DO.idFromName(room.id));
   const res = await stub.fetch("https://do/stop", { method: "POST" });
-  const summary = await res.json<{ earned_cents: number; peak_viewers: number; hearts: number }>();
+  const summary = await res.json<{ earned_cents: number; peak_viewers: number; hearts: number; comments?: number }>();
+  // El conteo de comentarios sobrevive al borrado de los comentarios.
+  await env.DB.prepare("UPDATE sessions SET comments_count = ? WHERE id = ?").bind(summary.comments ?? 0, session.id).run().catch(() => {});
 
   // El resumen queda en la sesión: alimenta reliquias (Sala llena, Maratón…)
   // y la API de sesiones. Luego se revisa qué hitos se ganaron con esta

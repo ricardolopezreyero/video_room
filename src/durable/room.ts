@@ -15,7 +15,15 @@ interface PersistedState {
   sessionId: string | null;
   sfuSessionId: string | null;
   sfuTracks: { mid: string; trackName: string }[];
+  // Muestreo por minuto (estadísticas): cuándo empezó la sesión y cuántos
+  // corazones/comentarios llevaba la muestra anterior, para guardar deltas.
+  startedAtMs?: number;
+  sampledHearts?: number;
+  sampledComments?: number;
+  comments?: number;
 }
+
+const SAMPLE_EVERY_MS = 60_000;
 
 // Cloudflare puede hibernar este Durable Object (evictarlo de memoria) mientras
 // los WebSockets siguen abiertos en el edge — es el propósito de acceptWebSocket().
@@ -31,6 +39,10 @@ export class RoomDurableObject implements DurableObject {
   sessionId: string | null = null;
   sfuSessionId: string | null = null;
   sfuTracks: { mid: string; trackName: string }[] = [];
+  startedAtMs = 0;
+  sampledHearts = 0;
+  sampledComments = 0;
+  comments = 0;
   private ready: Promise<void>;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -45,8 +57,35 @@ export class RoomDurableObject implements DurableObject {
         this.sessionId = stored.sessionId;
         this.sfuSessionId = stored.sfuSessionId;
         this.sfuTracks = stored.sfuTracks;
+        this.startedAtMs = stored.startedAtMs ?? 0;
+        this.sampledHearts = stored.sampledHearts ?? 0;
+        this.sampledComments = stored.sampledComments ?? 0;
+        this.comments = stored.comments ?? 0;
       }
     });
+  }
+
+  // Una muestra por minuto mientras hay sesión: cuánta gente hay y cuántos
+  // corazones/comentarios hubo en ese minuto. Se reprograma sola; al terminar
+  // la sesión (/stop) se cancela. Si algo falla al escribir, el siguiente
+  // minuto lo vuelve a intentar — nunca se tumba la transmisión por esto.
+  async alarm() {
+    await this.ready;
+    if (!this.sessionId || !this.startedAtMs) return;
+    const minute = Math.max(0, Math.round((Date.now() - this.startedAtMs) / SAMPLE_EVERY_MS));
+    const heartsDelta = Math.max(0, this.hearts - this.sampledHearts);
+    const commentsDelta = Math.max(0, this.comments - this.sampledComments);
+    try {
+      await this.env.DB.prepare(
+        "INSERT OR REPLACE INTO session_samples (session_id, minute, viewers, hearts, comments) VALUES (?, ?, ?, ?, ?)"
+      ).bind(this.sessionId, minute, this.viewerCount(), heartsDelta, commentsDelta).run();
+      this.sampledHearts = this.hearts;
+      this.sampledComments = this.comments;
+      await this.persist();
+    } catch (err) {
+      console.error("sample", err);
+    }
+    await this.state.storage.setAlarm(Date.now() + SAMPLE_EVERY_MS);
   }
 
   private async persist() {
@@ -57,6 +96,10 @@ export class RoomDurableObject implements DurableObject {
       sessionId: this.sessionId,
       sfuSessionId: this.sfuSessionId,
       sfuTracks: this.sfuTracks,
+      startedAtMs: this.startedAtMs,
+      sampledHearts: this.sampledHearts,
+      sampledComments: this.sampledComments,
+      comments: this.comments,
     };
     await this.state.storage.put("state", data);
   }
@@ -132,7 +175,12 @@ export class RoomDurableObject implements DurableObject {
       this.totalCents = 0;
       this.peakViewers = this.viewerCount();
       this.hearts = 0;
+      this.comments = 0;
+      this.sampledHearts = 0;
+      this.sampledComments = 0;
+      this.startedAtMs = Date.now();
       await this.persist();
+      await this.state.storage.setAlarm(Date.now() + SAMPLE_EVERY_MS);
       return Response.json({ ok: true });
     }
 
@@ -141,7 +189,20 @@ export class RoomDurableObject implements DurableObject {
         earned_cents: this.totalCents,
         peak_viewers: this.peakViewers,
         hearts: this.hearts,
+        comments: this.comments,
       };
+      // Última muestra (el minuto final) y fin del muestreo.
+      try {
+        if (this.sessionId && this.startedAtMs) {
+          const minute = Math.max(0, Math.round((Date.now() - this.startedAtMs) / SAMPLE_EVERY_MS));
+          await this.env.DB.prepare(
+            "INSERT OR REPLACE INTO session_samples (session_id, minute, viewers, hearts, comments) VALUES (?, ?, ?, ?, ?)"
+          ).bind(this.sessionId, minute, this.viewerCount(), Math.max(0, this.hearts - this.sampledHearts), Math.max(0, this.comments - this.sampledComments)).run();
+        }
+      } catch (err) {
+        console.error("sample-final", err);
+      }
+      await this.state.storage.deleteAlarm();
       this.broadcast({ type: "ended" });
       for (const ws of this.state.getWebSockets()) {
         try {
@@ -156,6 +217,10 @@ export class RoomDurableObject implements DurableObject {
       this.totalCents = 0;
       this.peakViewers = 0;
       this.hearts = 0;
+      this.comments = 0;
+      this.sampledHearts = 0;
+      this.sampledComments = 0;
+      this.startedAtMs = 0;
       await this.persist();
       return Response.json(summary);
     }
@@ -190,6 +255,7 @@ export class RoomDurableObject implements DurableObject {
         body: string;
         is_owner?: boolean;
       }>();
+      this.comments++;
       this.broadcast({ type: "comment", id, user_id, name, avatar_url: avatar_url ?? null, mark: mark ?? null, body, is_owner: !!is_owner, ts: Date.now() });
       return Response.json({ ok: true });
     }

@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="app-shell">
+<!-- RLR -->
 <nav class="nav">
   <a class="logo" href="/"><span>Video Room</span></a>
   <div style="display:flex; align-items:center; gap:10px;">
@@ -39,171 +40,267 @@
   <a href="/app/transacciones">Transacciones</a>
   <a href="/app/faq">FAQ</a>
 </div>
-<div class="app-wrap" id="app">
-  <h1>Tus números</h1>
+<div class="app-wrap stats-wrap" id="app">
+  <div class="stats-head">
+    <div>
+      <h1>Tus números</h1>
+      <p class="muted" id="stats-sub">Todo lo que pasó en tu sala, con fechas, minutos y pesos.</p>
+    </div>
+    <button class="btn-ghost" id="btn-pdf" title="Guardar este reporte como PDF">⬇ Descargar PDF</button>
+  </div>
+  <div class="range-bar" id="range-bar">
+    <div class="filter-pills" id="pills">
+      <button data-preset="7">7 días</button>
+      <button data-preset="30" class="active">30 días</button>
+      <button data-preset="90">90 días</button>
+      <button data-preset="365">Año</button>
+      <button data-preset="all">Todo</button>
+    </div>
+    <div class="range-dates">
+      <label>Desde <input type="date" id="date-from"></label>
+      <label>Hasta <input type="date" id="date-to"></label>
+      <button class="btn-navy small" id="btn-apply-range">Aplicar</button>
+    </div>
+  </div>
   <div id="content">Cargando…</div>
 </div>
+<div class="sheet" id="session-sheet" style="display:none"><div class="sheet-inner session-sheet-inner"><div id="session-detail"></div><button id="session-close" class="btn-ghost" style="margin-top:14px;width:100%">Cerrar</button></div></div>
 <div class="app-toast" id="app-toast"></div>
 <script>
+// RLR — Tablero de estadísticas. Una sola fuente (/api/stats/deep), gráficas
+// en SVG sin librerías, texto siempre en color de texto (las barras llevan el
+// color, los números no), un tooltip al pasar el dedo/ratón, y una hoja de
+// impresión limpia para "Descargar PDF".
 function showToast(msg, ms) {
   const el = document.getElementById('app-toast');
-  el.textContent = msg;
-  el.classList.add('show');
+  el.textContent = msg; el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), ms || 3200);
 }
+const fmt = (c) => '$' + Math.round((c || 0) / 100).toLocaleString('es-MX');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const CDMX = 'America/Mexico_City';
+const fecha = (ts, o) => new Date(ts * 1000).toLocaleDateString('es-MX', Object.assign({ timeZone: CDMX, day: 'numeric', month: 'short' }, o || {}));
+const hora = (ts) => new Date(ts * 1000).toLocaleTimeString('es-MX', { timeZone: CDMX, hour: 'numeric', minute: '2-digit' });
+const dur = (s) => { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return h ? `${h} h ${m} min` : `${m} min`; };
+const isoDay = (d) => d.toISOString().slice(0, 10);
+const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-const RANGE_LABELS = { today: 'Hoy', '7d': '7 días', '30d': '30 días', all: 'Todo' };
-let currentRange = '30d';
-let viewMode = 'vivo'; // 'demo' | 'vivo'
-let lastData = null;
-let autoDecided = false;
+let range = { from: null, to: null, preset: '30' };
+let data = null;
 
-const DEMO_DATA = {
-  has_room: true,
-  room_slug: 'tu-sala',
-  balance_cents: 0,
-  creator_balance_cents: 92000,
-  total_earned_all_time_cents: 184000,
-  period: { earned_cents: 184000, entradas_count: 47, unique_viewers: 38, propinas_count: 12, propinas_cents: 45000 },
-  top_donors: [
-    { name: 'María', avatar_url: null, total_cents: 52000, entradas: 3, propinas: 2 },
-    { name: 'Juan', avatar_url: null, total_cents: 31000, entradas: 2, propinas: 1 },
-    { name: 'Ana', avatar_url: null, total_cents: 18000, entradas: 1, propinas: 1 },
-  ],
-  campaigns: [
-    { utm_source: 'instagram', utm_campaign: 'lanzamiento', entradas: 22, ganado_cents: 22000 },
-    { utm_source: 'whatsapp', utm_campaign: '', entradas: 15, ganado_cents: 15000 },
-    { utm_source: '(directo)', utm_campaign: '', entradas: 10, ganado_cents: 10000 },
-  ],
-};
-
-function fmt(cents) { return '$' + Math.round((cents || 0) / 100).toLocaleString('es-MX'); }
-
-function escapeHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]));
+function presetToDates(p) {
+  const to = new Date();
+  if (p === 'all') return { from: '2026-01-01', to: isoDay(to) };
+  const from = new Date(to.getTime() - (Number(p) - 1) * 86400000);
+  return { from: isoDay(from), to: isoDay(to) };
 }
 
-function isEmptyData(data) {
-  return data.period.earned_cents === 0 && data.top_donors.length === 0 && (!data.campaigns || data.campaigns.length === 0);
+// ---------- gráficas (SVG) ----------
+// Barras finas con extremo redondeado anclado a la base, grid recesivo, sin
+// número en cada punto: el tooltip da el dato exacto, la forma da la lectura.
+function svgBars(rows, { height = 150, color = 'var(--green)', labelEvery = 1, valueFmt = (v) => v, title = '' } = {}) {
+  const w = 600, pad = { l: 8, r: 8, t: 10, b: 24 };
+  const max = Math.max(1, ...rows.map((r) => r.v));
+  const bw = (w - pad.l - pad.r) / rows.length;
+  const bars = rows.map((r, i) => {
+    const h = Math.max(r.v > 0 ? 3 : 0, (r.v / max) * (height - pad.t - pad.b));
+    const x = pad.l + i * bw + bw * 0.18, y = height - pad.b - h, bwid = bw * 0.64;
+    const lbl = (i % labelEvery === 0) ? `<text x="${x + bwid / 2}" y="${height - 8}" text-anchor="middle" class="ax">${esc(r.l)}</text>` : '';
+    return `<g class="bar" data-tip="${esc(r.tip || (r.l + ': ' + valueFmt(r.v)))}">
+      <rect x="${pad.l + i * bw}" y="0" width="${bw}" height="${height}" fill="transparent"></rect>
+      <rect x="${x}" y="${y}" width="${bwid}" height="${h}" rx="3" fill="${r.color || color}" ${r.dim ? 'opacity=".45"' : ''}></rect>${lbl}</g>`;
+  }).join('');
+  return `<figure class="chart"><svg viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}">
+    <line x1="${pad.l}" x2="${w - pad.r}" y1="${height - pad.b}" y2="${height - pad.b}" class="base"></line>${bars}</svg><div class="tip" hidden></div></figure>`;
 }
+function svgLine(points, { height = 160, yMax, yFmt = (v) => v, xFmt = (x) => x, title = '', marker = null, area = true } = {}) {
+  if (!points.length) return '';
+  const w = 600, pad = { l: 8, r: 8, t: 12, b: 24 };
+  const max = yMax ?? Math.max(1, ...points.map((p) => p.y));
+  const minX = points[0].x, maxX = points[points.length - 1].x || 1;
+  const X = (x) => pad.l + ((x - minX) / Math.max(1, maxX - minX)) * (w - pad.l - pad.r);
+  const Y = (y) => height - pad.b - (y / max) * (height - pad.t - pad.b);
+  const d = points.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
+  const areaD = `${d} L${X(maxX).toFixed(1)},${height - pad.b} L${X(minX).toFixed(1)},${height - pad.b} Z`;
+  const hit = points.map((p) => `<g class="pt" data-tip="${esc(xFmt(p.x) + ' · ' + yFmt(p.y))}"><rect x="${X(p.x) - 6}" y="0" width="12" height="${height}" fill="transparent"></rect><circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" class="dot"></circle></g>`).join('');
+  const mk = marker != null && marker >= minX && marker <= maxX ? `<line x1="${X(marker)}" x2="${X(marker)}" y1="${pad.t}" y2="${height - pad.b}" class="mark"></line><text x="${X(marker) + 4}" y="${pad.t + 10}" class="ax gold">${esc(xFmt(marker))}</text>` : '';
+  const ticks = [points[0], points[Math.floor(points.length / 2)], points[points.length - 1]].map((p) => `<text x="${X(p.x)}" y="${height - 8}" text-anchor="middle" class="ax">${esc(xFmt(p.x))}</text>`).join('');
+  return `<figure class="chart"><svg viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}">
+    <line x1="${pad.l}" x2="${w - pad.r}" y1="${height - pad.b}" y2="${height - pad.b}" class="base"></line>
+    ${area ? `<path d="${areaD}" class="area"></path>` : ''}<path d="${d}" class="line"></path>${mk}${ticks}${hit}</svg><div class="tip" hidden></div></figure>`;
+}
+function wireTips(root) {
+  root.querySelectorAll('figure.chart').forEach((fig) => {
+    const tip = fig.querySelector('.tip');
+    const show = (g, ev) => { tip.textContent = g.dataset.tip; tip.hidden = false; const r = fig.getBoundingClientRect(); tip.style.left = Math.min(r.width - 10, Math.max(10, ev.clientX - r.left)) + 'px'; };
+    fig.querySelectorAll('[data-tip]').forEach((g) => {
+      g.addEventListener('pointerenter', (e) => show(g, e)); g.addEventListener('pointermove', (e) => show(g, e));
+      g.addEventListener('pointerleave', () => { tip.hidden = true; });
+    });
+  });
+}
+
+// ---------- render ----------
+function kpi(value, label, note) { return `<div class="kpi"><div class="kpi-v">${value}</div><div class="kpi-l">${label}</div>${note ? `<div class="kpi-n">${note}</div>` : ''}</div>`; }
+function section(title, sub, body, extra) { return `<section class="stat-section">${extra || ''}<h2>${title}</h2>${sub ? `<p class="muted">${sub}</p>` : ''}${body}</section>`; }
+
+function render() {
+  const d = data, k = d.kpis, c = document.getElementById('content');
+  document.getElementById('stats-sub').textContent = `${fecha(d.range.from, { year: 'numeric' })} – ${fecha(d.range.to, { year: 'numeric' })} · sala ${d.room_slug}`;
+  if (!k.sessions && !k.entradas && !k.propinas_count) {
+    c.innerHTML = `<div class="empty-state">No hay transmisiones en este rango. Cuando transmitas, aquí vas a ver cada minuto, cada entrada y cada peso. <a href="/${esc(d.room_slug)}" style="color:var(--green)">Transmitir ahora →</a></div>`;
+    return;
+  }
+  const liveH = k.live_seconds / 3600;
+  const bestHour = d.by_hour.reduce((a, b) => (b.cents > a.cents ? b : a), d.by_hour[0]);
+  const bestDay = d.by_weekday.reduce((a, b) => (b.cents > a.cents ? b : a), d.by_weekday[0]);
+  const top = d.top_session;
+  const html = [];
+
+  html.push(`<div class="kpi-grid">
+    ${kpi(fmt(k.earned_cents), 'ganados', `${fmt(k.earned_per_live_hour_cents)} por hora en vivo`)}
+    ${kpi(k.entradas, 'entradas pagadas', `${k.unique_viewers} personas distintas`)}
+    ${kpi(fmt(k.propinas_cents), 'en propinas', `${k.propinas_count} propinas · la mayor ${fmt(k.biggest_tip_cents)}`)}
+    ${kpi(k.sessions, k.sessions === 1 ? 'transmisión' : 'transmisiones', `${dur(k.live_seconds)} en vivo · promedio ${dur(k.avg_session_seconds)}`)}
+    ${kpi(k.peak_viewers, 'personas en el pico', `promedio ${k.avg_viewers} por minuto`)}
+    ${kpi(k.new_viewers, 'personas nuevas', `${k.returning_viewers} volvieron · ${k.early_birds} entraron en el primer minuto`)}
+    ${kpi(k.hearts.toLocaleString('es-MX'), 'corazones', `${k.comments.toLocaleString('es-MX')} comentarios`)}
+    ${kpi(k.followers_total, 'esperando tu aviso', `+${k.followers_new} en este rango`)}
+  </div>`);
+
+  // Ingresos por día (dos series: entradas y propinas, apiladas visualmente como dos tonos; leyenda presente).
+  if (d.revenue_by_day.length) {
+    const dayLabel = (day) => new Date(day + 'T12:00:00Z').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+    const rows = d.revenue_by_day.map((r) => ({ l: r.day.slice(5).replace('-', '/'), v: r.entradas_cents + r.propinas_cents, day: r.day, tip: `${dayLabel(r.day)} · ${fmt(r.entradas_cents)} entradas + ${fmt(r.propinas_cents)} propinas = ${fmt(r.entradas_cents + r.propinas_cents)}` }));
+    const best = rows.reduce((a, b) => (b.v > a.v ? b : a), rows[0]);
+    html.push(section('Ingresos por día', `Tu mejor día fue el <strong style="color:#fff">${dayLabel(best.day)}</strong> con ${fmt(best.v)}.`, svgBars(rows, { labelEvery: Math.ceil(rows.length / 10), valueFmt: fmt, title: 'Ingresos por día' })));
+  }
+
+  // Audiencia: retención promedio y minuto de caída.
+  if (d.retention.length > 1) {
+    const pts = d.retention.map((r) => ({ x: r.minute, y: r.pct }));
+    const sub = d.drop_minute != null
+      ? `En promedio, <strong style="color:#fff">la gente empieza a irse en el minuto ${d.drop_minute}</strong>. Ahí conviene cambiar de ritmo: una pregunta, un anuncio, algo que mostrar.`
+      : 'Porcentaje del pico que sigue viendo, minuto a minuto, promediando tus transmisiones.';
+    html.push(section('¿En qué minuto se va la gente?', sub, svgLine(pts, { yMax: 100, yFmt: (v) => v + '% del pico', xFmt: (x) => 'min ' + x, marker: d.drop_minute, title: 'Retención por minuto' })));
+  }
+
+  // Mejor hora y mejor día.
+  html.push(section('¿Cuándo conviene transmitir?', `Tu mejor hora es a las <strong style="color:#fff">${bestHour.hour}:00</strong> y tu mejor día <strong style="color:#fff">${DIAS[bestDay.weekday]}</strong> (lo que ganaste por hora del día y día de la semana, hora CDMX).`,
+    `<div class="two-charts">
+      <div><div class="chart-cap">Por hora del día</div>${svgBars(d.by_hour.map((h) => ({ l: h.hour % 3 === 0 ? String(h.hour) : '', v: h.cents, tip: `${h.hour}:00 · ${fmt(h.cents)} · ${h.entradas} entradas`, dim: h.hour !== bestHour.hour })), { height: 130, valueFmt: fmt })}</div>
+      <div><div class="chart-cap">Por día de la semana</div>${svgBars(d.by_weekday.map((w) => ({ l: DIAS[w.weekday], v: w.cents, tip: `${DIAS[w.weekday]} · ${fmt(w.cents)} · ${w.entradas} entradas`, dim: w.weekday !== bestDay.weekday })), { height: 130, valueFmt: fmt })}</div>
+    </div>`));
+
+  // Top video.
+  if (top) {
+    html.push(section('Tu mejor transmisión', '', `
+      <div class="top-video" data-session="${esc(top.id)}">
+        <div class="top-video-main">
+          <div class="top-video-date">${fecha(top.started_at, { weekday: 'long', year: 'numeric' })} · ${hora(top.started_at)}</div>
+          <div class="top-video-earn">${fmt(top.earned_cents)}</div>
+          <div class="muted">${dur(top.duration_seconds)} en vivo · pico de ${top.peak_viewers} · ${top.entradas} entradas · ${top.tips_count} propinas · ${top.hearts} corazones</div>
+        </div>
+        <button class="btn-ghost small">Ver minuto a minuto →</button>
+      </div>`));
+  }
+
+  // Todas las transmisiones.
+  html.push(section('Todas tus transmisiones', 'Toca una para ver su curva de audiencia, cuándo entró cada quien y cuándo cayeron las propinas.', `
+    <div class="tx-scroll"><table class="tx-table sessions-table">
+      <thead><tr><th>Fecha</th><th>Duración</th><th>Pico</th><th>Prom.</th><th>Entradas</th><th>Propinas</th><th>❤</th><th>💬</th><th>Ganado</th><th>Se cayó en</th></tr></thead>
+      <tbody>${d.sessions.map((s) => `<tr data-session="${esc(s.id)}" class="${top && s.id === top.id ? 'is-top' : ''}">
+        <td>${fecha(s.started_at)} <span class="muted">${hora(s.started_at)}</span>${s.status === 'live' ? ' <span class="live-tag">en vivo</span>' : ''}</td>
+        <td>${dur(s.duration_seconds)}</td><td>${s.peak_viewers}</td><td>${s.avg_viewers || '—'}</td><td>${s.entradas}</td><td>${fmt(s.tips_cents)}</td><td>${s.hearts}</td><td>${s.comments}</td>
+        <td class="tx-amount pos">${fmt(s.earned_cents)}</td><td>${s.drop_minute != null ? 'min ' + s.drop_minute : '—'}</td></tr>`).join('')}</tbody>
+    </table></div>`));
+
+  // Seguidores.
+  if (d.followers.length > 1) {
+    html.push(section('Personas esperando tu aviso', `Ya son ${k.followers_total}. Cada una recibe un correo en el segundo en que entras en vivo.`,
+      svgLine(d.followers.map((f, i) => ({ x: i, y: f.total, day: f.day })), { yFmt: (v) => v + ' personas', xFmt: (x) => (d.followers[x] ? d.followers[x].day.slice(5).replace('-', '/') : ''), title: 'Seguidores acumulados' })));
+  }
+
+  // Donadores y campañas.
+  if (d.top_donors.length) {
+    html.push(section('Tus mayores donadores', 'Quienes más han puesto en tu sala, sumando entradas y propinas.', `<ul class="donor-list">${d.top_donors.map((p, i) => `
+      <li class="donor-row"><div class="donor-rank">${i + 1}</div>
+        ${p.avatar_url ? `<img class="donor-avatar" src="${esc(p.avatar_url)}">` : '<div class="donor-avatar"></div>'}
+        <div class="donor-info"><div class="donor-name">${esc(p.name)}</div><div class="donor-meta">${p.entradas} entrada${p.entradas === 1 ? '' : 's'} · ${p.propinas} propina${p.propinas === 1 ? '' : 's'}</div></div>
+        <div class="donor-total">${fmt(p.total_cents)}</div>
+        ${p.user_id ? `<button class="btn-ghost small btn-block-viewer" data-user-id="${esc(p.user_id)}">Bloquear</button>` : ''}
+      </li>`).join('')}</ul>`));
+  }
+  if (d.campaigns.length) {
+    html.push(section('De dónde vino la gente', 'Por campaña (UTM) en el link que compartiste.', `<ul class="donor-list">${d.campaigns.map((cmp) => `
+      <li class="donor-row"><div class="donor-info"><div class="donor-name">${esc(cmp.utm_source)}${cmp.utm_campaign ? ' · ' + esc(cmp.utm_campaign) : ''}</div><div class="donor-meta">${cmp.entradas} entrada${cmp.entradas === 1 ? '' : 's'}</div></div><div class="donor-total">${fmt(cmp.ganado_cents)}</div></li>`).join('')}</ul>`));
+  }
+
+  c.innerHTML = html.join('');
+  wireTips(c);
+  c.querySelectorAll('[data-session]').forEach((el) => el.addEventListener('click', () => openSession(el.dataset.session)));
+  c.querySelectorAll('.btn-block-viewer').forEach((btn) => btn.onclick = async (e) => {
+    e.stopPropagation();
+    if (!confirm('¿Bloquear a esta persona? Ya no va a poder entrar a tu sala ni ver la transmisión.')) return;
+    btn.disabled = true;
+    const r = await fetch(`/api/rooms/${d.room_slug}/block`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: btn.dataset.userId }) });
+    const j = await r.json();
+    if (j.ok) { btn.closest('.donor-row').style.opacity = '.4'; btn.textContent = 'Bloqueado ✓'; } else { alert('No se pudo bloquear.'); btn.disabled = false; }
+  });
+}
+
+async function openSession(id) {
+  const sheet = document.getElementById('session-sheet'), box = document.getElementById('session-detail');
+  box.innerHTML = '<p class="muted">Cargando…</p>'; sheet.style.display = 'flex';
+  const r = await fetch('/api/stats/session/' + encodeURIComponent(id));
+  if (!r.ok) { box.innerHTML = '<p class="muted">No se pudo cargar.</p>'; return; }
+  const d = await r.json(), s = d.session;
+  const dropIdx = d.samples.reduce((best, p, i, arr) => (i && arr[i - 1].viewers - p.viewers > (best.d || 0) ? { d: arr[i - 1].viewers - p.viewers, m: p.minute } : best), {});
+  const pts = d.samples.map((p) => ({ x: p.minute, y: p.viewers }));
+  const tipsByMin = {}; d.tips.forEach((t) => { tipsByMin[t.minute] = (tipsByMin[t.minute] || 0) + t.amount_cents; });
+  const maxMin = pts.length ? pts[pts.length - 1].x : 0;
+  const tipRows = Array.from({ length: maxMin + 1 }, (_, m) => ({ l: m % Math.max(1, Math.ceil(maxMin / 10)) === 0 ? String(m) : '', v: tipsByMin[m] || 0, tip: `min ${m} · ${fmt(tipsByMin[m] || 0)}`, color: '#F5C542' }));
+  box.innerHTML = `
+    <div class="label">Transmisión</div>
+    <h3 style="margin:2px 0 4px">${fecha(s.started_at, { weekday: 'long', year: 'numeric' })} · ${hora(s.started_at)}</h3>
+    <p class="muted" style="margin:0 0 12px">${s.ended_at ? dur(s.ended_at - s.started_at) : 'en vivo'} · pico ${s.peak_viewers} · ${fmt(s.earned_cents)} ganados · ${s.hearts} ❤ · ${s.comments_count} 💬</p>
+    ${pts.length > 1 ? `<div class="chart-cap">Personas viendo, minuto a minuto${dropIdx.m != null ? ` — la mayor caída fue en el <strong style="color:#fff">minuto ${dropIdx.m}</strong> (−${dropIdx.d})` : ''}</div>${svgLine(pts, { yFmt: (v) => v + ' viendo', xFmt: (x) => 'min ' + x, marker: dropIdx.m ?? null, height: 170, title: 'Audiencia por minuto' })}` : '<p class="muted">Esta transmisión no tiene muestras por minuto (es anterior a esta función o duró menos de un minuto).</p>'}
+    ${d.tips.length ? `<div class="chart-cap">Propinas por minuto</div>${svgBars(tipRows, { height: 110, valueFmt: fmt, title: 'Propinas por minuto' })}
+      <ul class="donor-list" style="margin-top:8px">${d.tips.map((t) => `<li class="donor-row"><div class="donor-info"><div class="donor-name">${esc(t.name)} · min ${t.minute}</div>${t.message ? `<div class="donor-meta">“${esc(t.message)}”</div>` : ''}</div><div class="donor-total">${fmt(t.amount_cents)}</div></li>`).join('')}</ul>` : ''}
+    ${d.entradas.length ? `<div class="chart-cap">Cuándo entró la gente</div><p class="muted">${d.entradas.map((e) => 'min ' + e.minute).join(' · ')}</p>` : ''}`;
+  wireTips(box);
+}
+document.getElementById('session-close').onclick = () => { document.getElementById('session-sheet').style.display = 'none'; };
+document.getElementById('session-sheet').addEventListener('click', (e) => { if (e.target.id === 'session-sheet') e.currentTarget.style.display = 'none'; });
 
 async function load() {
-  const content = document.getElementById('content');
-  const res = await fetch('/api/stats?range=' + currentRange);
-  if (res.status === 401) {
-    content.innerHTML = '<p class="muted">Necesitas ingresar.</p><a href="/login"><button class="btn-primary">Ingresar con Google</button></a>';
-    return;
-  }
-  const data = await res.json();
-
-  if (!data.has_room) {
-    content.innerHTML = `
-      <div class="empty-state">
-        No encontramos tu sala. Ve a tu <a href="/app/monedero" style="color:var(--green)">monedero</a> — si el problema sigue, escríbenos.
-      </div>`;
-    return;
-  }
-
-  lastData = data;
+  const c = document.getElementById('content');
+  const q = new URLSearchParams({ from: range.from, to: range.to });
+  const res = await fetch('/api/stats/deep?' + q);
+  if (res.status === 401) { c.innerHTML = '<p class="muted">Necesitas ingresar.</p><a href="/login"><button class="btn-primary">Ingresar con Google</button></a>'; return; }
+  data = await res.json();
+  if (!data.has_room) { c.innerHTML = '<div class="empty-state">No encontramos tu sala. Ve a tu <a href="/app/monedero" style="color:var(--green)">monedero</a>.</div>'; return; }
   setupNavShortcuts(data.room_slug);
-  // Solo la primera vez: si no hay actividad real todavía, arrancamos en Demo
-  // para que la persona vea cómo se ve su panel con movimiento, no puros ceros.
-  // Después de esa primera decisión, respetamos lo que la persona elija.
-  if (!autoDecided) {
-    viewMode = isEmptyData(data) ? 'demo' : 'vivo';
-    autoDecided = true;
-  }
   render();
 }
 
-function render() {
-  const content = document.getElementById('content');
-  const data = viewMode === 'demo' ? DEMO_DATA : lastData;
-
-  const pills = Object.keys(RANGE_LABELS).map((key) =>
-    `<button data-range="${key}" class="${key === currentRange ? 'active' : ''}">${RANGE_LABELS[key]}</button>`
-  ).join('');
-
-  const donorsHtml = data.top_donors.length
-    ? `<ul class="donor-list">${data.top_donors.map((d, i) => `
-        <li class="donor-row">
-          <div class="donor-rank">${i + 1}</div>
-          ${d.avatar_url ? `<img class="donor-avatar" src="${escapeHtml(d.avatar_url)}">` : `<div class="donor-avatar"></div>`}
-          <div class="donor-info">
-            <div class="donor-name">${escapeHtml(d.name)}</div>
-            <div class="donor-meta">${d.entradas} entrada${d.entradas === 1 ? '' : 's'} · ${d.propinas} propina${d.propinas === 1 ? '' : 's'}</div>
-          </div>
-          <div class="donor-total">${fmt(d.total_cents)}</div>
-          ${d.user_id ? `<button class="btn-ghost btn-block-viewer" data-user-id="${escapeHtml(d.user_id)}" style="padding:6px 10px; font-size:11px; margin-left:8px;">Bloquear</button>` : ''}
-        </li>`).join('')}</ul>`
-    : `<div class="empty-state">Todavía no hay donadores en este periodo. En cuanto alguien entre o te mande dinero, aparece aquí.</div>`;
-
-  const campaignsHtml = data.campaigns && data.campaigns.length
-    ? `<ul class="donor-list">${data.campaigns.map((cmp) => `
-        <li class="donor-row">
-          <div class="donor-info">
-            <div class="donor-name">${escapeHtml(cmp.utm_source)}${cmp.utm_campaign ? ' · ' + escapeHtml(cmp.utm_campaign) : ''}</div>
-            <div class="donor-meta">${cmp.entradas} entrada${cmp.entradas === 1 ? '' : 's'}</div>
-          </div>
-          <div class="donor-total">${fmt(cmp.ganado_cents)}</div>
-        </li>`).join('')}</ul>`
-    : `<div class="empty-state">Comparte tu link con <code>?utm_source=instagram&amp;utm_campaign=lanzamiento</code> (o la campaña que uses) y aquí vas a ver cuánta gente entró por cada una.</div>`;
-
-  content.innerHTML = `
-    <p class="muted">Sala: video.capitaltorreon.com/${escapeHtml(data.room_slug)}</p>
-    <div class="filter-pills" id="view-pills" style="margin-bottom:0;">
-      <button data-view="demo" class="${viewMode === 'demo' ? 'active' : ''}">Demo</button>
-      <button data-view="vivo" class="${viewMode === 'vivo' ? 'active' : ''}">En vivo</button>
-    </div>
-    ${viewMode === 'demo' ? '<p class="muted" style="color:var(--green);">📊 Estos son números de ejemplo para que veas cómo se ve tu panel con actividad. Cambia a "En vivo" para ver los tuyos reales.</p>' : ''}
-    <div class="filter-pills" id="pills">${pills}</div>
-
-    <div class="stat-grid">
-      <div class="stat-card"><div class="n green">${fmt(data.period.earned_cents)}</div><div class="l">Ganado en este periodo</div></div>
-      <div class="stat-card"><div class="n">${data.period.entradas_count}</div><div class="l">Entradas pagadas</div></div>
-      <div class="stat-card"><div class="n">${data.period.propinas_count}</div><div class="l">Propinas (${fmt(data.period.propinas_cents)})</div></div>
-      <div class="stat-card"><div class="n">${data.period.unique_viewers}</div><div class="l">Espectadores únicos</div></div>
-    </div>
-
-    <div class="balance-box">
-      <div class="label">Balance disponible para retirar</div>
-      <div class="amount green">${fmt(data.creator_balance_cents)}</div>
-      <div class="label" style="margin-top:14px;">Ganado histórico (desde siempre)</div>
-      <div class="amount" style="font-size:20px;">${fmt(data.total_earned_all_time_cents)}</div>
-    </div>
-
-    <h2 style="font-size:18px; margin-top:32px; margin-bottom:8px;">Tus mayores donadores</h2>
-    <p class="muted" style="margin-bottom:8px;">Quién te ha apoyado más en este periodo, sumando entradas y propinas.</p>
-    <div class="balance-box">${donorsHtml}</div>
-
-    <h2 style="font-size:18px; margin-top:32px; margin-bottom:8px;">Por campaña (UTM)</h2>
-    <p class="muted" style="margin-bottom:8px;">De dónde vinieron las personas que entraron a tu sala en este periodo.</p>
-    <div class="balance-box">${campaignsHtml}</div>
-  `;
-
-  document.querySelectorAll('#pills button').forEach((btn) => {
-    btn.onclick = () => { currentRange = btn.dataset.range; load(); };
-  });
-  document.querySelectorAll('#view-pills button').forEach((btn) => {
-    btn.onclick = () => { viewMode = btn.dataset.view; render(); };
-  });
-  document.querySelectorAll('.btn-block-viewer').forEach((btn) => {
-    btn.onclick = async () => {
-      if (btn.disabled) return;
-      if (!confirm('¿Bloquear a esta persona? Ya no va a poder entrar a tu sala ni ver la transmisión.')) return;
-      btn.disabled = true;
-      const r = await fetch(`/api/rooms/${data.room_slug}/block`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: btn.dataset.userId }),
-      });
-      const j = await r.json();
-      if (j.ok) { btn.closest('.donor-row').style.opacity = '.4'; btn.textContent = 'Bloqueado ✓'; }
-      else { alert('No se pudo bloquear.'); btn.disabled = false; }
-    };
-  });
+function setRange(p) {
+  range = Object.assign({ preset: p }, presetToDates(p));
+  document.getElementById('date-from').value = range.from; document.getElementById('date-to').value = range.to;
+  document.querySelectorAll('#pills button').forEach((b) => b.classList.toggle('active', b.dataset.preset === p));
+  load();
 }
+document.querySelectorAll('#pills button').forEach((b) => b.onclick = () => setRange(b.dataset.preset));
+document.getElementById('btn-apply-range').onclick = () => {
+  const f = document.getElementById('date-from').value, t = document.getElementById('date-to').value;
+  if (!f || !t) return showToast('Elige las dos fechas.');
+  range = { preset: null, from: f, to: t };
+  document.querySelectorAll('#pills button').forEach((b) => b.classList.remove('active'));
+  load();
+};
+// "Descargar PDF": la propia hoja de impresión del navegador (Guardar como PDF)
+// con un estilo pensado para papel: sin nav, sin botones, todo expandido.
+document.getElementById('btn-pdf').onclick = () => { document.title = `Video Room · estadísticas ${range.from} a ${range.to}`; window.print(); };
 
 async function loadUserChip() {
   const res = await fetch('/api/wallet/me');
@@ -216,7 +313,6 @@ async function loadUserChip() {
 }
 
 let notifData = { unread_count: 0, items: [] };
-
 async function loadNotifications() {
   const res = await fetch('/api/notifications');
   if (!res.ok) return;
@@ -224,52 +320,31 @@ async function loadNotifications() {
   document.getElementById('bell-wrap').style.display = 'flex';
   document.getElementById('bell-badge').classList.toggle('show', notifData.unread_count > 0);
 }
-
 function renderNotifDropdown() {
   const el = document.getElementById('bell-dropdown');
-  if (!notifData.items.length) {
-    el.innerHTML = '<div class="bell-empty">Aquí van a aparecer avisos cuando las salas que sigues se pongan en vivo.</div>';
-    return;
-  }
+  if (!notifData.items.length) { el.innerHTML = '<div class="bell-empty">Aquí van a aparecer avisos cuando las salas que sigues se pongan en vivo.</div>'; return; }
   el.innerHTML = notifData.items.map((n) => `
     <a class="bell-item bell-item-notif" href="/${encodeURIComponent(n.room_slug)}">
-      ${n.creator_avatar ? `<img class="bell-item-avatar" src="${escapeHtml(n.creator_avatar)}">` : '<div class="bell-item-avatar"></div>'}
-      <div class="bell-item-text">
-        <div class="t">${escapeHtml(n.title)}</div>
-        <div class="b">${escapeHtml(n.body)}</div>
-      </div>
+      ${n.creator_avatar ? `<img class="bell-item-avatar" src="${esc(n.creator_avatar)}">` : '<div class="bell-item-avatar"></div>'}
+      <div class="bell-item-text"><div class="t">${esc(n.title)}</div><div class="b">${esc(n.body)}</div></div>
     </a>`).join('');
 }
-
 document.getElementById('btn-bell').onclick = async () => {
   const dropdown = document.getElementById('bell-dropdown');
   if (dropdown.classList.contains('show')) { dropdown.classList.remove('show'); return; }
-  renderNotifDropdown();
-  dropdown.classList.add('show');
-  if (notifData.unread_count > 0) {
-    await fetch('/api/notifications/read', { method: 'POST' });
-    document.getElementById('bell-badge').classList.remove('show');
-    notifData.unread_count = 0;
-  }
+  renderNotifDropdown(); dropdown.classList.add('show');
+  if (notifData.unread_count > 0) { await fetch('/api/notifications/read', { method: 'POST' }); document.getElementById('bell-badge').classList.remove('show'); notifData.unread_count = 0; }
 };
-
-// Transmitir y copiar link son las dos acciones que un creador necesita a la
-// mano en todo momento — quedan fijas en la barra de arriba en vez de vivir
-// solo en el monedero.
 function setupNavShortcuts(slug) {
   const fullUrl = 'https://video.capitaltorreon.com/' + slug;
   const transmitBtn = document.getElementById('btn-transmit-nav');
-  transmitBtn.href = '/' + slug;
-  transmitBtn.style.display = 'inline-block';
+  transmitBtn.href = '/' + slug; transmitBtn.style.display = 'inline-block';
   const copyBtn = document.getElementById('btn-copy-link-nav');
   copyBtn.style.display = 'flex';
-  copyBtn.onclick = () => {
-    navigator.clipboard.writeText(fullUrl);
-    showToast('🔗 Link copiado.');
-  };
+  copyBtn.onclick = () => { navigator.clipboard.writeText(fullUrl); showToast('🔗 Link copiado.'); };
 }
 
-load();
+setRange('30');
 loadUserChip();
 loadNotifications();
 setInterval(loadNotifications, 30000);

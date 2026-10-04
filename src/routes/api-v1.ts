@@ -6,7 +6,8 @@
 import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
 import { apiUser, createApiKey, randomHex } from "../lib/api-auth";
-import { computeCreatorStats } from "../lib/stats-core";
+import { computeCreatorStats, computeDeepStats, sessionDetail } from "../lib/stats-core";
+import { parseRange } from "./stats";
 import { deliverToEndpoint, emitEvent, WEBHOOK_EVENTS, type WebhookEndpoint, type WebhookEvent } from "../lib/webhooks";
 import { notifyRoomStartingSoon } from "../lib/notify";
 import { statusFor, publicStatusFor, RELICS, CREATOR_RANKS, VIEWER_RANKS } from "../lib/status";
@@ -156,6 +157,26 @@ apiV1.get("/api/v1/stats", async (c) => {
   const room = await roomOf(c.env, user);
   if (!room) return c.json({ error: "no_room" }, 404);
   return c.json(await computeCreatorStats(c.env, user, room, c.req.query("range") ?? "30d"));
+});
+
+// Estadísticas profundas con rango libre (?from=YYYY-MM-DD&to=YYYY-MM-DD).
+apiV1.get("/api/v1/stats/deep", async (c) => {
+  const user = await authedUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  const room = await roomOf(c.env, user);
+  if (!room) return c.json({ error: "no_room" }, 404);
+  const { fromTs, toTs } = parseRange(c.req.query("from"), c.req.query("to"));
+  return c.json(await computeDeepStats(c.env, user, room, fromTs, toTs));
+});
+
+apiV1.get("/api/v1/sessions/:id", async (c) => {
+  const user = await authedUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  const room = await roomOf(c.env, user);
+  if (!room) return c.json({ error: "no_room" }, 404);
+  const d = await sessionDetail(c.env, room, c.req.param("id"));
+  if (!d) return c.json({ error: "not_found" }, 404);
+  return c.json(d);
 });
 
 apiV1.get("/api/v1/transactions", async (c) => {

@@ -339,6 +339,69 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   .tx-table td, .tx-table th { padding: 8px; }
 }
 
+/* ---------- Estadísticas profundas (RLR) ---------- */
+.stats-wrap { max-width: 920px; }
+.stats-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.stats-head h1 { margin-bottom: 6px; }
+.range-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 14px 0 20px; }
+.range-bar .filter-pills { margin: 0; }
+.range-dates { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.range-dates label { font-size: 12px; color: #9aa1b0; display: inline-flex; align-items: center; gap: 6px; }
+.range-dates input[type=date] { background: rgba(255,255,255,.05); border: .5px solid rgba(255,255,255,.15); color: #fff; border-radius: 8px; padding: 7px 9px; font-family: inherit; font-size: 12.5px; color-scheme: dark; }
+.btn-navy.small { padding: 8px 14px; font-size: 12px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 720px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+.kpi { background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.07); border-radius: 14px; padding: 16px 14px; }
+.kpi-v { font-size: 26px; font-weight: 800; letter-spacing: -.8px; color: #fff; line-height: 1.1; }
+.kpi:first-child .kpi-v { color: var(--green); }
+.kpi-l { font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #9aa1b0; margin-top: 6px; }
+.kpi-n { font-size: 12px; color: #c7cdd8; margin-top: 6px; line-height: 1.4; }
+.stat-section { background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.07); border-radius: 14px; padding: 20px; margin: 14px 0; }
+.stat-section h2 { font-size: 17px; font-weight: 800; letter-spacing: -.4px; margin: 0 0 4px; color: #fff; }
+.stat-section > .muted { margin: 0 0 12px; font-size: 13px; line-height: 1.5; }
+.two-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 720px) { .two-charts { grid-template-columns: 1fr; } }
+.chart-cap { font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #9aa1b0; margin: 10px 0 4px; }
+figure.chart { position: relative; margin: 0; }
+figure.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+figure.chart .base { stroke: rgba(255,255,255,.14); stroke-width: 1; }
+figure.chart .ax { fill: #8a94a6; font-size: 11px; font-family: inherit; }
+figure.chart .ax.gold { fill: #F5C542; font-weight: 700; }
+figure.chart .line { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+figure.chart .area { fill: rgba(86,239,159,.10); }
+figure.chart .dot { fill: var(--green); stroke: #0D1117; stroke-width: 2; opacity: 0; }
+figure.chart .pt:hover .dot { opacity: 1; }
+figure.chart .bar:hover rect:last-of-type { filter: brightness(1.15); }
+figure.chart .mark { stroke: #F5C542; stroke-width: 1.5; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+figure.chart .tip { position: absolute; top: -4px; transform: translate(-50%, -100%); background: #0D1117; color: #fff; border: .5px solid rgba(86,239,159,.3); border-radius: 8px; padding: 6px 10px; font-size: 12px; white-space: nowrap; pointer-events: none; z-index: 5; }
+.top-video { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 16px; border-radius: 12px; cursor: pointer; background: rgba(245,197,66,.07); border: .5px solid rgba(245,197,66,.35); text-align: left; }
+.top-video-date { font-size: 12px; color: #c7cdd8; text-transform: capitalize; }
+.top-video-earn { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: #F5C542; }
+.tx-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sessions-table tbody tr { cursor: pointer; }
+.sessions-table tbody tr:hover td { background: rgba(255,255,255,.03); }
+.sessions-table tr.is-top td:first-child::before { content: "★ "; color: #F5C542; }
+.live-tag { font-size: 10px; font-weight: 800; color: #E5484D; text-transform: uppercase; }
+.session-sheet-inner { max-height: 88vh; overflow-y: auto; }
+@media (max-width: 480px) { .stats-head, .range-bar, .range-dates { justify-content: center; text-align: center; } .kpi { text-align: center; } }
+/* Papel: lo que se imprime es el reporte, no la app. */
+@media print {
+  body { background: #fff !important; color: #111 !important; }
+  .nav, .app-subnav, #btn-pdf, .range-bar, .app-toast, .sheet, .btn-block-viewer, .top-video button { display: none !important; }
+  .app-wrap { max-width: none; padding: 0; }
+  .kpi, .stat-section, .top-video { background: #fff !important; border: 1px solid #ddd !important; break-inside: avoid; }
+  .kpi-v, .stat-section h2, .donor-name, .tx-table td, .top-video-date { color: #111 !important; }
+  .kpi:first-child .kpi-v, .donor-total, .tx-amount.pos { color: #1f9d5c !important; }
+  .top-video-earn { color: #9a6f00 !important; }
+  .kpi-l, .kpi-n, .muted, .donor-meta, .chart-cap, figure.chart .ax { color: #555 !important; fill: #555 !important; }
+  figure.chart .base { stroke: #ccc; }
+  figure.chart .area { fill: rgba(31,157,92,.12); }
+  figure.chart .line { stroke: #1f9d5c; }
+  .tx-table th { color: #555; } .tx-table td, .tx-table th { border-color: #e5e5e5; }
+  .donor-row { border-color: #eee; }
+  h1 { color: #111; }
+}
+
 /* ---------- Integraciones (monedero) ---------- */
 .int-section { padding: 16px 0; border-top: .5px solid rgba(255,255,255,.08); }
 .int-section:first-child { border-top: none; padding-top: 4px; }
