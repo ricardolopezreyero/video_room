@@ -8,6 +8,10 @@ import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
 import { sendEmail, passReceiptEmail, newFollowerEmail } from "../lib/email";
 import { emitEvent } from "../lib/webhooks";
 import { evaluateRelics, viewerMarkFor } from "../lib/status";
+import {
+  entrySplit, membershipSplit, tipSplit, isPriceOption, isMembershipOption, isHighlightOption,
+  HIGHLIGHT_SECONDS, FAREWELL_TIP_WINDOW_SECONDS, MEMBERSHIP_DAYS, PRICE_OPTIONS_CENTS, MEMBERSHIP_OPTIONS_CENTS, HIGHLIGHT_OPTIONS_CENTS,
+} from "../lib/pricing";
 import { endLiveSession } from "../lib/room-lifecycle";
 import type { Env } from "../env";
 
@@ -42,6 +46,13 @@ rooms.get("/api/rooms/mine", async (c) => {
     is_numeric: isNumericSlug(room.slug),
     age_days: ageDays,
     notify_count: notifyCount?.n ?? 0,
+    price_cents: room.price_cents || 2000,
+    membership_cents: room.membership_cents,
+    tip_goal_cents: room.tip_goal_cents,
+    price_options_cents: PRICE_OPTIONS_CENTS,
+    membership_options_cents: MEMBERSHIP_OPTIONS_CENTS,
+    split: entrySplit(room.price_cents || 2000),
+    membership_split: room.membership_cents ? membershipSplit(room.membership_cents) : null,
   });
 });
 
@@ -152,7 +163,7 @@ rooms.get("/api/rooms/:slug/status", async (c) => {
   return c.json({ room, live_session: live ?? null });
 });
 
-// Compra o renovación del pase de entrada ($20/hora, split 50/50)
+// Compra o renovación del pase de entrada (precio del creador; reparto en src/lib/pricing.ts)
 rooms.post("/api/rooms/:slug/pass", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: "no_session" }, 401);
@@ -180,19 +191,37 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
     const passId = newId("pass");
     const expiresAt = now + 3600;
     await c.env.DB.prepare(
-      "INSERT INTO passes (id, session_id, user_id, expires_at, device_id) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
     ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web").run();
     return c.json({ ok: true, expires_at: expiresAt, charged: false });
   }
 
-  if (user.balance_cents < 2000) return c.json({ error: "saldo_insuficiente" }, 402);
+  // Miembro vigente: entra sin pagar la hora (ya pagó el mes). Se registra el
+  // pase igual (cuenta como entrada en estadísticas, con $0).
+  const membership = await c.env.DB.prepare(
+    "SELECT id, expires_at FROM memberships WHERE room_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
+  ).bind(room.id, user.id, now).first<{ id: string; expires_at: number }>();
+  if (membership) {
+    const passId = newId("pass");
+    const expiresAt = now + 3600;
+    await c.env.DB.prepare(
+      "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
+    ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web").run();
+    const stubM = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+    await stubM.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: 0, member: true }) });
+    return c.json({ ok: true, expires_at: expiresAt, charged: false, member: true });
+  }
+
+  const price = room.price_cents || 2000;
+  const split = entrySplit(price);
+  if (user.balance_cents < price) return c.json({ error: "saldo_insuficiente", price_cents: price }, 402);
 
   const passId = newId("pass");
   const expiresAt = now + 3600;
   const utm = readUtmCookie(c);
   // Idem key atada a sesión+usuario+segundo: dos clics dobles en el mismo segundo
   // (el caso real de doble-tap) chocan en esta llave y solo uno se cobra.
-  const debited = await creditLedger(c.env.DB, user.id, -2000, "entrada", passId, `entrada:${session.id}:${user.id}:${now}`, "balance_cents");
+  const debited = await creditLedger(c.env.DB, user.id, -price, "entrada", passId, `entrada:${session.id}:${user.id}:${now}`, "balance_cents");
   if (!debited) {
     const racedPass = await c.env.DB.prepare(
       "SELECT id, expires_at FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
@@ -200,14 +229,14 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
     if (racedPass) return c.json({ ok: true, expires_at: racedPass.expires_at, charged: false });
     return c.json({ error: "no_procesado" }, 500);
   }
-  await creditLedger(c.env.DB, room.owner_id, 1000, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents");
+  await creditLedger(c.env.DB, room.owner_id, split.creator, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents");
   await c.env.DB.prepare(
-    `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, utm_source, utm_medium, utm_campaign)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web", utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null).run();
+    `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, utm_source, utm_medium, utm_campaign, amount_cents, creator_cents)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web", utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null, price, split.creator).run();
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  await stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name }) });
+  await stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: split.creator }) });
 
   // Recibo al espectador (como un boleto) y aviso al creador por webhook. El
   // pase ya quedó cobrado y guardado: nada de esto puede afectar la entrada.
@@ -223,9 +252,9 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
         creatorName: owner?.name ?? room.title,
         creatorAvatar: owner?.avatar_url ?? null,
         roomUrl: `${c.env.APP_URL}/${room.slug}`,
-        amountCents: 2000,
+        amountCents: price,
         expiresAt,
-        remainingBalanceCents: user.balance_cents - 2000,
+        remainingBalanceCents: user.balance_cents - price,
       }),
     });
   } catch (err) {
@@ -234,8 +263,8 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   await emitEvent(c.env, room.owner_id, "viewer.entered", {
     session_id: session.id,
     viewer: { id: user.id, name: user.name },
-    amount_cents: 2000,
-    creator_cut_cents: 1000,
+    amount_cents: price,
+    creator_cut_cents: split.creator,
     expires_at: expiresAt,
   });
 
@@ -258,9 +287,12 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
 
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
   if (!room) return c.json({ error: "not_found" }, 404);
-  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
-    .bind(room.id)
-    .first<Session>();
+  // Propina de despedida: la sala puede haber cerrado hace un momento y el
+  // espectador todavía quiere agradecer — vale la última sesión si terminó
+  // hace menos de 10 minutos.
+  const session = await c.env.DB.prepare(
+    "SELECT * FROM sessions WHERE room_id = ? AND (status = 'live' OR ended_at >= ?) ORDER BY started_at DESC LIMIT 1"
+  ).bind(room.id, Math.floor(Date.now() / 1000) - FAREWELL_TIP_WINDOW_SECONDS).first<Session>();
   if (!session) return c.json({ error: "sala_cerrada" }, 400);
   if (user.balance_cents < amount_cents) return c.json({ error: "saldo_insuficiente" }, 402);
 
@@ -272,19 +304,21 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
   }
 
   const tipId = newId("tip");
-  const creatorCut = Math.round(amount_cents * 0.9);
+  const creatorCut = tipSplit(amount_cents).creator;
   const debited = await creditLedger(c.env.DB, user.id, -amount_cents, "propina_enviada", tipId, `propina_env:${tipId}`, "balance_cents");
   if (!debited) return c.json({ error: "no_procesado" }, 500);
   await creditLedger(c.env.DB, room.owner_id, creatorCut, "propina_recibida", tipId, `propina_rec:${tipId}`, "creator_balance_cents");
   await c.env.DB.prepare(
-    "INSERT INTO tips (id, session_id, from_user, to_user, amount_cents, message) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO tips (id, session_id, from_user, to_user, amount_cents, message, kind) VALUES (?, ?, ?, ?, ?, ?, 'tip')"
   ).bind(tipId, session.id, user.id, room.owner_id, amount_cents, (message ?? "").slice(0, 60)).run();
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  await stub.fetch("https://do/tip", {
-    method: "POST",
-    body: JSON.stringify({ from: user.name, avatar_url: user.avatar_url, amount_cents, message: (message ?? "").slice(0, 60) }),
-  });
+  if (session.status === "live") {
+    await stub.fetch("https://do/tip", {
+      method: "POST",
+      body: JSON.stringify({ from: user.name, avatar_url: user.avatar_url, amount_cents, creator_cents: creatorCut, message: (message ?? "").slice(0, 60) }),
+    });
+  }
   await emitEvent(c.env, room.owner_id, "tip.received", {
     session_id: session.id,
     from: { id: user.id, name: user.name },
@@ -296,6 +330,122 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
   await evaluateRelics(c.env, room.owner_id, { sessionId: session.id });
 
   return c.json({ ok: true, creator_cut_cents: creatorCut, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
+});
+
+// Mensaje destacado pagado: la pregunta queda fijada arriba del chat 3 min
+// para todos, con el monto a la vista. Es una propina con el mensaje al frente.
+rooms.post("/api/rooms/:slug/highlight", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const { amount_cents, text } = await c.req.json<{ amount_cents: number; text?: string }>().catch(() => ({ amount_cents: 0, text: "" }));
+  if (!isHighlightOption(amount_cents)) return c.json({ error: "monto_invalido", allowed: HIGHLIGHT_OPTIONS_CENTS }, 400);
+  const body = (text ?? "").trim().slice(0, 140);
+  if (!body) return c.json({ error: "vacio" }, 400);
+
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'").bind(room.id).first<Session>();
+  if (!session) return c.json({ error: "sala_cerrada" }, 400);
+  if (await isBlocked(c.env.DB, room.id, user.id)) return c.json({ error: "bloqueado" }, 403);
+  if (user.balance_cents < amount_cents) return c.json({ error: "saldo_insuficiente" }, 402);
+
+  const tipId = newId("tip");
+  const split = tipSplit(amount_cents);
+  const debited = await creditLedger(c.env.DB, user.id, -amount_cents, "destacado_enviado", tipId, `destacado_env:${tipId}`, "balance_cents");
+  if (!debited) return c.json({ error: "no_procesado" }, 500);
+  await creditLedger(c.env.DB, room.owner_id, split.creator, "destacado_recibido", tipId, `destacado_rec:${tipId}`, "creator_balance_cents");
+  await c.env.DB.prepare(
+    "INSERT INTO tips (id, session_id, from_user, to_user, amount_cents, message, kind) VALUES (?, ?, ?, ?, ?, ?, 'highlight')"
+  ).bind(tipId, session.id, user.id, room.owner_id, amount_cents, body).run();
+
+  const until = Date.now() + HIGHLIGHT_SECONDS * 1000;
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/highlight", {
+    method: "POST",
+    body: JSON.stringify({ name: user.name, avatar_url: user.avatar_url, body, amount_cents, creator_cents: split.creator, until }),
+  });
+  await emitEvent(c.env, room.owner_id, "tip.received", {
+    session_id: session.id, from: { id: user.id, name: user.name }, amount_cents, creator_cut_cents: split.creator, message: body, kind: "highlight",
+  });
+  const newRelics = await evaluateRelics(c.env, user.id, { sessionId: session.id });
+  return c.json({ ok: true, until, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
+});
+
+// Membresía mensual: 30 días entrando sin pagar la hora. Se cobra una vez,
+// del saldo; el creador se queda con el 80%.
+rooms.post("/api/rooms/:slug/membership", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  if (!room.membership_cents) return c.json({ error: "sin_membresia" }, 400);
+  if (user.id === room.owner_id) return c.json({ error: "es_tu_sala" }, 400);
+  if (await isBlocked(c.env.DB, room.id, user.id)) return c.json({ error: "bloqueado" }, 403);
+  const now = Math.floor(Date.now() / 1000);
+  const current = await c.env.DB.prepare(
+    "SELECT expires_at FROM memberships WHERE room_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
+  ).bind(room.id, user.id, now).first<{ expires_at: number }>();
+  if (current) return c.json({ ok: true, already: true, expires_at: current.expires_at });
+  const price = room.membership_cents;
+  if (user.balance_cents < price) return c.json({ error: "saldo_insuficiente", price_cents: price }, 402);
+
+  const id = newId("mem");
+  const split = membershipSplit(price);
+  const debited = await creditLedger(c.env.DB, user.id, -price, "membresia", id, `membresia:${id}`, "balance_cents");
+  if (!debited) return c.json({ error: "no_procesado" }, 500);
+  await creditLedger(c.env.DB, room.owner_id, split.creator, "ganancia_membresia", id, `ganancia_membresia:${id}`, "creator_balance_cents");
+  const expiresAt = now + MEMBERSHIP_DAYS * 86400;
+  await c.env.DB.prepare(
+    "INSERT INTO memberships (id, room_id, user_id, price_cents, creator_cents, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(id, room.id, user.id, price, split.creator, expiresAt).run();
+  await emitEvent(c.env, room.owner_id, "tip.received", {
+    kind: "membership", from: { id: user.id, name: user.name }, amount_cents: price, creator_cut_cents: split.creator, expires_at: expiresAt,
+  });
+  return c.json({ ok: true, expires_at: expiresAt, charged: true });
+});
+
+// Lo que el espectador necesita saber antes de pagar: precio, si hay
+// membresía y si ya es miembro.
+rooms.get("/api/rooms/:slug/offer", async (c) => {
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const user = await currentUser(c);
+  let memberUntil: number | null = null;
+  if (user) {
+    const m = await c.env.DB.prepare(
+      "SELECT expires_at FROM memberships WHERE room_id = ? AND user_id = ? AND expires_at > unixepoch() ORDER BY expires_at DESC LIMIT 1"
+    ).bind(room.id, user.id).first<{ expires_at: number }>();
+    memberUntil = m?.expires_at ?? null;
+  }
+  return c.json({
+    price_cents: room.price_cents || 2000,
+    membership_cents: room.membership_cents,
+    tip_goal_cents: room.tip_goal_cents,
+    highlight_options_cents: HIGHLIGHT_OPTIONS_CENTS,
+    member_until: memberUntil,
+  });
+});
+
+// El creador decide cuánto cobra. Opciones acotadas: precios claros, sin
+// decimales raros, y el reparto siempre a la vista en el monedero.
+rooms.post("/api/rooms/:slug/settings", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+  const body = await c.req.json<{ price_cents?: number; membership_cents?: number | null; tip_goal_cents?: number | null }>().catch(() => ({} as { price_cents?: number; membership_cents?: number | null; tip_goal_cents?: number | null }));
+  const price = body.price_cents ?? room.price_cents;
+  if (!isPriceOption(price)) return c.json({ error: "precio_invalido", allowed: PRICE_OPTIONS_CENTS }, 400);
+  const membership = body.membership_cents === undefined ? room.membership_cents : body.membership_cents;
+  if (membership !== null && !isMembershipOption(membership)) return c.json({ error: "membresia_invalida", allowed: MEMBERSHIP_OPTIONS_CENTS }, 400);
+  const goal = body.tip_goal_cents === undefined ? room.tip_goal_cents : body.tip_goal_cents;
+  if (goal !== null && (!Number.isInteger(goal) || goal < 10000 || goal > 10000000)) return c.json({ error: "meta_invalida", hint: "Entre $100 y $100,000" }, 400);
+  await c.env.DB.prepare("UPDATE rooms SET price_cents = ?, membership_cents = ?, tip_goal_cents = ? WHERE id = ?").bind(price, membership, goal, room.id).run();
+  return c.json({ ok: true, price_cents: price, membership_cents: membership, tip_goal_cents: goal, split: entrySplit(price), membership_split: membership ? membershipSplit(membership) : null });
 });
 
 const MAX_COMMENT_LENGTH = 240;
@@ -521,7 +671,7 @@ rooms.get("/api/rooms/:slug/viewers", async (c) => {
     c.env.DB.prepare(`SELECT id, name, avatar_url FROM users WHERE id IN (${placeholders})`)
       .bind(...uids).all<{ id: string; name: string; avatar_url: string | null }>(),
     c.env.DB.prepare(
-      `SELECT user_id, COUNT(*) * 2000 as cents FROM passes WHERE session_id = ? AND user_id IN (${placeholders}) GROUP BY user_id`
+      `SELECT user_id, COALESCE(SUM(amount_cents), 0) as cents FROM passes WHERE session_id = ? AND user_id IN (${placeholders}) GROUP BY user_id`
     ).bind(session.id, ...uids).all<{ user_id: string; cents: number }>(),
     c.env.DB.prepare(
       `SELECT from_user as user_id, COALESCE(SUM(amount_cents), 0) as cents FROM tips WHERE session_id = ? AND from_user IN (${placeholders}) GROUP BY from_user`

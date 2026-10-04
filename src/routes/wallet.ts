@@ -200,8 +200,12 @@ const BALANCE_FIELD_BY_TYPE: Record<string, "balance_cents" | "creator_balance_c
   entrada: "balance_cents",
   renovacion: "balance_cents",
   propina_enviada: "balance_cents",
+  membresia: "balance_cents",
+  destacado_enviado: "balance_cents",
   ganancia_entrada: "creator_balance_cents",
   propina_recibida: "creator_balance_cents",
+  ganancia_membresia: "creator_balance_cents",
+  destacado_recibido: "creator_balance_cents",
   retiro: "creator_balance_cents",
   retiro_fallido_reembolso: "creator_balance_cents",
 };

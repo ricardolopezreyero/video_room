@@ -65,7 +65,12 @@ const TYPE_LABELS = {
   ganancia_entrada: 'Ganancia por entrada',
   propina_enviada: 'Propina enviada',
   propina_recibida: 'Propina recibida',
+  membresia: 'Membresía mensual',
+  ganancia_membresia: 'Ganancia por membresía',
+  destacado_enviado: 'Mensaje destacado',
+  destacado_recibido: 'Ganancia por destacado',
   retiro: 'Retiro',
+  retiro_fallido_reembolso: 'Reembolso de retiro',
 };
 
 const FILTERS = [
@@ -346,5 +351,8 @@ setInterval(loadNotifications, 30000);
 
 main();
 </script>
+<!-- RLR · Login de CapitalTorreon: todo funciona sin entrar; entrar solo agrega -->
+<div data-login-ct style="position:fixed;top:12px;right:12px;z-index:9999"></div>
+<script src="https://login.capitaltorreon.com/login.js" defer></script>
 </body>
 </html>

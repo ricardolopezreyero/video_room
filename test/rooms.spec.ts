@@ -16,7 +16,7 @@ describe("POST /api/rooms/:slug/pass", () => {
       env
     );
     expect(res.status).toBe(402);
-    expect((await res.json()) as { error: string }).toEqual({ error: "saldo_insuficiente" });
+    expect((await res.json()) as { error: string }).toMatchObject({ error: "saldo_insuficiente" });
   });
 
   it("el dueño entra gratis a su propia sala", async () => {

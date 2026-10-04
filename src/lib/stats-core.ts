@@ -65,7 +65,7 @@ export async function computeCreatorStats(env: Env, user: User, room: Room, rang
        COALESCE(p.utm_source, '(directo)') as utm_source,
        COALESCE(p.utm_campaign, '') as utm_campaign,
        COUNT(*) as entradas,
-       COUNT(*) * 1000 as ganado_cents
+       COALESCE(SUM(p.creator_cents), 0) as ganado_cents
      FROM passes p JOIN sessions s ON s.id = p.session_id
      WHERE s.room_id = ? AND p.purchased_at >= ? AND p.user_id != ?
      GROUP BY utm_source, utm_campaign
@@ -75,7 +75,7 @@ export async function computeCreatorStats(env: Env, user: User, room: Room, rang
 
   const [entradasByUser, tipsByUser] = await Promise.all([
     env.DB.prepare(
-      `SELECT p.user_id as user_id, COUNT(*) as n, COUNT(*) * 2000 as cents
+      `SELECT p.user_id as user_id, COUNT(*) as n, COALESCE(SUM(p.amount_cents), 0) as cents
        FROM passes p JOIN sessions s ON s.id = p.session_id
        WHERE s.room_id = ? AND p.purchased_at >= ? AND p.user_id != ?
        GROUP BY p.user_id`
@@ -175,13 +175,14 @@ export async function computeDeepStats(env: Env, user: User, room: Room, fromTs:
               (SELECT COUNT(DISTINCT p.user_id) FROM passes p WHERE p.session_id = s.id AND p.user_id != ?) as unique_viewers,
               (SELECT COUNT(*) FROM tips t WHERE t.session_id = s.id) as tips_count,
               (SELECT COALESCE(SUM(t.amount_cents), 0) FROM tips t WHERE t.session_id = s.id) as tips_cents,
+              (SELECT COALESCE(SUM(p.creator_cents), 0) FROM passes p WHERE p.session_id = s.id) as entradas_creator_cents,
               (SELECT COUNT(*) FROM session_samples x WHERE x.session_id = s.id) as samples,
               (SELECT AVG(viewers) FROM session_samples x WHERE x.session_id = s.id) as avg_viewers
        FROM sessions s WHERE s.room_id = ? AND s.started_at >= ? AND s.started_at <= ?
        ORDER BY s.started_at DESC LIMIT 500`
     ).bind(user.id, user.id, room.id, fromTs, toTs).all<{
       id: string; started_at: number; ended_at: number | null; status: string; peak_viewers: number; hearts: number; comments_count: number;
-      entradas: number; unique_viewers: number; tips_count: number; tips_cents: number; samples: number; avg_viewers: number | null;
+      entradas: number; unique_viewers: number; tips_count: number; tips_cents: number; entradas_creator_cents: number; samples: number; avg_viewers: number | null;
     }>(),
     env.DB.prepare(
       `SELECT date(created_at + ${CDMX_OFFSET}, 'unixepoch') as day,
@@ -191,10 +192,10 @@ export async function computeDeepStats(env: Env, user: User, room: Room, fromTs:
        GROUP BY day ORDER BY day`
     ).bind(user.id, fromTs, toTs).all<{ day: string; entradas_cents: number; propinas_cents: number }>(),
     env.DB.prepare(
-      `SELECT p.user_id, p.purchased_at, s.started_at
+      `SELECT p.user_id, p.purchased_at, s.started_at, p.creator_cents
        FROM passes p JOIN sessions s ON s.id = p.session_id
        WHERE s.room_id = ? AND p.user_id != ? AND p.purchased_at >= ? AND p.purchased_at <= ?`
-    ).bind(room.id, user.id, fromTs, toTs).all<{ user_id: string; purchased_at: number; started_at: number }>(),
+    ).bind(room.id, user.id, fromTs, toTs).all<{ user_id: string; purchased_at: number; started_at: number; creator_cents: number }>(),
     env.DB.prepare(
       "SELECT amount_cents, created_at, message FROM tips WHERE to_user = ? AND created_at >= ? AND created_at <= ?"
     ).bind(user.id, fromTs, toTs).all<{ amount_cents: number; created_at: number; message: string | null }>(),
@@ -204,7 +205,7 @@ export async function computeDeepStats(env: Env, user: User, room: Room, fromTs:
     computeTopDonors(env, user, room, fromTs),
     env.DB.prepare(
       `SELECT COALESCE(p.utm_source, '(directo)') as utm_source, COALESCE(p.utm_campaign, '') as utm_campaign,
-              COUNT(*) as entradas, COUNT(*) * 1000 as ganado_cents
+              COUNT(*) as entradas, COALESCE(SUM(p.creator_cents), 0) as ganado_cents
        FROM passes p JOIN sessions s ON s.id = p.session_id
        WHERE s.room_id = ? AND p.purchased_at >= ? AND p.purchased_at <= ? AND p.user_id != ?
        GROUP BY utm_source, utm_campaign ORDER BY entradas DESC LIMIT 10`
@@ -225,7 +226,7 @@ export async function computeDeepStats(env: Env, user: User, room: Room, fromTs:
       unique_viewers: s.unique_viewers,
       tips_count: s.tips_count,
       tips_cents: s.tips_cents,
-      earned_cents: s.entradas * 1000 + Math.round(s.tips_cents * 0.9),
+      earned_cents: s.entradas_creator_cents + Math.round(s.tips_cents * 0.9),
       peak_viewers: s.peak_viewers,
       avg_viewers: Math.round((s.avg_viewers ?? 0) * 10) / 10,
       hearts: s.hearts,
@@ -289,8 +290,8 @@ export async function computeDeepStats(env: Env, user: User, room: Room, fromTs:
   let earlyBirds = 0;
   for (const p of passesRaw.results) {
     const local = new Date((p.purchased_at + CDMX_OFFSET) * 1000);
-    byHour[local.getUTCHours()].entradas++; byHour[local.getUTCHours()].cents += 1000;
-    byWeekday[local.getUTCDay()].entradas++; byWeekday[local.getUTCDay()].cents += 1000;
+    byHour[local.getUTCHours()].entradas++; byHour[local.getUTCHours()].cents += p.creator_cents;
+    byWeekday[local.getUTCDay()].entradas++; byWeekday[local.getUTCDay()].cents += p.creator_cents;
     viewerFirst.set(p.user_id, Math.min(viewerFirst.get(p.user_id) ?? Infinity, p.purchased_at));
     if (p.purchased_at - p.started_at <= 60) earlyBirds++;
   }

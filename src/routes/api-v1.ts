@@ -16,7 +16,6 @@ import type { Env } from "../env";
 
 export const apiV1 = new Hono<{ Bindings: Env }>();
 
-const PRICE_PER_HOUR_CENTS = 2000;
 const MAX_STARTING_SOON_MINUTES = 24 * 60;
 
 // CORS abierto: la API se consume desde sitios de terceros. Con "*" los
@@ -68,7 +67,8 @@ function roomPayload(env: Env, room: Room, owner: { name: string; avatar_url: st
     live: !!live,
     viewers: live ? viewers : 0,
     started_at: live ? live.started_at : null,
-    price_per_hour_cents: PRICE_PER_HOUR_CENTS,
+    price_per_hour_cents: room.price_cents || 2000,
+    membership_cents: room.membership_cents ?? null,
     currency: "MXN",
   };
 }
@@ -201,15 +201,16 @@ apiV1.get("/api/v1/sessions", async (c) => {
     `SELECT s.id, s.started_at, s.ended_at, s.status,
             (SELECT COUNT(*) FROM passes p WHERE p.session_id = s.id AND p.user_id != ?) as entradas,
             (SELECT COUNT(DISTINCT p.user_id) FROM passes p WHERE p.session_id = s.id AND p.user_id != ?) as unique_viewers,
-            (SELECT COALESCE(SUM(t.amount_cents), 0) FROM tips t WHERE t.session_id = s.id) as tips_cents
+            (SELECT COALESCE(SUM(t.amount_cents), 0) FROM tips t WHERE t.session_id = s.id) as tips_cents,
+            (SELECT COALESCE(SUM(p.creator_cents), 0) FROM passes p WHERE p.session_id = s.id) as entradas_creator_cents
      FROM sessions s WHERE s.room_id = ? ORDER BY s.started_at DESC LIMIT ?`
-  ).bind(user.id, user.id, room.id, limit).all<{ id: string; started_at: number; ended_at: number | null; status: string; entradas: number; unique_viewers: number; tips_cents: number }>();
+  ).bind(user.id, user.id, room.id, limit).all<{ id: string; started_at: number; ended_at: number | null; status: string; entradas: number; unique_viewers: number; tips_cents: number; entradas_creator_cents: number }>();
   return c.json({
     sessions: results.map((s) => ({
       ...s,
       duration_seconds: (s.ended_at ?? Math.floor(Date.now() / 1000)) - s.started_at,
-      // Lo que se quedó el creador: $10 por entrada + 90% de las propinas.
-      earned_cents: s.entradas * 1000 + Math.round(s.tips_cents * 0.9),
+      // Lo que se quedó el creador: su parte de cada entrada + 90% de las propinas.
+      earned_cents: s.entradas_creator_cents + Math.round(s.tips_cents * 0.9),
     })),
   });
 });

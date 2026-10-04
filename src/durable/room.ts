@@ -226,10 +226,28 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/entrada" && request.method === "POST") {
-      const { name } = await request.json<{ name: string }>();
-      this.totalCents += 1000;
+      const { name, creator_cents, member } = await request.json<{ name: string; creator_cents?: number; member?: boolean }>();
+      this.totalCents += creator_cents ?? 1000;
       await this.persist();
-      this.broadcast({ type: "entrada", name, ticker_cents: this.totalCents });
+      this.broadcast({ type: "entrada", name, member: !!member, creator_cents: creator_cents ?? 1000, ticker_cents: this.totalCents });
+      return Response.json({ ok: true });
+    }
+
+    // Mensaje destacado pagado: se fija para todos hasta `until` (el cliente lo
+    // baja solo al llegar la hora) y suma al ticker del creador.
+    if (url.pathname === "/highlight" && request.method === "POST") {
+      const h = await request.json<{ name: string; avatar_url?: string | null; body: string; amount_cents: number; creator_cents: number; until: number }>();
+      this.totalCents += h.creator_cents;
+      await this.persist();
+      this.broadcast({
+        type: "pinned",
+        name: h.name.slice(0, 60),
+        body: h.body.slice(0, 140),
+        avatar_url: h.avatar_url ?? null,
+        paid_cents: h.amount_cents,
+        until: h.until,
+        ticker_cents: this.totalCents,
+      });
       return Response.json({ ok: true });
     }
 
@@ -300,8 +318,8 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/tip" && request.method === "POST") {
-      const tip = await request.json<TipEvent>();
-      const creatorCut = Math.round(tip.amount_cents * 0.9);
+      const tip = await request.json<TipEvent & { creator_cents?: number }>();
+      const creatorCut = tip.creator_cents ?? Math.round(tip.amount_cents * 0.9);
       this.totalCents += creatorCut;
       await this.persist();
       this.broadcast({

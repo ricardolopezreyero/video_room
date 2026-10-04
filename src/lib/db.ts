@@ -26,6 +26,12 @@ export interface Room {
   blur_preview: number;
   created_at: number;
   slug_assigned_at: number;
+  /** Precio por hora elegido por el creador (centavos). */
+  price_cents: number;
+  /** Membresía mensual opcional (centavos) — null si no la ofrece. */
+  membership_cents: number | null;
+  /** Meta de propinas por transmisión (centavos) — null si no hay. */
+  tip_goal_cents: number | null;
 }
 
 export interface Session {

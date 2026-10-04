@@ -37,6 +37,7 @@
   let ws = null;
   let sessionEnded = false;
   let ownerStreamStopped = false;
+  let highlightOptions = [];
   let chatVisible = true;
   let waveformStarted = false;
   let connectingTimer = null;
@@ -310,12 +311,14 @@
       } else if (msg.type === "kicked") {
         handleKicked(msg.reason);
       } else if (msg.type === "entrada") {
+        updateGoal(msg.ticker_cents);
         if (isOwner) {
-          toast(`+$10 · ${msg.name} entró`);
+          toast(msg.member ? `${msg.name} entró (miembro)` : `+$${Math.round((msg.creator_cents ?? 1000) / 100)} · ${msg.name} entró`);
           tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
         }
       } else if (msg.type === "tip") {
         showTipBand(msg.from, msg.avatar_url, msg.amount_cents, msg.message);
+        updateGoal(msg.ticker_cents);
         if (isOwner) {
           toast(`+$${Math.round(msg.amount_cents * 0.9 / 100)} · ${msg.from} te mandó dinero 💵`);
           tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
@@ -331,7 +334,19 @@
         const pinnedAvatar = $("pinned-avatar");
         if (msg.avatar_url) { pinnedAvatar.src = msg.avatar_url; pinnedAvatar.style.display = "block"; }
         else pinnedAvatar.style.display = "none";
-        $("pinned-msg").style.display = "flex";
+        // Destacado pagado: dorado, con el monto, y se baja solo al vencer.
+        const pinnedEl = $("pinned-msg");
+        clearTimeout(paidPinTimer);
+        pinnedEl.classList.toggle("paid", !!msg.paid_cents);
+        let amt = pinnedEl.querySelector(".pinned-paid-amt");
+        if (msg.paid_cents) {
+          if (!amt) { amt = document.createElement("span"); amt.className = "pinned-paid-amt"; pinnedEl.insertBefore(amt, $("pinned-text")); }
+          amt.textContent = `$${Math.round(msg.paid_cents / 100)}`;
+          if (msg.until) paidPinTimer = setTimeout(() => { pinnedEl.style.display = "none"; pinnedEl.classList.remove("paid"); }, Math.max(1000, msg.until - Date.now()));
+          if (isOwner && msg.ticker_cents != null) { tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`; toast(`+$${Math.round(msg.paid_cents * 0.9 / 100)} · ${msg.name} destacó su mensaje ⭐`); }
+          updateGoal(msg.ticker_cents);
+        } else if (amt) amt.remove();
+        pinnedEl.style.display = "flex";
       } else if (msg.type === "unpinned") {
         $("pinned-msg").style.display = "none";
       } else if (msg.type === "raise_hand") {
@@ -340,6 +355,12 @@
         sessionEnded = true;
         if (isOwner) {
           stopOwnerMediaNow();
+        } else if (me && pc) {
+          // Propina de despedida: quien estaba viendo puede agradecer antes de
+          // que la página se reinicie. Vale 10 minutos después del cierre.
+          if (pc) { try { pc.close(); } catch {} pc = null; }
+          player.srcObject = null;
+          openTipSheet({ farewell: true });
         } else {
           toast("La transmisión terminó. Como prometimos, nada quedó grabado.", 6000);
           setTimeout(() => location.reload(), 6000);
@@ -1109,35 +1130,59 @@
     }
   }
 
-  function openTipSheet() {
+  // --- Meta de propinas: la barra que todos ven llenarse ---
+  let tipGoalCents = null;
+  let paidPinTimer = null;
+  function updateGoal(tickerCents) {
+    if (!tipGoalCents || tickerCents == null) return;
+    const bar = $("goal-bar");
+    const pct = Math.min(100, Math.round((tickerCents / tipGoalCents) * 100));
+    $("goal-fill").style.width = pct + "%";
+    $("goal-text").textContent = pct >= 100 ? `🎯 Meta lograda · $${Math.round(tickerCents / 100)}` : `$${Math.round(tickerCents / 100)} de $${Math.round(tipGoalCents / 100)}`;
+    bar.classList.toggle("done", pct >= 100);
+    bar.style.display = "flex";
+  }
+
+  // Hoja de dinero: propina normal, mensaje destacado (fijado 3 min arriba del
+  // chat) o propina de despedida al terminar la transmisión.
+  function openTipSheet(opts = {}) {
     const amounts = [2000, 5000, 10000, 20000, 50000];
+    const hl = highlightOptions || [];
     const sheet = document.createElement("div");
     sheet.className = "sheet";
     sheet.innerHTML = `
       <div class="sheet-inner">
-        <h3>Mandar dinero</h3>
+        <h3>${opts.farewell ? "La transmisión terminó" : "Mandar dinero"}</h3>
+        ${opts.farewell ? `<p class="sheet-sub">Nada quedó grabado, como prometimos. Si te gustó, puedes dejar una propina de despedida.</p>` : ""}
         <div class="amounts">${amounts.map((a) => `<button data-amt="${a}">$${a / 100}</button>`).join("")}</div>
-        <input id="tip-msg" maxlength="60" placeholder="Mensaje (opcional)">
-        <button id="tip-cancel">Cancelar</button>
+        <input id="tip-msg" maxlength="${opts.farewell || !hl.length ? 60 : 140}" placeholder="${hl.length && !opts.farewell ? "Mensaje o pregunta (opcional para propina, obligatorio para destacar)" : "Mensaje (opcional)"}">
+        ${!opts.farewell && hl.length ? `<p class="sheet-sub">⭐ Destacar mi mensaje 3 minutos arriba del chat</p><div class="amounts">${hl.map((a) => `<button class="hl" data-hl="${a}">$${a / 100}</button>`).join("")}</div>` : ""}
+        <button id="tip-cancel">${opts.farewell ? "Cerrar" : "Cancelar"}</button>
       </div>`;
     document.body.appendChild(sheet);
     let sent = false;
-    sheet.querySelectorAll("[data-amt]").forEach((btn) => {
+    const finish = () => { sheet.remove(); if (opts.farewell) setTimeout(() => location.reload(), 600); };
+    sheet.querySelectorAll("[data-amt],[data-hl]").forEach((btn) => {
       btn.onclick = async () => {
         if (sent) return;
-        sent = true;
-        sheet.querySelectorAll("[data-amt]").forEach((b) => (b.disabled = true));
-        const amount_cents = Number(btn.dataset.amt);
+        const isHl = btn.dataset.hl != null;
         const messageInput = sheet.querySelector("#tip-msg");
-        const message = messageInput ? messageInput.value : "";
-        const res = await api(`/api/rooms/${slug}/tip`, { body: { amount_cents, message } });
-        sheet.remove();
+        const message = messageInput ? messageInput.value.trim() : "";
+        if (isHl && !message) { toast("Escribe el mensaje que quieres destacar."); messageInput.focus(); return; }
+        sent = true;
+        sheet.querySelectorAll("[data-amt],[data-hl]").forEach((b) => (b.disabled = true));
+        const amount_cents = Number(isHl ? btn.dataset.hl : btn.dataset.amt);
+        const res = isHl
+          ? await api(`/api/rooms/${slug}/highlight`, { body: { amount_cents, text: message } })
+          : await api(`/api/rooms/${slug}/tip`, { body: { amount_cents, message } });
+        finish();
         if (res.error === "saldo_insuficiente") toast("Sin saldo suficiente. Recarga en tu monedero.");
+        else if (res.error === "sala_cerrada") toast("La sala ya cerró hace rato.");
         else if (res.error) toast("No se pudo mandar el dinero.");
-        else announceRelics(res.new_relics);
+        else { if (isHl) toast("⭐ Tu mensaje quedó destacado 3 minutos."); announceRelics(res.new_relics); }
       };
     });
-    sheet.querySelector("#tip-cancel").onclick = () => sheet.remove();
+    sheet.querySelector("#tip-cancel").onclick = finish;
   }
 
   let lastTap = 0;
@@ -1166,6 +1211,36 @@
     const isLive = !!status.live_session;
     isOwner = !!(me && status.room.owner_id === me.id);
 
+    // Oferta de la sala: precio por hora, membresía y meta de propinas. Lo
+    // que el espectador necesita saber antes de pagar, dicho claro.
+    try {
+      const offer = await fetch(`/api/rooms/${slug}/offer`).then((r) => r.json());
+      highlightOptions = offer.highlight_options_cents || [];
+      tipGoalCents = offer.tip_goal_cents || null;
+      const price = Math.round((offer.price_cents || 2000) / 100);
+      $("btn-enter").textContent = offer.member_until ? "Entrar · eres miembro" : `Entrar · $${price} la hora`;
+      if (!isOwner && offer.membership_cents) {
+        const mb = $("btn-membership");
+        if (offer.member_until) {
+          mb.textContent = `Miembro hasta el ${new Date(offer.member_until * 1000).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
+          mb.disabled = true;
+        } else {
+          mb.textContent = `Membresía · $${Math.round(offer.membership_cents / 100)} al mes, entra siempre`;
+          guarded(mb, async () => {
+            if (!me) return requireLogin();
+            if (!confirm(`¿Comprar la membresía mensual por $${Math.round(offer.membership_cents / 100)}? Entras todas las veces que quieras durante 30 días, sin pagar la hora.`)) return;
+            const res = await api(`/api/rooms/${slug}/membership`, { body: {} });
+            if (res.error === "saldo_insuficiente") return toast("Sin saldo suficiente. Recarga en tu monedero.");
+            if (res.error) return toast("No se pudo comprar la membresía.");
+            toast("✅ Ya eres miembro. Entra cuando quieras.", 5000);
+            mb.textContent = "Eres miembro"; mb.disabled = true;
+            $("btn-enter").textContent = "Entrar · eres miembro";
+          });
+        }
+        mb.style.display = isLive ? "inline-flex" : "inline-flex";
+      }
+    } catch {}
+
     if (isOwner) {
       $("btn-enter").style.display = "none";
       $("btn-notify").style.display = "none";
@@ -1190,7 +1265,7 @@
       if (!me) return requireLogin();
       beginConnecting("Verificando tu pase…");
       const res = await api(`/api/rooms/${slug}/pass`, { body: { device_id: "web" } });
-      if (res.error === "saldo_insuficiente") { endConnecting(); return toast("Sin saldo. Ve a tu monedero para recargar."); }
+      if (res.error === "saldo_insuficiente") { endConnecting(); return toast(`Te falta saldo: esta sala cuesta $${Math.round((res.price_cents || 2000) / 100)} la hora. Recarga en tu monedero.`, 6000); }
       if (res.error) { endConnecting(); return toast("No se pudo entrar a la sala."); }
       await startSubscribing();
       announceRelics(res.new_relics);

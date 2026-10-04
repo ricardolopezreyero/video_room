@@ -83,7 +83,7 @@
     <tr><td><span class="pill get">GET</span><code>/api/v1/stats/deep?from=2026-09-01&amp;to=2026-09-30</code></td><td>Todo el tablero con rango libre: ingresos por día, por hora y por día de la semana, curva de retención y minuto típico de caída, mejor transmisión, nuevos vs recurrentes, seguidores acumulados, donadores y campañas.</td></tr>
     <tr><td><span class="pill get">GET</span><code>/api/v1/followers</code></td><td>Cuántas personas activaron «Avísame cuando abra».</td></tr>
     <tr><td><span class="pill get">GET</span><code>/api/v1/status</code></td><td>Tu estatus: rango como creador y como espectador (horas reales, progreso al siguiente) y tus reliquias con fecha.</td></tr>
-    <tr><td><span class="pill get">GET</span><code>/api/v1/public/rooms/:slug</code></td><td>Estado público de cualquier sala, con el rango y reliquias del creador. No necesita llave.</td></tr>
+    <tr><td><span class="pill get">GET</span><code>/api/v1/public/rooms/:slug</code></td><td>Estado público de cualquier sala: en vivo, personas, <code>price_per_hour_cents</code>, <code>membership_cents</code>, rango y reliquias del creador. No necesita llave.</td></tr>
     <tr><td><span class="pill get">GET</span><code>/api/v1/public/status-catalog</code></td><td>Catálogo de rangos y reliquias y cómo se gana cada uno. No necesita llave.</td></tr>
   </table>
   <h3>Ejemplo</h3>
@@ -161,5 +161,8 @@ DELETE /api/v1/webhooks/:id</code></pre>
   <div><a href="/app/manifiesto">Manifiesto</a> &nbsp;·&nbsp; <a href="/app/faq">Preguntas frecuentes</a> &nbsp;·&nbsp; <a href="/app/api">API</a></div>
   <div style="font-size:11px; color:rgba(255,255,255,.25)">© Video Room</div>
 </footer>
+<!-- RLR · Login de CapitalTorreon: todo funciona sin entrar; entrar solo agrega -->
+<div data-login-ct style="position:fixed;top:12px;right:12px;z-index:9999"></div>
+<script src="https://login.capitaltorreon.com/login.js" defer></script>
 </body>
 </html>

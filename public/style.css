@@ -402,6 +402,20 @@ figure.chart .tip { position: absolute; top: -4px; transform: translate(-50%, -1
   h1 { color: #111; }
 }
 
+/* ---------- Precios del creador (monedero) ---------- */
+.price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.price-grid button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 8px; border-radius: 12px;
+  border: .5px solid rgba(255,255,255,.12); background: rgba(255,255,255,.03); color: #fff; font-family: inherit; cursor: pointer;
+  transition: border-color .2s, transform .15s var(--ease); touch-action: manipulation;
+}
+.price-grid button strong { font-size: 17px; font-weight: 800; letter-spacing: -.4px; }
+.price-grid button span { font-size: 10.5px; color: #9aa1b0; }
+.price-grid button:hover { border-color: rgba(86,239,159,.35); }
+.price-grid button:active { transform: scale(.96); }
+.price-grid button.active { border-color: var(--green); background: rgba(86,239,159,.1); }
+.price-grid button.active span { color: var(--green); }
+
 /* ---------- Integraciones (monedero) ---------- */
 .int-section { padding: 16px 0; border-top: .5px solid rgba(255,255,255,.08); }
 .int-section:first-child { border-top: none; padding-top: 4px; }
@@ -704,6 +718,20 @@ figure.chart .tip { position: absolute; top: -4px; transform: translate(-50%, -1
   padding: 6px 10px; font-size: 12.5px; color: #fff;
 }
 .pinned-msg .pin-icon { flex-shrink: 0; }
+/* Mensaje destacado pagado: dorado, con el monto al frente — lo que pagó
+   el espectador para que su pregunta esté arriba 3 minutos. */
+.pinned-msg.paid { background: rgba(245,197,66,.14); border-color: rgba(245,197,66,.5); }
+.pinned-msg.paid .pin-icon { color: #F5C542; }
+.pinned-paid-amt { font-weight: 800; color: #F5C542; flex-shrink: 0; }
+/* Meta de propinas: barra fina que todos ven llenarse. */
+.goal-bar { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: #e5e7eb; }
+.goal-track { flex: 1; height: 6px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+.goal-track > div { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, rgba(86,239,159,.6), var(--green)); transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.goal-bar.done .goal-track > div { background: #F5C542; }
+#goal-text { white-space: nowrap; font-weight: 700; }
+#btn-membership { margin-top: 8px; }
+.sheet-inner .amounts button.hl { border-color: rgba(245,197,66,.45); color: #F5C542; }
+.sheet-inner .sheet-sub { font-size: 12px; color: #9aa1b0; margin: 14px 0 6px; }
 .pinned-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 #pinned-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #btn-unpin { background: none; border: none; color: rgba(255,255,255,.5); cursor: pointer; font-size: 13px; flex-shrink: 0; }

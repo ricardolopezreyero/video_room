@@ -278,6 +278,27 @@ function renderRoom(room) {
       </div>
     </div>
     <div style="margin-top:22px; padding-top:20px; border-top:.5px solid rgba(255,255,255,.08);">
+      <div class="label">Cuánto cobras</div>
+      <p class="muted" style="margin:4px 0 12px;">Tú decides el precio de tu hora. La plataforma se queda con el 25% (mínimo $10): subir el precio te conviene más a ti que a nosotros.</p>
+      <div class="price-grid" id="price-grid">
+        ${(room.price_options_cents || [2000]).map((p) => `<button data-price="${p}" class="${p === room.price_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas $${Math.round((p - Math.max(1000, Math.round(p * 0.25))) / 100).toLocaleString('es-MX')}</span></button>`).join('')}
+      </div>
+      <div class="label" style="margin-top:18px;">Membresía mensual <span class="muted" style="font-weight:400">(opcional)</span></div>
+      <p class="muted" style="margin:4px 0 12px;">Quien la compre entra todas las veces que quiera durante 30 días sin pagar la hora. Te quedas con el 80%.</p>
+      <div class="price-grid" id="membership-grid">
+        <button data-membership="0" class="${!room.membership_cents ? 'active' : ''}"><strong>Sin membresía</strong><span>solo por hora</span></button>
+        ${(room.membership_options_cents || []).map((p) => `<button data-membership="${p}" class="${p === room.membership_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas $${Math.round(p * 0.8 / 100).toLocaleString('es-MX')}</span></button>`).join('')}
+      </div>
+      <div class="label" style="margin-top:18px;">Meta de propinas por transmisión <span class="muted" style="font-weight:400">(opcional)</span></div>
+      <p class="muted" style="margin:4px 0 12px;">Todos ven una barra llenarse en la sala. Una meta visible sube las propinas; vacía la casilla para quitarla.</p>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <span class="muted">$</span>
+        <input id="tip-goal" type="number" min="100" max="100000" step="50" inputmode="numeric" value="${room.tip_goal_cents ? Math.round(room.tip_goal_cents / 100) : ''}" placeholder="ej. 500"
+          style="width:110px; padding:12px; border-radius:10px; border:.5px solid rgba(255,255,255,.15); background:rgba(255,255,255,.04); color:#fff; box-sizing:border-box;">
+        <button class="btn-navy" id="btn-save-goal">Guardar meta</button>
+      </div>
+    </div>
+    <div style="margin-top:22px; padding-top:20px; border-top:.5px solid rgba(255,255,255,.08);">
       <div class="label">Avisar que ya casi empiezas</div>
       <p class="muted" style="margin:4px 0 12px;">
         Tienes <strong style="color:#fff;">${room.notify_count}</strong> persona${room.notify_count === 1 ? '' : 's'} esperando que le${room.notify_count === 1 ? '' : 's'} avises.
@@ -323,6 +344,33 @@ function renderRoom(room) {
     if (j.error === 'slug_invalido') return alert('Ese nombre no es válido.');
     if (j.error) return alert('No se pudo cambiar la URL.');
     loadRoom(false);
+  };
+
+  // Precio, membresía y meta: un toque y queda guardado.
+  async function saveSettings(patch, okMsg) {
+    const r = await fetch(`/api/rooms/${room.slug}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    const j = await r.json();
+    if (!j.ok) { alert(j.hint || 'No se pudo guardar.'); return false; }
+    showToast(okMsg, 3500);
+    return true;
+  }
+  document.querySelectorAll('#price-grid button').forEach((b) => b.onclick = async () => {
+    const price = Number(b.dataset.price);
+    if (await saveSettings({ price_cents: price }, `✅ Tu hora ahora cuesta $${Math.round(price / 100)}. Te quedas con $${Math.round((price - Math.max(1000, Math.round(price * 0.25))) / 100)}.`)) {
+      document.querySelectorAll('#price-grid button').forEach((x) => x.classList.toggle('active', x === b)); room.price_cents = price;
+    }
+  });
+  document.querySelectorAll('#membership-grid button').forEach((b) => b.onclick = async () => {
+    const m = Number(b.dataset.membership) || null;
+    if (await saveSettings({ membership_cents: m }, m ? `✅ Membresía mensual a $${Math.round(m / 100)}. Te quedas con $${Math.round(m * 0.8 / 100)} por cada una.` : 'Membresía desactivada.')) {
+      document.querySelectorAll('#membership-grid button').forEach((x) => x.classList.toggle('active', x === b)); room.membership_cents = m;
+    }
+  });
+  document.getElementById('btn-save-goal').onclick = async () => {
+    const v = document.getElementById('tip-goal').value.trim();
+    const goal = v === '' ? null : Math.round(Number(v)) * 100;
+    if (goal !== null && (!(goal >= 10000) || goal > 10000000)) return alert('La meta va entre $100 y $100,000.');
+    await saveSettings({ tip_goal_cents: goal }, goal ? `🎯 Meta de $${Math.round(goal / 100)} por transmisión.` : 'Meta quitada.');
   };
 
   const btnNotifyStarting = document.getElementById('btn-notify-starting');
@@ -596,5 +644,8 @@ setInterval(loadNotifications, 30000);
 main();
 schedulePhraseRefresh('phrase-text');
 </script>
+<!-- RLR · Login de CapitalTorreon: todo funciona sin entrar; entrar solo agrega -->
+<div data-login-ct style="position:fixed;top:12px;right:12px;z-index:9999"></div>
+<script src="https://login.capitaltorreon.com/login.js" defer></script>
 </body>
 </html>

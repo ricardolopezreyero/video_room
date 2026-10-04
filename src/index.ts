@@ -270,6 +270,9 @@ async function cleanupStaleLiveSessions(env: Env): Promise<void> {
       slug: row.slug,
       title: row.title,
       blur_preview: row.blur_preview,
+      price_cents: 2000,
+      membership_cents: null,
+      tip_goal_cents: null,
       created_at: row.r_created_at,
       slug_assigned_at: row.slug_assigned_at,
     };

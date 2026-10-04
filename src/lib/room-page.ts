@@ -31,15 +31,16 @@ export function renderRoomPage(opts: {
   const safeAvatar = ownerAvatar ? escapeHtml(ownerAvatar) : null;
   const ogImage = safeAvatar ?? `${appUrl}/og-default.svg`;
   const title = live ? `🔴 ${safeTitle} — EN VIVO` : `${safeTitle} — abre pronto`;
+  const price = `$${Math.round((room.price_cents || 2000) / 100).toLocaleString("es-MX")}`;
   const desc = live
-    ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · Entra por $20/hora · Nada se graba`
+    ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · Entra por ${price}/hora · Nada se graba`
     : `${safeTitle} todavía no transmite. Toca para que te avisemos por correo en cuanto abra.`;
   // Copy para buscadores/redes — distinta del "desc" de arriba (ese es el
   // texto de estado dentro de la propia sala). Aquí buscamos que quien la
   // encuentre en Google entienda de un vistazo que es la sala privada de esta
   // persona y que puede entrar, esté en vivo o no en este momento.
   const seoDesc = live
-    ? `${safeTitle} está en vivo ahora mismo en su sala privada de Video Room. Entra por $20 la hora — nada se graba.`
+    ? `${safeTitle} está en vivo ahora mismo en su sala privada de Video Room. Entra por ${price} la hora — nada se graba.`
     : `Esta es la sala privada de ${safeTitle} en Video Room. Te avisamos por correo en cuanto empiece a transmitir — entra cuando quieras.`;
   const canonicalUrl = `${appUrl}/${encodeURIComponent(room.slug)}`;
   const avatarHtml = safeAvatar
@@ -78,7 +79,8 @@ export function renderRoomPage(opts: {
       ${statusHtml}
       <p id="sub">${desc}</p>
       <div id="connect-spinner" class="connect-spinner" style="display:none"><span></span><span></span><span></span></div>
-      <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">Entrar · $20 la hora</button>
+      <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">Entrar · ${price} la hora</button>
+      <button id="btn-membership" class="btn-ghost" style="display:none"></button>
       <button id="btn-notify" class="btn-ghost" style="display:${live ? "none" : "block"}">🔔 Avísame cuando abra</button>
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
       <p class="fineprint">${live ? "Ingresas con Google en un tap. Tu hora empieza cuando cruzas la puerta." : "Te llega un correo y una notificación en el momento en que entre en vivo."}</p>
@@ -87,6 +89,11 @@ export function renderRoomPage(opts: {
       <div class="chat-panel-header">
         <canvas id="chat-wave" width="360" height="32" title="Audio en vivo"></canvas>
         <input id="dim-slider" type="range" min="30" max="100" value="100" title="Atenuar el video">
+      </div>
+      <!-- Meta de propinas de la transmisión: todos ven la barra llenarse. -->
+      <div id="goal-bar" class="goal-bar" style="display:none">
+        <div class="goal-track"><div id="goal-fill"></div></div>
+        <span id="goal-text"></span>
       </div>
       <div id="pinned-msg" class="pinned-msg" style="display:none">
         <span class="pin-icon" aria-hidden="true">📌</span>
