@@ -1,6 +1,6 @@
 // RLR
 import { Hono } from "hono";
-import { currentUser } from "../lib/current-user";
+import { currentUser, sessionUid } from "../lib/current-user";
 import { creditLedger, newId, isBlocked, isMuted, type Room, type Session, type User } from "../lib/db";
 import { slugify, isNumericSlug, isReservedSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
@@ -14,6 +14,7 @@ import {
 } from "../lib/pricing";
 import { endLiveSession } from "../lib/room-lifecycle";
 import type { Env } from "../env";
+import { afterResponse } from "../lib/segundo-plano";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
@@ -33,19 +34,24 @@ rooms.post("/api/rooms", async (c) => {
 });
 
 rooms.get("/api/rooms/mine", async (c) => {
-  const user = await currentUser(c);
+  const uid = await sessionUid(c);
+  if (!uid) return c.json({ error: "no_session" }, 401);
+  // Usuario, sala y conteo de avisos en un solo viaje: el conteo va como
+  // subconsulta de la misma fila.
+  const [user, room] = await Promise.all([
+    currentUser(c),
+    c.env.DB.prepare(
+      "SELECT rooms.*, (SELECT COUNT(*) FROM notify_me WHERE notify_me.room_id = rooms.id) as notify_count FROM rooms WHERE owner_id = ?"
+    ).bind(uid).first<Room & { notify_count: number }>(),
+  ]);
   if (!user) return c.json({ error: "no_session" }, 401);
-  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE owner_id = ?").bind(user.id).first<Room>();
   if (!room) return c.json({ error: "not_found" }, 404);
   const ageDays = Math.floor((Date.now() / 1000 - room.slug_assigned_at) / 86400);
-  const notifyCount = await c.env.DB.prepare("SELECT COUNT(*) as n FROM notify_me WHERE room_id = ?")
-    .bind(room.id)
-    .first<{ n: number }>();
   return c.json({
     slug: room.slug,
     is_numeric: isNumericSlug(room.slug),
     age_days: ageDays,
-    notify_count: notifyCount?.n ?? 0,
+    notify_count: room.notify_count ?? 0,
     price_cents: room.price_cents || 2000,
     membership_cents: room.membership_cents,
     tip_goal_cents: room.tip_goal_cents,
@@ -165,50 +171,60 @@ rooms.get("/api/rooms/:slug/status", async (c) => {
 
 // Compra o renovación del pase de entrada (precio del creador; reparto en src/lib/pricing.ts)
 rooms.post("/api/rooms/:slug/pass", async (c) => {
-  const user = await currentUser(c);
-  if (!user) return c.json({ error: "no_session" }, 401);
+  // Es el paso entre "Entrar" y el video: cada viaje a la base aquí es espera
+  // visible. Las lecturas salen en paralelo por rondas, y lo que no cambia la
+  // respuesta (recibo, webhook) sale después de responder.
   const slug = c.req.param("slug");
-  const { device_id } = await c.req.json<{ device_id: string }>().catch(() => ({ device_id: "web" }));
-
-  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  const [user, room, body] = await Promise.all([
+    currentUser(c),
+    c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>(),
+    c.req.json<{ device_id?: string }>().catch(() => ({ device_id: "web" })),
+  ]);
+  if (!user) return c.json({ error: "no_session" }, 401);
   if (!room) return c.json({ error: "not_found" }, 404);
-  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
-    .bind(room.id)
-    .first<Session>();
-  if (!session) return c.json({ error: "sala_cerrada" }, 400);
-  if (user.id !== room.owner_id && (await isBlocked(c.env.DB, room.id, user.id))) {
-    return c.json({ error: "bloqueado" }, 403);
-  }
-
+  const device_id = body.device_id ?? "web";
   const now = Math.floor(Date.now() / 1000);
-  const validPass = await c.env.DB.prepare(
-    "SELECT * FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
-  ).bind(session.id, user.id, now).first<{ id: string; expires_at: number }>();
-  if (validPass) return c.json({ ok: true, expires_at: validPass.expires_at, charged: false });
+  const esOwner = user.id === room.owner_id;
 
-  if (user.id === room.owner_id) {
+  // Sesión en vivo + pase vigente (misma fila), bloqueo y membresía: una ronda.
+  const [session, blocked, membership] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT s.*, p.expires_at as pass_expires FROM sessions s
+       LEFT JOIN passes p ON p.session_id = s.id AND p.user_id = ? AND p.expires_at > ?
+       WHERE s.room_id = ? AND s.status = 'live' ORDER BY p.expires_at DESC LIMIT 1`
+    ).bind(user.id, now, room.id).first<Session & { pass_expires: number | null }>(),
+    esOwner ? Promise.resolve(false) : isBlocked(c.env.DB, room.id, user.id),
+    esOwner
+      ? Promise.resolve(null)
+      : c.env.DB.prepare(
+          "SELECT id, expires_at FROM memberships WHERE room_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
+        ).bind(room.id, user.id, now).first<{ id: string; expires_at: number }>(),
+  ]);
+  if (!session) return c.json({ error: "sala_cerrada" }, 400);
+  if (blocked) return c.json({ error: "bloqueado" }, 403);
+  if (session.pass_expires) return c.json({ ok: true, expires_at: session.pass_expires, charged: false });
+
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const passId = newId("pass");
+  const expiresAt = now + 3600;
+
+  if (esOwner) {
     // el creador entra gratis a su propia sala
-    const passId = newId("pass");
-    const expiresAt = now + 3600;
     await c.env.DB.prepare(
       "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
-    ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web").run();
+    ).bind(passId, session.id, user.id, expiresAt, device_id).run();
     return c.json({ ok: true, expires_at: expiresAt, charged: false });
   }
 
   // Miembro vigente: entra sin pagar la hora (ya pagó el mes). Se registra el
   // pase igual (cuenta como entrada en estadísticas, con $0).
-  const membership = await c.env.DB.prepare(
-    "SELECT id, expires_at FROM memberships WHERE room_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
-  ).bind(room.id, user.id, now).first<{ id: string; expires_at: number }>();
   if (membership) {
-    const passId = newId("pass");
-    const expiresAt = now + 3600;
-    await c.env.DB.prepare(
-      "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
-    ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web").run();
-    const stubM = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-    await stubM.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: 0, member: true }) });
+    await Promise.all([
+      c.env.DB.prepare(
+        "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
+      ).bind(passId, session.id, user.id, expiresAt, device_id).run(),
+      stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: 0, member: true }) }),
+    ]);
     return c.json({ ok: true, expires_at: expiresAt, charged: false, member: true });
   }
 
@@ -216,8 +232,6 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   const split = entrySplit(price);
   if (user.balance_cents < price) return c.json({ error: "saldo_insuficiente", price_cents: price }, 402);
 
-  const passId = newId("pass");
-  const expiresAt = now + 3600;
   const utm = readUtmCookie(c);
   // Idem key atada a sesión+usuario+segundo: dos clics dobles en el mismo segundo
   // (el caso real de doble-tap) chocan en esta llave y solo uno se cobra.
@@ -229,49 +243,59 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
     if (racedPass) return c.json({ ok: true, expires_at: racedPass.expires_at, charged: false });
     return c.json({ error: "no_procesado" }, 500);
   }
-  await creditLedger(c.env.DB, room.owner_id, split.creator, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents");
-  await c.env.DB.prepare(
-    `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, utm_source, utm_medium, utm_campaign, amount_cents, creator_cents)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(passId, session.id, user.id, expiresAt, device_id ?? "web", utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null, price, split.creator).run();
+  await Promise.all([
+    creditLedger(c.env.DB, room.owner_id, split.creator, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents"),
+    c.env.DB.prepare(
+      `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, utm_source, utm_medium, utm_campaign, amount_cents, creator_cents)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(passId, session.id, user.id, expiresAt, device_id, utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null, price, split.creator).run(),
+  ]);
 
-  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  await stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: split.creator }) });
+  // Aviso a la sala (el creador ve caer el dinero) y hitos que esta entrada
+  // pudo desbloquear: para el espectador (primera entrada, madrugador, fiel)
+  // y para el creador (primer peso). Todo a la vez.
+  const [, newRelics] = await Promise.all([
+    stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: split.creator }) }),
+    evaluateRelics(c.env, user.id, { sessionId: session.id }),
+    evaluateRelics(c.env, room.owner_id, { sessionId: session.id }),
+  ]);
 
-  // Recibo al espectador (como un boleto) y aviso al creador por webhook. El
-  // pase ya quedó cobrado y guardado: nada de esto puede afectar la entrada.
-  try {
-    const owner = await c.env.DB.prepare("SELECT name, avatar_url FROM users WHERE id = ?")
-      .bind(room.owner_id)
-      .first<{ name: string; avatar_url: string | null }>();
-    await sendEmail(c.env.RESEND_API_KEY, {
-      to: user.email,
-      ...passReceiptEmail({
-        appUrl: c.env.APP_URL,
-        viewerName: user.name,
-        creatorName: owner?.name ?? room.title,
-        creatorAvatar: owner?.avatar_url ?? null,
-        roomUrl: `${c.env.APP_URL}/${room.slug}`,
-        amountCents: price,
-        expiresAt,
-        remainingBalanceCents: user.balance_cents - price,
-      }),
-    });
-  } catch (err) {
-    console.error("passReceiptEmail", err);
-  }
-  await emitEvent(c.env, room.owner_id, "viewer.entered", {
-    session_id: session.id,
-    viewer: { id: user.id, name: user.name },
-    amount_cents: price,
-    creator_cut_cents: split.creator,
-    expires_at: expiresAt,
-  });
-
-  // Hitos que esta entrada pudo desbloquear: para el espectador (primera
-  // entrada, madrugador, fiel) y para el creador (primer peso).
-  const newRelics = await evaluateRelics(c.env, user.id, { sessionId: session.id });
-  await evaluateRelics(c.env, room.owner_id, { sessionId: session.id });
+  // Recibo al espectador (como un boleto) y aviso al creador por webhook,
+  // después de responder: el pase ya quedó cobrado y guardado, y el
+  // espectador no tiene por qué esperar a un correo para ver el video.
+  afterResponse(c, (async () => {
+    try {
+      const owner = await c.env.DB.prepare("SELECT name, avatar_url FROM users WHERE id = ?")
+        .bind(room.owner_id)
+        .first<{ name: string; avatar_url: string | null }>();
+      await sendEmail(c.env.RESEND_API_KEY, {
+        to: user.email,
+        ...passReceiptEmail({
+          appUrl: c.env.APP_URL,
+          viewerName: user.name,
+          creatorName: owner?.name ?? room.title,
+          creatorAvatar: owner?.avatar_url ?? null,
+          roomUrl: `${c.env.APP_URL}/${room.slug}`,
+          amountCents: price,
+          expiresAt,
+          remainingBalanceCents: user.balance_cents - price,
+        }),
+      });
+    } catch (err) {
+      console.error("passReceiptEmail", err);
+    }
+    try {
+      await emitEvent(c.env, room.owner_id, "viewer.entered", {
+        session_id: session.id,
+        viewer: { id: user.id, name: user.name },
+        amount_cents: price,
+        creator_cut_cents: split.creator,
+        expires_at: expiresAt,
+      });
+    } catch (err) {
+      console.error("viewer.entered", err);
+    }
+  })());
 
   return c.json({ ok: true, expires_at: expiresAt, charged: true, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
 });

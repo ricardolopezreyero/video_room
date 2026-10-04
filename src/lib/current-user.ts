@@ -28,3 +28,13 @@ export async function currentUser(c: Context<{ Bindings: Env }>): Promise<User |
 
   return user;
 }
+
+/** Solo el uid de la cookie (firma verificada), sin tocar la base. Sirve para
+ *  lanzar en paralelo la consulta del usuario y las que solo necesitan su id:
+ *  un viaje a la base en vez de dos, en cada ruta que lo usa. */
+export async function sessionUid(c: Context<{ Bindings: Env }>): Promise<string | null> {
+  const token = getCookie(c, SESSION_COOKIE);
+  if (!token) return null;
+  const data = await verifySession(c.env.SESSION_SECRET, token);
+  return data?.uid ?? null;
+}

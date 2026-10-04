@@ -48,9 +48,18 @@ export function renderRoomPage(opts: {
     ? `${safeTitle} está en vivo ahora mismo en su sala privada de Video Room. Entra por ${price} la hora — nada se graba.`
     : `Esta es la sala privada de ${safeTitle} en Video Room. Te avisamos por correo en cuanto empiece a transmitir — entra cuando quieras.`;
   const canonicalUrl = `${appUrl}/${encodeURIComponent(room.slug)}`;
+  // El avatar es lo más grande que se pinta al abrir: va con prioridad alta y
+  // su origen (normalmente Google) se preconecta desde el <head>.
   const avatarHtml = safeAvatar
-    ? `<img src="${safeAvatar}" alt="${safeTitle}" class="room-avatar">`
+    ? `<img src="${safeAvatar}" alt="${safeTitle}" class="room-avatar" fetchpriority="high" decoding="async">`
     : "";
+  let avatarPreconnect = "";
+  try {
+    if (ownerAvatar) {
+      const origin = new URL(ownerAvatar).origin;
+      if (origin !== appUrl) avatarPreconnect = `\n<link rel="preconnect" href="${escapeHtml(origin)}">`;
+    }
+  } catch {}
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -70,7 +79,7 @@ export function renderRoomPage(opts: {
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${seoDesc}">
 <meta name="twitter:image" content="${ogImage}">
-<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>${avatarPreconnect}
 <link rel="icon" href="/og-default.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 <script src="/veloz.js"></script>

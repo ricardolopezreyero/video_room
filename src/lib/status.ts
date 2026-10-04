@@ -127,53 +127,57 @@ export async function evaluateRelics(env: Env, userId: string, ctx: { sessionId?
   const nuevo: EarnedRelic[] = [];
   const sid = ctx.sessionId ?? null;
   try {
-    const have = new Set((await env.DB.prepare("SELECT code FROM relics WHERE user_id = ?").bind(userId).all<{ code: string }>()).results.map((r) => r.code));
-    const missing = (code: string) => !have.has(code);
+    // Todas las lecturas salen en una sola ronda (antes eran ocho viajes en
+    // serie); las escrituras (otorgar) son raras y van después, solo si algo
+    // se ganó.
+    const [haveRows, user, own, allTime, ganancia, retiro, v, t] = await Promise.all([
+      env.DB.prepare("SELECT code FROM relics WHERE user_id = ?").bind(userId).all<{ code: string }>(),
+      env.DB.prepare("SELECT created_at FROM users WHERE id = ?").bind(userId).first<{ created_at: number }>(),
+      env.DB.prepare(
+        `SELECT COUNT(*) as n, MAX(peak_viewers) as peak,
+                MAX(MIN(COALESCE(s.ended_at, unixepoch()), s.started_at + 43200) - s.started_at) as longest,
+                COUNT(DISTINCT date(s.started_at - 6*3600, 'unixepoch')) as dias
+         FROM sessions s JOIN rooms r ON r.id = s.room_id
+         WHERE r.owner_id = ? AND s.started_at >= unixepoch() - 30*86400`
+      ).bind(userId).first<{ n: number; peak: number | null; longest: number | null; dias: number }>(),
+      env.DB.prepare(
+        `SELECT COUNT(*) as n, MAX(peak_viewers) as peak, MAX(MIN(COALESCE(s.ended_at, unixepoch()), s.started_at + 43200) - s.started_at) as longest
+         FROM sessions s JOIN rooms r ON r.id = s.room_id WHERE r.owner_id = ?`
+      ).bind(userId).first<{ n: number; peak: number | null; longest: number | null }>(),
+      env.DB.prepare("SELECT 1 FROM ledger WHERE user_id = ? AND type IN ('ganancia_entrada','propina_recibida') LIMIT 1").bind(userId).first(),
+      env.DB.prepare("SELECT 1 FROM ledger WHERE user_id = ? AND type = 'retiro' LIMIT 1").bind(userId).first(),
+      env.DB.prepare(
+        `SELECT COUNT(*) as n,
+                MIN(p.purchased_at - s.started_at) as fastest,
+                MAX(cnt) as max_same
+         FROM passes p JOIN sessions s ON s.id = p.session_id JOIN rooms r ON r.id = s.room_id
+         LEFT JOIN (SELECT s2.room_id as rid, COUNT(*) as cnt FROM passes p2 JOIN sessions s2 ON s2.id = p2.session_id WHERE p2.user_id = ? GROUP BY s2.room_id) x ON x.rid = r.id
+         WHERE p.user_id = ? AND r.owner_id != ?`
+      ).bind(userId, userId, userId).first<{ n: number; fastest: number | null; max_same: number | null }>(),
+      env.DB.prepare("SELECT COUNT(*) as n, COALESCE(SUM(amount_cents), 0) as c FROM tips WHERE from_user = ?").bind(userId).first<{ n: number; c: number }>(),
+    ]);
+    const have = new Set(haveRows.results.map((r) => r.code));
+    const dar = async (code: string, gano: boolean, s: string | null) => {
+      if (!have.has(code) && gano && (await award(env, userId, code, s))) nuevo.push(withDate(code));
+    };
 
-    const user = await env.DB.prepare("SELECT created_at FROM users WHERE id = ?").bind(userId).first<{ created_at: number }>();
-    if (missing("fundador") && user && user.created_at < FOUNDER_CUTOFF) if (await award(env, userId, "fundador", null)) nuevo.push(withDate("fundador"));
+    await dar("fundador", !!user && user.created_at < FOUNDER_CUTOFF, null);
 
     // --- creador ---
-    const own = await env.DB.prepare(
-      `SELECT COUNT(*) as n, MAX(peak_viewers) as peak,
-              MAX(MIN(COALESCE(s.ended_at, unixepoch()), s.started_at + 43200) - s.started_at) as longest,
-              COUNT(DISTINCT date(s.started_at - 6*3600, 'unixepoch')) as dias
-       FROM sessions s JOIN rooms r ON r.id = s.room_id
-       WHERE r.owner_id = ? AND s.started_at >= unixepoch() - 30*86400`
-    ).bind(userId).first<{ n: number; peak: number | null; longest: number | null; dias: number }>();
-    const allTime = await env.DB.prepare(
-      `SELECT COUNT(*) as n, MAX(peak_viewers) as peak, MAX(MIN(COALESCE(s.ended_at, unixepoch()), s.started_at + 43200) - s.started_at) as longest
-       FROM sessions s JOIN rooms r ON r.id = s.room_id WHERE r.owner_id = ?`
-    ).bind(userId).first<{ n: number; peak: number | null; longest: number | null }>();
-    if (missing("primera_luz") && (allTime?.n ?? 0) > 0) if (await award(env, userId, "primera_luz", sid)) nuevo.push(withDate("primera_luz"));
-    if (missing("sala_llena") && (allTime?.peak ?? 0) >= 10) if (await award(env, userId, "sala_llena", sid)) nuevo.push(withDate("sala_llena"));
-    if (missing("casa_llena") && (allTime?.peak ?? 0) >= 50) if (await award(env, userId, "casa_llena", sid)) nuevo.push(withDate("casa_llena"));
-    if (missing("maraton") && (allTime?.longest ?? 0) >= 3 * 3600) if (await award(env, userId, "maraton", sid)) nuevo.push(withDate("maraton"));
-    if (missing("constancia") && (own?.dias ?? 0) >= 7) if (await award(env, userId, "constancia", sid)) nuevo.push(withDate("constancia"));
-    if (missing("primer_peso")) {
-      const g = await env.DB.prepare("SELECT 1 FROM ledger WHERE user_id = ? AND type IN ('ganancia_entrada','propina_recibida') LIMIT 1").bind(userId).first();
-      if (g && (await award(env, userId, "primer_peso", sid))) nuevo.push(withDate("primer_peso"));
-    }
-    if (missing("primer_retiro")) {
-      const w = await env.DB.prepare("SELECT 1 FROM ledger WHERE user_id = ? AND type = 'retiro' LIMIT 1").bind(userId).first();
-      if (w && (await award(env, userId, "primer_retiro", null))) nuevo.push(withDate("primer_retiro"));
-    }
+    await dar("primera_luz", (allTime?.n ?? 0) > 0, sid);
+    await dar("sala_llena", (allTime?.peak ?? 0) >= 10, sid);
+    await dar("casa_llena", (allTime?.peak ?? 0) >= 50, sid);
+    await dar("maraton", (allTime?.longest ?? 0) >= 3 * 3600, sid);
+    await dar("constancia", (own?.dias ?? 0) >= 7, sid);
+    await dar("primer_peso", !!ganancia, sid);
+    await dar("primer_retiro", !!retiro, null);
 
     // --- espectador ---
-    const v = await env.DB.prepare(
-      `SELECT COUNT(*) as n,
-              MIN(p.purchased_at - s.started_at) as fastest,
-              MAX(cnt) as max_same
-       FROM passes p JOIN sessions s ON s.id = p.session_id JOIN rooms r ON r.id = s.room_id
-       LEFT JOIN (SELECT s2.room_id as rid, COUNT(*) as cnt FROM passes p2 JOIN sessions s2 ON s2.id = p2.session_id WHERE p2.user_id = ? GROUP BY s2.room_id) x ON x.rid = r.id
-       WHERE p.user_id = ? AND r.owner_id != ?`
-    ).bind(userId, userId, userId).first<{ n: number; fastest: number | null; max_same: number | null }>();
-    if (missing("primera_entrada") && (v?.n ?? 0) > 0) if (await award(env, userId, "primera_entrada", sid)) nuevo.push(withDate("primera_entrada"));
-    if (missing("madrugador") && v?.fastest != null && v.fastest >= 0 && v.fastest <= 60) if (await award(env, userId, "madrugador", sid)) nuevo.push(withDate("madrugador"));
-    if (missing("fiel") && (v?.max_same ?? 0) >= 10) if (await award(env, userId, "fiel", sid)) nuevo.push(withDate("fiel"));
-    const t = await env.DB.prepare("SELECT COUNT(*) as n, COALESCE(SUM(amount_cents), 0) as c FROM tips WHERE from_user = ?").bind(userId).first<{ n: number; c: number }>();
-    if (missing("primera_propina") && (t?.n ?? 0) > 0) if (await award(env, userId, "primera_propina", sid)) nuevo.push(withDate("primera_propina"));
-    if (missing("generoso") && (t?.c ?? 0) >= 50000) if (await award(env, userId, "generoso", sid)) nuevo.push(withDate("generoso"));
+    await dar("primera_entrada", (v?.n ?? 0) > 0, sid);
+    await dar("madrugador", v?.fastest != null && v.fastest >= 0 && v.fastest <= 60, sid);
+    await dar("fiel", (v?.max_same ?? 0) >= 10, sid);
+    await dar("primera_propina", (t?.n ?? 0) > 0, sid);
+    await dar("generoso", (t?.c ?? 0) >= 50000, sid);
   } catch (err) {
     console.error("evaluateRelics", err);
   }
@@ -186,8 +190,10 @@ function withDate(code: string): EarnedRelic {
 
 /** El estatus completo de una persona (para el monedero, la API y la sala). */
 export async function statusFor(env: Env, userId: string): Promise<UserStatus> {
-  await evaluateRelics(env, userId);
-  const [c, v, relics] = await Promise.all([creatorHours(env, userId), viewerHours(env, userId), earnedRelics(env, userId)]);
+  // Otorgar y leer salen a la vez; solo si algo nuevo se ganó (raro) se
+  // vuelve a leer la lista. En el caso común, una ronda menos de espera.
+  const [nuevo, c, v, relics0] = await Promise.all([evaluateRelics(env, userId), creatorHours(env, userId), viewerHours(env, userId), earnedRelics(env, userId)]);
+  const relics = nuevo.length ? await earnedRelics(env, userId) : relics0;
   const cr = rankFor(CREATOR_RANKS, c.hours);
   const vr = rankFor(VIEWER_RANKS, v.hours);
   const have = new Set(relics.map((r) => r.code));

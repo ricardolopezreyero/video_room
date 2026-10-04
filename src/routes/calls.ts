@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { currentUser } from "../lib/current-user";
 import type { Env } from "../env";
 import { isBlocked, type Room, type Session } from "../lib/db";
+import { afterResponse } from "../lib/segundo-plano";
 
 export const calls = new Hono<{ Bindings: Env }>();
 
@@ -53,27 +54,39 @@ calls.post("/api/rooms/:slug/publish", async (c) => {
 
 // El espectador jala los tracks remotos del creador hacia su propia sesión SFU.
 calls.post("/api/rooms/:slug/subscribe", async (c) => {
-  const user = await currentUser(c);
-  if (!user) return c.json({ error: "no_session" }, 401);
+  // Camino hacia el primer cuadro de video: lo que eran nueve pasos en serie
+  // son tres rondas en paralelo. La sesión del espectador en Calls se pide
+  // desde el primer instante, porque no depende de nada de lo demás.
   const slug = c.req.param("slug");
-  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  const viewerSessionP: Promise<string | Error> = newCallsSession(c.env).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))));
+  const [user, room, body] = await Promise.all([
+    currentUser(c),
+    c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>(),
+    c.req.json<{ quality?: "low" | "medium" | "high" | "off"; cid?: string }>().catch(() => ({ quality: undefined, cid: undefined })),
+  ]);
+  if (!user) return c.json({ error: "no_session" }, 401);
   if (!room) return c.json({ error: "not_found" }, 404);
-
-  if (user.id !== room.owner_id) {
-    if (await isBlocked(c.env.DB, room.id, user.id)) return c.json({ error: "bloqueado" }, 403);
-    const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
-      .bind(room.id)
-      .first<Session>();
-    if (!session) return c.json({ error: "creador_no_transmitiendo" }, 400);
-    const now = Math.floor(Date.now() / 1000);
-    const validPass = await c.env.DB.prepare(
-      "SELECT id FROM passes WHERE session_id = ? AND user_id = ? AND expires_at > ?"
-    ).bind(session.id, user.id, now).first();
-    if (!validPass) return c.json({ error: "sin_pase" }, 402);
-  }
-
+  const esOwner = user.id === room.owner_id;
+  const now = Math.floor(Date.now() / 1000);
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  const infoRes = await stub.fetch("https://do/sfu-session");
+
+  // Bloqueo, sesión en vivo + pase vigente (misma fila) y estado del SFU: una ronda.
+  const [blocked, acceso, infoRes] = await Promise.all([
+    esOwner ? Promise.resolve(false) : isBlocked(c.env.DB, room.id, user.id),
+    esOwner
+      ? Promise.resolve(null)
+      : c.env.DB.prepare(
+          `SELECT s.id as session_id, p.id as pass_id FROM sessions s
+           LEFT JOIN passes p ON p.session_id = s.id AND p.user_id = ? AND p.expires_at > ?
+           WHERE s.room_id = ? AND s.status = 'live' ORDER BY p.expires_at DESC LIMIT 1`
+        ).bind(user.id, now, room.id).first<{ session_id: string; pass_id: string | null }>(),
+    stub.fetch("https://do/sfu-session"),
+  ]);
+  if (!esOwner) {
+    if (blocked) return c.json({ error: "bloqueado" }, 403);
+    if (!acceso) return c.json({ error: "creador_no_transmitiendo" }, 400);
+    if (!acceso.pass_id) return c.json({ error: "sin_pase" }, 402);
+  }
   const info = await infoRes.json<{ sfuSessionId: string | null; tracks: { mid: string; trackName: string }[] }>();
   if (!info.sfuSessionId) return c.json({ error: "creador_no_transmitiendo" }, 400);
 
@@ -82,8 +95,7 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   // banda en resoluciones que ni siquiera va a mostrar. Si por lo que sea los
   // nombres no calzan (ej. un cliente viejo durante un deploy), se cae de
   // vuelta a pedir todos los tracks, como antes.
-  const { quality, cid } = await c.req.json<{ quality?: "low" | "medium" | "high" | "off"; cid?: string }>()
-    .catch(() => ({ quality: undefined, cid: undefined }));
+  const { quality, cid } = body;
   const wantedNames = quality === "off" ? ["audio"] : ["audio", `video_${quality ?? "high"}`];
   const filtered = info.tracks.filter((t) => wantedNames.includes(t.trackName));
   const tracksToRequest = filtered.length > 0 ? filtered : info.tracks;
@@ -91,15 +103,13 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   // Una sola cuenta solo puede estar viendo activamente desde un dispositivo a
   // la vez — si esta misma cuenta ya tenía otra pestaña/dispositivo conectado
   // (identificado por un cid distinto), se le avisa y se apaga sola allá. No
-  // bloquea la respuesta si por lo que sea falla.
+  // forma parte de esta respuesta: sale después de responder.
   if (cid) {
-    await stub.fetch("https://do/kick-other-devices", {
-      method: "POST",
-      body: JSON.stringify({ uid: user.id, keep_cid: cid }),
-    }).catch(() => {});
+    afterResponse(c, stub.fetch("https://do/kick-other-devices", { method: "POST", body: JSON.stringify({ uid: user.id, keep_cid: cid }) }));
   }
 
-  const viewerSessionId = await newCallsSession(c.env);
+  const viewerSessionId = await viewerSessionP;
+  if (viewerSessionId instanceof Error) return c.json({ error: "calls_error", detail: viewerSessionId.message }, 502);
   const res = await fetch(callsUrl(c.env, `/sessions/${viewerSessionId}/tracks/new`), {
     method: "POST",
     headers: callsHeaders(c.env),

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { currentUser } from "../lib/current-user";
+import { currentUser, sessionUid } from "../lib/current-user";
 import { creditLedger, newId } from "../lib/db";
 import {
   stripeCreateCheckoutSession,
@@ -29,16 +29,20 @@ const AMOUNTS = [2000, 6000, 12000, 24000, 48000, 96000, 192000];
 const MIN_RETIRO_CENTS = 1000;
 
 wallet.get("/api/wallet/me", async (c) => {
-  const user = await currentUser(c);
-  if (!user) return c.json({ error: "no_session" }, 401);
+  // El usuario y su total retirado salen en paralelo (el id ya viene en la
+  // cookie firmada): un viaje a la base en vez de dos.
+  const uid = await sessionUid(c);
+  if (!uid) return c.json({ error: "no_session" }, 401);
   // Total retirado de por vida: los montos de retiro se guardan negativos en
   // el ledger, y como esa fila solo se inserta cuando el transfer de verdad
   // tuvo éxito (ver /api/wallet/retiro), este número nunca cuenta un retiro
   // que falló y se reembolsó — es la cifra que solo crece, a propósito, para
   // que el creador la vea subir cada vez que retira.
-  const totalRetirado = await c.env.DB.prepare(
-    "SELECT COALESCE(SUM(-amount_cents), 0) as total FROM ledger WHERE user_id = ? AND type = 'retiro'"
-  ).bind(user.id).first<{ total: number }>();
+  const [user, totalRetirado] = await Promise.all([
+    currentUser(c),
+    c.env.DB.prepare("SELECT COALESCE(SUM(-amount_cents), 0) as total FROM ledger WHERE user_id = ? AND type = 'retiro'").bind(uid).first<{ total: number }>(),
+  ]);
+  if (!user) return c.json({ error: "no_session" }, 401);
   return c.json({
     id: user.id,
     balance_cents: user.balance_cents,
