@@ -227,3 +227,18 @@ chiquita de Video Room abajo ("un servicio de CapitalTorreon.com"). Lo abre
 quien tenga la liga firmada del correo (`?t=`, sin login) o cualquiera de las
 dos partes con su sesión; `?descargar=1` lo baja como archivo. Los dos correos
 del recibo llevan la liga, y Transacciones tiene una columna "Recibo".
+
+## Efectos de un clic para el creador
+
+- **Color** (botón 🎨): Normal, Más color, Menos color, Blanco y negro, Sepia.
+  Un shader de WebGL en la GPU filtra la cámara y eso es lo que se publica y
+  lo que el creador ve; con Normal la cámara va directa y el bucle se pausa.
+  Compartiendo pantalla no se filtra (texto nítido). `MotorVideo.crearFiltro`.
+- **Audio** (botón 🎧): Auto, Voz, Música, Concierto, Sala, Carro, Calle. Cada
+  ajuste cambia lo que se le pide al micrófono y la cadena (graves, presencia,
+  puerta, compresor, atenuación de entrada en Concierto). **Auto** mide cada
+  segundo nivel, piso de ruido y reparto grave/medio/agudo de la señal cruda;
+  decide cada 5 s y solo cambia tras dos lecturas iguales, avisando con un
+  toast. `MotorAudio.MODOS`, `ORDEN_MODOS`.
+- Ambos viven en una hoja de opciones con tarjetas grandes (`hojaDeOpciones`
+  en room.js): un clic y se pone, sin retraso.

@@ -160,11 +160,8 @@ export function renderRoomPage(opts: {
       <button id="btn-mic" class="ctrl-btn" style="display:none" data-label="Mic" aria-label="Silenciar micrófono">🎙️</button>
       <button id="btn-cam" class="ctrl-btn" style="display:none" data-label="Cámara" aria-label="Apagar cámara">📷</button>
       <button id="btn-flip-cam" class="ctrl-btn" style="display:none" data-label="Girar" aria-label="Cambiar cámara">🔄</button>
-      <select id="audio-mode" class="cam-select" style="display:none" aria-label="Modo de audio" title="Cómo tratar tu sonido">
-        <option value="voz">🎙️ Voz</option>
-        <option value="musica">🎵 Música</option>
-        <option value="ambiente">🌿 Ambiente</option>
-      </select>
+      <button id="btn-fx" class="ctrl-btn" style="display:none" data-label="Efectos" aria-label="Efectos de color para tu video">🎨</button>
+      <button id="btn-audio" class="ctrl-btn" style="display:none" data-label="Audio" aria-label="Ajuste de audio según el ambiente">🎧</button>
       <select id="cam-select" class="cam-select" style="display:none" aria-label="Cámara"></select>
       <select id="quality-select" class="cam-select" style="display:none" aria-label="Calidad de video">
         <option value="auto">Auto · máxima</option>

@@ -385,5 +385,82 @@ window.MotorVideo = (() => {
     } catch {}
   }
 
-  return { escalera, kbps, etiqueta, elegirCodecs, techoCodificacion, mejorarAudioSdp, AUDIO_KBPS, MotorPublicador, LectorEntrada, techoDecodificacion, ajustarColchon, _rev };
+  // ---------- 4. Filtros de color, por GPU ----------
+  // Un clic y se pone, sin retraso: la cámara pasa por un shader de WebGL
+  // (saturación, contraste, sepia, blanco y negro, calidez) y lo que sale de
+  // ahí es lo que se publica y lo que el creador ve en su vista previa. Con
+  // "normal" no pasa por nada: la cámara va directa y el bucle se pausa.
+  const FILTROS = {
+    normal: { nombre: "Normal", icono: "🎥", desc: "Tu cámara tal cual.", sat: 1, con: 1, bri: 0, sep: 0, gris: 0, cal: 0 },
+    color: { nombre: "Más color", icono: "🌈", desc: "Colores más vivos y un poco más de contraste.", sat: 1.4, con: 1.08, bri: 0.01, sep: 0, gris: 0, cal: 0.15 },
+    suave: { nombre: "Menos color", icono: "🌫️", desc: "Tonos suaves, más calma en la imagen.", sat: 0.65, con: 0.96, bri: 0.03, sep: 0, gris: 0, cal: 0.2 },
+    bn: { nombre: "Blanco y negro", icono: "⬛", desc: "Clásico, con buen contraste.", sat: 1, con: 1.12, bri: 0.02, sep: 0, gris: 1, cal: 0 },
+    sepia: { nombre: "Sepia", icono: "🟤", desc: "Cálido, como foto antigua.", sat: 1, con: 1.04, bri: 0.02, sep: 0.85, gris: 0, cal: 0.1 },
+  };
+  const VS = "attribute vec2 p; varying vec2 t; void main(){ t = vec2((p.x+1.0)/2.0, (1.0-p.y)/2.0); gl_Position = vec4(p,0.0,1.0); }";
+  const FS = `precision mediump float; varying vec2 t; uniform sampler2D u; uniform float sat, con, bri, sep, gris, cal;
+    void main(){
+      vec3 c = texture2D(u, t).rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, sat);
+      c = mix(c, vec3(l), gris);
+      vec3 s = vec3(dot(c, vec3(0.393,0.769,0.189)), dot(c, vec3(0.349,0.686,0.168)), dot(c, vec3(0.272,0.534,0.131)));
+      c = mix(c, s, sep);
+      c = (c - 0.5) * con + 0.5 + bri;
+      c += vec3(0.05, 0.015, -0.05) * cal;
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+    }`;
+  function crearFiltro({ track }) {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl", { alpha: false, antialias: false, preserveDrawingBuffer: false, premultipliedAlpha: false, desynchronized: true });
+    if (!gl || !canvas.captureStream) return null;
+    const sh = (tipo, src) => { const h = gl.createShader(tipo); gl.shaderSource(h, src); gl.compileShader(h); if (!gl.getShaderParameter(h, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(h)); return h; };
+    let prog;
+    try {
+      prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    } catch { return null; }
+    gl.useProgram(prog);
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    const U = {}; for (const k of ["sat", "con", "bri", "sep", "gris", "cal"]) U[k] = gl.getUniformLocation(prog, k);
+
+    const video = document.createElement("video");
+    video.muted = true; video.playsInline = true; video.autoplay = true;
+    video.style.cssText = "position:fixed; left:-9999px; top:0; width:2px; height:2px;";
+    document.body.appendChild(video);
+    const salida = canvas.captureStream(0);
+    const outTrack = salida.getVideoTracks()[0];
+    let actual = FILTROS.normal, nombre = "normal", activo = false, vivo = true;
+    function setFuente(t) { video.srcObject = new MediaStream([t]); video.play().catch(() => {}); }
+    setFuente(track);
+    function cuadro() {
+      if (!vivo) return;
+      if (activo && video.readyState >= 2 && video.videoWidth) {
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; gl.viewport(0, 0, canvas.width, canvas.height); }
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+        gl.uniform1f(U.sat, actual.sat); gl.uniform1f(U.con, actual.con); gl.uniform1f(U.bri, actual.bri);
+        gl.uniform1f(U.sep, actual.sep); gl.uniform1f(U.gris, actual.gris); gl.uniform1f(U.cal, actual.cal);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        if (outTrack.requestFrame) outTrack.requestFrame();
+      }
+      if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(cuadro); else requestAnimationFrame(cuadro);
+    }
+    cuadro();
+    return {
+      track: outTrack,
+      get nombre() { return nombre; },
+      get activo() { return activo; },
+      setFiltro(n) { actual = FILTROS[n] || FILTROS.normal; nombre = FILTROS[n] ? n : "normal"; activo = nombre !== "normal"; },
+      setFuente,
+      destruir() { vivo = false; try { outTrack.stop(); } catch {} try { video.srcObject = null; video.remove(); } catch {} },
+    };
+  }
+
+  return { escalera, kbps, etiqueta, elegirCodecs, techoCodificacion, mejorarAudioSdp, AUDIO_KBPS, MotorPublicador, LectorEntrada, techoDecodificacion, ajustarColchon, FILTROS, crearFiltro, _rev };
 })();

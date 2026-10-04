@@ -76,7 +76,9 @@
   let motorAudio = null;
   let micTrackCrudo = null;
   let micTrackLo = null;
-  let audioModo = localStorage.getItem("vr_audio_modo") || "voz";
+  let audioModo = localStorage.getItem("vr_audio_modo") || "auto";
+  let filtro = null;
+  let filtroNombre = localStorage.getItem("vr_filtro") || "normal";
   let audioSender = null;
   let audioLoSender = null;
   let codecNombre = "auto";
@@ -229,6 +231,7 @@
     if (llamadaCon) terminarLlamada();
     if (motor) motor.detener();
     if (motorAudio) { try { motorAudio.destruir(); } catch {} }
+    if (filtro) { try { filtro.destruir(); } catch {} }
     if (micTrackCrudo) { try { micTrackCrudo.stop(); } catch {} }
     if (micTrackLo) { try { micTrackLo.stop(); } catch {} }
     clearTimeout(republishTimer);
@@ -779,10 +782,16 @@
     motorAudio = await MotorAudio.crear({
       micTrack: micTrackCrudo,
       modo: audioModo,
+      onModoAuto: (n) => { const m = MotorAudio.MODOS[n]; toast(`🎧 Auto: ${m ? m.icono + " " + m.nombre : n}. ${m ? m.desc : ""}`, 5000); pintarAudioEnHoja(); },
       onListo: (procesado) => { micTrack = procesado; if (audioSender) audioSender.replaceTrack(procesado).catch(() => {}); if (audioLoSender) { try { micTrackLo = procesado.clone(); audioLoSender.replaceTrack(micTrackLo).catch(() => {}); } catch {} } },
     });
     micTrack = motorAudio.track;
-    try { micTrack.contentHint = audioModo === "musica" ? "music" : "speech"; } catch {}
+    try { micTrack.contentHint = /musica|concierto/.test(audioModo) ? "music" : "speech"; } catch {}
+    // Filtros de color: la cámara pasa por la GPU solo cuando hay un filtro.
+    if (filtro) { try { filtro.destruir(); } catch {} }
+    filtro = MotorVideo.crearFiltro ? MotorVideo.crearFiltro({ track: cameraTrack }) : null;
+    if (filtro) filtro.setFiltro(filtroNombre); else filtroNombre = "normal";
+    player.srcObject = new MediaStream([fuenteVideo()]);
     await publicar("Conectando con el estudio…");
     hideOverlaySmoothly();
     showControlsWithEntrance();
@@ -836,7 +845,7 @@
     try { if (micTrackLo) micTrackLo.stop(); } catch {}
     micTrackLo = micTrack.clone();
     const audioLoTx = nuevoPc.addTransceiver(micTrackLo, { direction: "sendonly", sendEncodings: [{ maxBitrate: 48000 }] });
-    const videoTx = nuevoPc.addTransceiver(cameraTrack, simulcast
+    const videoTx = nuevoPc.addTransceiver(fuenteVideo(), simulcast
       ? {
           direction: "sendonly",
           sendEncodings: [
@@ -882,6 +891,82 @@
       motor = new MotorVideo.MotorPublicador({ pc, sender: videoSender, audioSender, track: cameraTrack, codec: codecNombre, onCambio: pintarCalidadCreador });
       motor.arrancar().catch(() => {});
     }
+  }
+
+  // El track de video que sale: el de la GPU si hay filtro puesto, la cámara
+  // tal cual si no. Compartiendo pantalla, siempre la pantalla (texto nítido).
+  function fuenteVideo() {
+    if (usingScreenShare || !filtro || !filtro.activo) return cameraTrack;
+    return filtro.track;
+  }
+
+  // ---- Efectos de color: un clic y se pone ----
+  async function aplicarFiltro(nombre) {
+    filtroNombre = MotorVideo.FILTROS[nombre] ? nombre : "normal";
+    localStorage.setItem("vr_filtro", filtroNombre);
+    if (filtro) filtro.setFiltro(filtroNombre);
+    if (!usingScreenShare) {
+      const salida = fuenteVideo();
+      if (videoSender) { try { await videoSender.replaceTrack(salida); } catch {} }
+      player.srcObject = micTrack ? new MediaStream([salida, micTrack]) : new MediaStream([salida]);
+    }
+    const f = MotorVideo.FILTROS[filtroNombre];
+    toast(`${f.icono} ${f.nombre}. ${f.desc}`, 3500);
+  }
+  function hojaDeOpciones({ titulo, sub, opciones, actual, onElegir }) {
+    const sheet = document.createElement("div");
+    sheet.className = "sheet";
+    sheet.innerHTML = `
+      <div class="sheet-inner">
+        <h3>${titulo}</h3>
+        ${sub ? `<p class="sheet-sub">${sub}</p>` : ""}
+        <div class="fx-grid">${opciones.map((o) => `<button class="fx-item${o.id === actual ? " active" : ""}" data-id="${o.id}"><span class="fx-icon">${o.icono}</span><span class="fx-nombre">${o.nombre}</span><span class="fx-desc">${o.desc}</span></button>`).join("")}</div>
+        <button id="fx-cerrar">Cerrar</button>
+      </div>`;
+    document.body.appendChild(sheet);
+    const cerrar = () => sheet.remove();
+    sheet.querySelector("#fx-cerrar").onclick = cerrar;
+    sheet.addEventListener("click", (e) => { if (e.target === sheet) cerrar(); });
+    sheet.querySelectorAll(".fx-item").forEach((b) => {
+      b.addEventListener("pointerdown", () => buzz(8), { passive: true });
+      b.onclick = () => { sheet.querySelectorAll(".fx-item").forEach((x) => x.classList.toggle("active", x === b)); onElegir(b.dataset.id); };
+    });
+    return sheet;
+  }
+  function abrirHojaEfectos() {
+    const opciones = Object.entries(MotorVideo.FILTROS).map(([id, f]) => ({ id, ...f }));
+    hojaDeOpciones({
+      titulo: "🎨 Efectos de color",
+      sub: filtro ? "Se aplica al instante a lo que tu público ve. Toca otro para cambiar." : "Tu navegador no permite filtros por GPU aquí; la cámara sale tal cual.",
+      opciones, actual: filtroNombre,
+      onElegir: (id) => aplicarFiltro(id),
+    });
+  }
+  let hojaAudio = null;
+  function abrirHojaAudio() {
+    const opciones = [{ id: "auto", icono: "✨", nombre: "Auto", desc: "Escucha el ambiente y elige solo el mejor ajuste. Cambia si te mueves." }]
+      .concat(MotorAudio.ORDEN_MODOS.map((id) => ({ id, ...MotorAudio.MODOS[id] })));
+    hojaAudio = hojaDeOpciones({
+      titulo: "🎧 Ajuste de audio",
+      sub: "Un toque y las frecuencias se acomodan a tu ambiente. En Auto, el motor decide por ti.",
+      opciones, actual: audioModo,
+      onElegir: (id) => {
+        audioModo = id;
+        localStorage.setItem("vr_audio_modo", audioModo);
+        if (motorAudio) motorAudio.setModo(audioModo);
+        try { if (micTrack) micTrack.contentHint = /musica|concierto/.test(motorAudio ? motorAudio.modo : audioModo) ? "music" : "speech"; } catch {}
+        const m = MotorAudio.MODOS[id];
+        toast(id === "auto" ? `✨ Auto: ahora suena como ${MotorAudio.nombreModo(motorAudio ? motorAudio.modo : "voz")}; se ajusta solo si cambias de ambiente.` : `${m.icono} ${m.nombre}. ${m.desc}`, 4500);
+        pintarAudioEnHoja();
+      },
+    });
+    pintarAudioEnHoja();
+  }
+  // En Auto, la hoja enseña qué ajuste está sonando ahora mismo.
+  function pintarAudioEnHoja() {
+    if (!hojaAudio || !document.body.contains(hojaAudio)) return;
+    const auto = hojaAudio.querySelector('.fx-item[data-id="auto"] .fx-desc');
+    if (auto && motorAudio) auto.textContent = audioModo === "auto" ? `Ahora suena como ${MotorAudio.nombreModo(motorAudio.modo)}. Cambia solo si te mueves de ambiente.` : "Escucha el ambiente y elige solo el mejor ajuste. Cambia si te mueves.";
   }
 
   // Lo que el creador ve de su propia señal: "1080p · 30 fps · H264 · 4.1 Mb/s".
@@ -947,88 +1032,14 @@
     if ("getDisplayMedia" in navigator.mediaDevices) {
       $("btn-screen").style.display = "flex";
     }
-    setupAudioModeSelector();
+    $("btn-fx").style.display = "flex";
+    $("btn-audio").style.display = "flex";
     setupCameraSwitcher();
     startQualityMonitor();
     $("btn-call").style.display = "flex";
     // Si ya hubo una llamada con alguien, se ofrece retomarla con un toque.
     const par = localStorage.getItem(`vr_llamada_${slug}`);
     if (par) setTimeout(() => toast(`📞 ¿Volver a la llamada con ${par}? Toca "Llamada".`, 6000), 7000);
-  }
-
-  // Voz / Música / Ambiente: la máquina no puede adivinar qué ruido es molesto
-  // y cuál es parte de la escena; lo decide quien transmite, en un toque.
-  function setupAudioModeSelector() {
-    const select = $("audio-mode");
-    if (!select) return;
-    select.value = audioModo;
-    select.style.display = "inline-block";
-    select.onchange = () => {
-      audioModo = select.value;
-      localStorage.setItem("vr_audio_modo", audioModo);
-      if (motorAudio) motorAudio.setModo(audioModo);
-      try { if (micTrack) micTrack.contentHint = audioModo === "musica" ? "music" : "speech"; } catch {}
-      const nota = { voz: "🎙️ Modo Voz: eco y ruido fuera, tu voz al frente.", musica: "🎵 Modo Música: sin filtros de llamada, instrumentos completos.", ambiente: "🌿 Modo Ambiente: el sonido del lugar se queda, sin eco." };
-      toast(nota[audioModo] || "", 4500);
-    };
-  }
-
-  // ---- Modo llamada: dos salas, dos vías ----
-  // Tú transmites desde tu sala y, en la misma pantalla, ves la sala de la
-  // otra persona (entras a ella como cualquier espectador: paga su hora, y
-  // ella entra a la tuya). La otra sala abre dentro de un recuadro con
-  // ?modo=llamada (solo su video, sin chat ni dock) y tu cámara queda chica
-  // en una esquina. Para verlo en la tele: AirPlay (iPhone → Apple TV) o
-  // Duplicar pantalla (Android → Roku); lo que se refleja es esta pantalla.
-  let llamadaCon = null;
-  function slugDeLlamada(texto) {
-    const t = (texto || "").trim();
-    if (!t) return null;
-    try {
-      const u = new URL(t, location.href);
-      if (u.origin === location.origin) return (u.pathname.split("/").filter(Boolean)[0] || "").toLowerCase() || null;
-    } catch {}
-    return t.replace(/^@/, "").replace(/^\/+/, "").split(/[/?#\s]/)[0].toLowerCase() || null;
-  }
-  function iniciarLlamada(otra) {
-    if (!otra || otra === slug) return toast("Esa es tu propia sala. Pega el link de la otra persona.");
-    llamadaCon = otra;
-    localStorage.setItem(`vr_llamada_${slug}`, otra);
-    $("call-frame").src = `/${encodeURIComponent(otra)}?modo=llamada`;
-    $("call-wrap").style.display = "block";
-    document.body.classList.add("en-llamada");
-    $("btn-call").classList.add("active");
-    if (chatVisible) { chatVisible = false; $("chat-panel").style.display = "none"; $("btn-chat").classList.remove("active"); }
-    toast(`📞 Viendo la sala de ${otra}. Para la tele: AirPlay o Duplicar pantalla.`, 6000);
-  }
-  function terminarLlamada() {
-    llamadaCon = null;
-    $("call-frame").src = "about:blank";
-    $("call-wrap").style.display = "none";
-    document.body.classList.remove("en-llamada");
-    $("btn-call").classList.remove("active");
-  }
-  function abrirHojaLlamada() {
-    if (llamadaCon) return terminarLlamada();
-    const recordada = localStorage.getItem(`vr_llamada_${slug}`) || "";
-    const sheet = document.createElement("div");
-    sheet.className = "sheet";
-    sheet.innerHTML = `
-      <div class="sheet-inner">
-        <h3>📞 Llamada: ver a otra persona mientras transmites</h3>
-        <p class="sheet-sub">Pega el link de su sala. Entras a su sala como cualquier persona (pagas su hora con tu saldo) y ella entra a la tuya: dos salas, dos vías. Tu cámara queda chiquita en una esquina y la de ella en grande.</p>
-        <input id="call-slug" placeholder="video.capitaltorreon.com/su-nombre" value="${recordada.replace(/"/g, "&quot;")}" autocapitalize="off" autocorrect="off" spellcheck="false">
-        <p class="sheet-sub">Para verlo en la tele: en iPhone, AirPlay a tu Apple TV; en Android, «Duplicar pantalla» a tu Roku. Lo que se refleja es exactamente esta pantalla.</p>
-        <button id="call-go" class="btn-primary">Ver su sala</button>
-        <button id="call-cancel">Cancelar</button>
-      </div>`;
-    document.body.appendChild(sheet);
-    const cerrar = () => sheet.remove();
-    sheet.querySelector("#call-cancel").onclick = cerrar;
-    const ir = () => { const otra = slugDeLlamada(sheet.querySelector("#call-slug").value); if (!otra) return toast("Pega el link o el nombre de su sala."); cerrar(); iniciarLlamada(otra); };
-    sheet.querySelector("#call-go").onclick = ir;
-    sheet.querySelector("#call-slug").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); ir(); } });
-    setTimeout(() => sheet.querySelector("#call-slug").focus(), 50);
   }
 
   function toggleMic() {
@@ -1108,12 +1119,13 @@
     }
     const camTrack = camStream.getVideoTracks()[0];
     camTrack.enabled = camOn;
-    await videoSender.replaceTrack(camTrack);
     if (cameraTrack) cameraTrack.stop();
     cameraTrack = camTrack;
     try { camTrack.contentHint = "motion"; } catch {}
+    if (filtro) filtro.setFuente(camTrack);
+    await videoSender.replaceTrack(fuenteVideo());
     if (motor) motor.setTrack(camTrack);
-    player.srcObject = micTrack ? new MediaStream([camTrack, micTrack]) : camStream;
+    player.srcObject = micTrack ? new MediaStream([fuenteVideo(), micTrack]) : new MediaStream([fuenteVideo()]);
   }
 
   async function setupCameraSwitcher() {
@@ -1149,12 +1161,13 @@
     }
     const newTrack = newStream.getVideoTracks()[0];
     newTrack.enabled = camOn;
-    await videoSender.replaceTrack(newTrack);
     if (cameraTrack) cameraTrack.stop();
     cameraTrack = newTrack;
     try { newTrack.contentHint = "motion"; } catch {}
+    if (filtro) filtro.setFuente(newTrack);
+    await videoSender.replaceTrack(fuenteVideo());
     if (motor) motor.setTrack(newTrack);
-    player.srcObject = micTrack ? new MediaStream([newTrack, micTrack]) : newStream;
+    player.srcObject = micTrack ? new MediaStream([fuenteVideo(), micTrack]) : new MediaStream([fuenteVideo()]);
   }
 
   function startQualityMonitor() {
@@ -1759,6 +1772,8 @@
     guarded($("btn-cam"), async () => toggleCam());
     guarded($("btn-screen"), async () => toggleScreenShare());
     guarded($("btn-call"), async () => abrirHojaLlamada());
+    guarded($("btn-fx"), async () => abrirHojaEfectos());
+    guarded($("btn-audio"), async () => abrirHojaAudio());
     $("call-close").addEventListener("click", terminarLlamada);
     guarded($("btn-chat"), async () => {
       chatVisible = !chatVisible;
@@ -1821,7 +1836,7 @@
   if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
     window.__vr = {
       simular: (msg) => ws && ws.onmessage({ data: JSON.stringify(msg) }),
-      estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld, audio: motorAudio && { modo: motorAudio.modo, procesado: motorAudio.procesado, nivel: motorAudio.nivel() } }),
+      estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld, audio: motorAudio && { modo: motorAudio.modo, elegido: motorAudio.elegido, procesado: motorAudio.procesado, nivel: motorAudio.nivel() }, filtro: filtro && { nombre: filtro.nombre, activo: filtro.activo } }),
     };
   }
 })();

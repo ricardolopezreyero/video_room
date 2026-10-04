@@ -27,45 +27,51 @@ window.MotorAudio = (() => {
   "use strict";
   const _k = "eye", _rev = 181218;
 
+  // Un ajuste por ambiente: qué se le pide al micrófono y cómo se trata la
+  // señal. "pad" baja la entrada cuando la fuente es muy fuerte (concierto).
   const MODOS = {
     voz: {
-      nombre: "Voz",
+      nombre: "Voz", icono: "🎙️", desc: "Clase, consultoría, plática. Eco y ruido fuera, tu voz al frente.",
       captura: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      hp: 85,
-      shelfBajo: { f: 160, g: -2.5 },
-      presencia: { f: 3000, q: 0.9, g: 3 },
-      aire: { f: 9000, g: 1.5 },
-      comp: { th: -24, knee: 12, ratio: 3, att: 0.004, rel: 0.18 },
-      puerta: { umbral: -50 },
-      ducking: 0.18,
+      hp: 85, shelfBajo: { f: 160, g: -2.5 }, presencia: { f: 3000, q: 0.9, g: 3 }, aire: { f: 9000, g: 1.5 },
+      comp: { th: -24, knee: 12, ratio: 3, att: 0.004, rel: 0.18 }, puerta: { umbral: -50 }, ducking: 0.18, pad: 1,
     },
     musica: {
-      nombre: "Música",
+      nombre: "Música", icono: "🎵", desc: "Instrumentos o canto en casa. Sin los filtros de llamada que los aplastan.",
       captura: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      hp: 30,
-      shelfBajo: null,
-      presencia: { f: 2500, q: 1.2, g: 1.5 },
-      aire: { f: 11000, g: 1 },
-      comp: { th: -16, knee: 20, ratio: 1.8, att: 0.02, rel: 0.35 },
-      puerta: null,
-      ducking: 0.5,
+      hp: 30, shelfBajo: null, presencia: { f: 2500, q: 1.2, g: 1.5 }, aire: { f: 11000, g: 1 },
+      comp: { th: -16, knee: 20, ratio: 1.8, att: 0.02, rel: 0.35 }, puerta: null, ducking: 0.5, pad: 1,
     },
-    ambiente: {
-      nombre: "Ambiente",
-      captura: { echoCancellation: true, noiseSuppression: false, autoGainControl: false },
-      hp: 40,
-      shelfBajo: null,
-      presencia: { f: 3000, q: 1, g: 1 },
-      aire: null,
-      comp: { th: -20, knee: 16, ratio: 1.5, att: 0.01, rel: 0.3 },
-      puerta: null,
-      ducking: 0.3,
+    concierto: {
+      nombre: "Concierto", icono: "🎸", desc: "Música fuerte en vivo. Entrada atenuada para que no sature, dinámica completa.",
+      captura: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      hp: 35, shelfBajo: { f: 120, g: -1.5 }, presencia: { f: 2500, q: 1.2, g: 1 }, aire: { f: 10000, g: 1 },
+      comp: { th: -12, knee: 24, ratio: 1.5, att: 0.03, rel: 0.4 }, puerta: null, ducking: 0.6, pad: 0.55,
+    },
+    sala: {
+      nombre: "Sala", icono: "🛋️", desc: "Cuarto con eco. Menos retumbo, más claridad en la voz.",
+      captura: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      hp: 110, shelfBajo: { f: 250, g: -3 }, presencia: { f: 3200, q: 1, g: 3.5 }, aire: { f: 8000, g: 1 },
+      comp: { th: -22, knee: 10, ratio: 3.5, att: 0.004, rel: 0.2 }, puerta: { umbral: -48 }, ducking: 0.18, pad: 1,
+    },
+    carro: {
+      nombre: "Carro", icono: "🚗", desc: "Motor y camino de fondo. Se quita el retumbo grave, la voz sube.",
+      captura: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      hp: 160, shelfBajo: { f: 220, g: -4 }, presencia: { f: 3000, q: 1, g: 3 }, aire: { f: 7000, g: 2 },
+      comp: { th: -24, knee: 10, ratio: 3, att: 0.004, rel: 0.2 }, puerta: { umbral: -44 }, ducking: 0.18, pad: 1,
+    },
+    calle: {
+      nombre: "Calle", icono: "🏙️", desc: "Tráfico, viento, gente. Ruido fuera cuando no hablas, tu voz clara.",
+      captura: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      hp: 130, shelfBajo: { f: 200, g: -3 }, presencia: { f: 3000, q: 1, g: 3 }, aire: { f: 8000, g: 1.5 },
+      comp: { th: -22, knee: 10, ratio: 3.5, att: 0.004, rel: 0.2 }, puerta: { umbral: -42 }, ducking: 0.18, pad: 1,
     },
   };
+  const ORDEN_MODOS = ["voz", "musica", "concierto", "sala", "carro", "calle"];
 
   // Lo que se le pide al micrófono según el modo. Siempre lo máximo que dé.
   function capturaPara(modo) {
-    const m = MODOS[modo] || MODOS.voz;
+    const m = MODOS[modo] || MODOS.voz; // "auto" arranca como voz y se ajusta después
     const c = { channelCount: { ideal: 2 }, sampleRate: { ideal: 48000 }, sampleSize: { ideal: 24 }, latency: { ideal: 0.01 }, ...m.captura };
     // Chrome (macOS/Windows) tiene aislamiento de voz por hardware/SO: solo en Voz.
     if (modo === "voz") c.voiceIsolation = true;
@@ -108,12 +114,13 @@ window.MotorAudio = (() => {
   // Arma la cadena. Devuelve el track procesado (o el crudo si el contexto de
   // audio no puede arrancar todavía: iOS exige un toque; en cuanto lo hay, se
   // avisa con onListo(trackProcesado) para reemplazarlo en la conexión).
-  async function crear({ micTrack, modo = "voz", onListo, onNivel }) {
+  async function crear({ micTrack, modo = "auto", onListo, onNivel, onModoAuto }) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx || !micTrack) return { track: micTrack, procesado: false, setModo() {}, setMusica() {}, nivel: () => null, destruir() {}, modo };
     const ctx = new AudioCtx({ sampleRate: 48000, latencyHint: "interactive" });
     let m = MODOS[modo] || MODOS.voz;
     const fuente = ctx.createMediaStreamSource(new MediaStream([micTrack]));
+    const pad = ctx.createGain(); pad.gain.value = 1;
 
     const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.Q.value = 0.707;
     const shelfBajo = ctx.createBiquadFilter(); shelfBajo.type = "lowshelf";
@@ -139,16 +146,25 @@ window.MotorAudio = (() => {
       }
     } catch { puerta = null; }
 
-    fuente.connect(hp); hp.connect(shelfBajo); shelfBajo.connect(presencia); presencia.connect(aire);
+    fuente.connect(pad); pad.connect(hp); hp.connect(shelfBajo); shelfBajo.connect(presencia); presencia.connect(aire);
     let cola = aire;
     if (puerta) { aire.connect(puerta); cola = puerta; }
     cola.connect(comp); comp.connect(vozGain); vozGain.connect(suma); vozGain.connect(medidor);
     musicaGain.connect(suma);
     suma.connect(limitador); limitador.connect(salida); salida.connect(dest);
 
+    // "auto": escucha el ambiente y elige el ajuste; cualquier otro, fijo.
+    let elegido = modo;
+    let autoNombre = "voz";
     function aplicarModo(nuevo) {
+      elegido = nuevo;
+      if (nuevo === "auto") { aplicarAjuste(autoNombre); return; }
+      aplicarAjuste(nuevo);
+    }
+    function aplicarAjuste(nuevo) {
       m = MODOS[nuevo] || MODOS.voz;
       const t = ctx.currentTime, k = 0.05;
+      pad.gain.setTargetAtTime(m.pad ?? 1, t, k);
       hp.frequency.setTargetAtTime(m.hp, t, k);
       shelfBajo.frequency.setTargetAtTime(m.shelfBajo ? m.shelfBajo.f : 160, t, k);
       shelfBajo.gain.setTargetAtTime(m.shelfBajo ? m.shelfBajo.g : 0, t, k);
@@ -190,6 +206,64 @@ window.MotorAudio = (() => {
       } catch {}
     }, 50);
 
+    // ---- Auto: ¿qué ambiente es? ----
+    // Cada segundo mide la señal cruda: nivel, piso de ruido (lo que queda
+    // cuando nadie habla), y cuánta energía hay en graves (motor, camino),
+    // medios (voz) y agudos (viento, tráfico), más qué tan continua es
+    // (música sostiene; la voz hace pausas). Cada 5 s decide y solo cambia si
+    // la misma lectura se repite dos veces: nada de brincar de ajuste.
+    const clasif = ctx.createAnalyser(); clasif.fftSize = 2048; clasif.smoothingTimeConstant = 0.6;
+    fuente.connect(clasif);
+    const espectro = new Float32Array(clasif.frequencyBinCount);
+    const onda = new Float32Array(clasif.fftSize);
+    const hist = []; // {rms (dBFS), low, mid, high}
+    let candidato = null, repeticiones = 0;
+    function medirAmbiente() {
+      try {
+        clasif.getFloatFrequencyData(espectro);
+        const hz = (i) => (i * ctx.sampleRate) / clasif.fftSize;
+        let low = 0, mid = 0, high = 0, total = 0;
+        for (let i = 1; i < espectro.length; i++) {
+          const p = Math.pow(10, espectro[i] / 10), f = hz(i);
+          total += p;
+          if (f < 150) low += p; else if (f < 3000) mid += p; else if (f > 5000) high += p;
+        }
+        if (total <= 0) return;
+        clasif.getFloatTimeDomainData(onda);
+        let s2 = 0;
+        for (let i = 0; i < onda.length; i++) s2 += onda[i] * onda[i];
+        hist.push({ rms: db(Math.sqrt(s2 / onda.length)), low: low / total, mid: mid / total, high: high / total });
+        if (hist.length > 15) hist.shift();
+      } catch {}
+    }
+    function decidirAmbiente() {
+      if (hist.length < 8) return null;
+      const rmsOrd = hist.map((h) => h.rms).sort((a, b) => a - b);
+      const piso = rmsOrd[Math.floor(rmsOrd.length * 0.15)];
+      const pico = rmsOrd[Math.floor(rmsOrd.length * 0.9)];
+      const prom = (k) => hist.reduce((a, h) => a + h[k], 0) / hist.length;
+      const low = prom("low"), high = prom("high");
+      const continuo = (pico - piso) < 9; // casi sin pausas: música / ruido constante
+      // Música primero: sostenida y ancha (graves y agudos a la vez). Luego
+      // carro (graves dominantes con piso alto) y calle (agudos con piso alto).
+      if (continuo && low > 0.2 && high > 0.1 && pico > -45) return "musica";
+      if (low > 0.5 && piso > -62) return "carro";
+      if (high > 0.22 && piso > -58) return "calle";
+      return "voz";
+    }
+    const autoTimer = setInterval(() => {
+      medirAmbiente();
+      if (elegido !== "auto" || hist.length % 5 !== 0) return;
+      const d = decidirAmbiente();
+      if (!d) return;
+      if (d === candidato) repeticiones++; else { candidato = d; repeticiones = 1; }
+      if (repeticiones >= 2 && d !== autoNombre) {
+        autoNombre = d;
+        aplicarAjuste(d);
+        if (onModoAuto) onModoAuto(d);
+      }
+    }, 1000);
+
     const procesado = dest.stream.getAudioTracks()[0];
     let listo = ctx.state === "running";
     try { await ctx.resume(); listo = ctx.state === "running"; } catch {}
@@ -213,7 +287,10 @@ window.MotorAudio = (() => {
       get track() { return listo ? procesado : micTrack; },
       procesadoTrack: procesado,
       get procesado() { return listo; },
+      /** El ajuste que suena ahora (en Auto, el que eligió el motor). */
       get modo() { return Object.keys(MODOS).find((k) => MODOS[k] === m) || "voz"; },
+      /** Lo que el creador pidió: "auto" o un ajuste fijo. */
+      get elegido() { return elegido; },
       setModo: aplicarModo,
       // Audio de la pantalla compartida (música, un video): por debajo de la voz.
       setMusica(track) {
@@ -225,11 +302,11 @@ window.MotorAudio = (() => {
         }
       },
       nivel: () => nivelDb,
-      destruir() { clearInterval(medir); try { ctx.close(); } catch {} },
+      destruir() { clearInterval(medir); clearInterval(autoTimer); try { ctx.close(); } catch {} },
     };
   }
 
-  function nombreModo(modo) { return (MODOS[modo] || MODOS.voz).nombre; }
+  function nombreModo(modo) { return modo === "auto" ? "Auto" : (MODOS[modo] || MODOS.voz).nombre; }
 
-  return { MODOS, capturaPara, crear, nombreModo, _rev };
+  return { MODOS, ORDEN_MODOS, capturaPara, crear, nombreModo, _rev };
 })();
