@@ -11,7 +11,9 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: "./wrangler.toml" },
         miniflare: {
-          bindings: { TEST_MIGRATIONS: migrations },
+          // Sin llave real de Resend en pruebas: ningún correo de prueba debe salir
+          // al mundo (y sendEmail además ignora dominios reservados como .local).
+          bindings: { TEST_MIGRATIONS: migrations, RESEND_API_KEY: "sin-envios-en-pruebas" },
         },
       }),
     ],

@@ -10,7 +10,7 @@ import {
   stripeCreateTransfer,
   StripeApiError,
 } from "../lib/stripe";
-import { sendEmail, walletRechargeEmail, payoutSentEmail, payoutFailedEmail, bankConnectedEmail } from "../lib/email";
+import { sendEmail, walletRechargeEmail, payoutSentEmail, payoutFailedEmail, bankConnectedEmail, ADMIN_EMAIL } from "../lib/email";
 import { emitEvent } from "../lib/webhooks";
 import { evaluateRelics } from "../lib/status";
 import type { Env } from "../env";
@@ -176,13 +176,15 @@ wallet.post("/webhook/stripe", async (c) => {
                 avatarUrl: user.avatar_url,
                 amountCents,
                 newBalanceCents: user.balance_cents,
+                at: Number((event as { created?: number }).created) || Math.floor(Date.now() / 1000),
+                reference: String(session.id),
               }),
             });
             if (!ok) throw new Error("sendEmail devolvió false (Resend rechazó el envío)");
           } catch (err) {
             c.executionCtx.waitUntil(
               sendEmail(c.env.RESEND_API_KEY, {
-                to: "Ricardo@superleads.mx",
+                to: ADMIN_EMAIL,
                 subject: "🔴 Falló el correo de recarga de saldo",
                 html: `<pre style="white-space:pre-wrap; font-family:monospace;">user_id: ${userId}\nsession: ${session.id}\namount_cents: ${amountCents}\n\n${String((err as Error)?.stack || err)}</pre>`,
                 text: `user_id: ${userId} session: ${session.id} amount_cents: ${amountCents}\n${String((err as Error)?.stack || err)}`,
@@ -281,6 +283,7 @@ wallet.post("/api/wallet/retiro", async (c) => {
           totalWithdrawnCents: total?.total ?? amount,
           transferId: transfer.id,
           isFirst: (total?.n ?? 1) === 1,
+          at: Math.floor(Date.now() / 1000),
         }),
       });
     } catch (err) {

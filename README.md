@@ -109,3 +109,25 @@ probable que vaya la persona. Todo lo que sigue vive en `public/veloz.js`,
 Para medir: `bash herramientas/velocidad.sh` (producción) o con la URL del
 servidor local. Mide el servidor; lo que el service worker y las copias
 ahorran encima se ve en el panel Network del navegador.
+
+## Recibos de dinero: el sello entre las dos partes
+
+Cada vez que se mueve dinero entre quien ve y quien transmite (entrada,
+propina, propina de despedida, mensaje destacado, membresía) salen **dos
+correos en el mismo segundo**, uno a cada parte, con:
+
+- el mismo **folio** (`VR-XXXX-XXXX-XXXX`, derivado del id del movimiento, así
+  que con él se encuentra la fila exacta en la base);
+- la **fecha y hora exacta** con segundos, en hora de Ciudad de México;
+- el **momento de la transmisión** ("Minuto 12:34 de la transmisión", o "5
+  minutos después de que terminó");
+- los **montos exactos en MXN** con centavos: lo que se pagó, lo que recibe el
+  creador y la comisión; el saldo que le queda a quien pagó y el balance de
+  creador después;
+- un botón: volver a la sala (quien ve) o ver transacciones (quien transmite).
+
+Viven en `src/lib/recibos.ts` (`recibosDe` arma el par, `enviarRecibos` lo
+manda en un solo lote a Resend después de responder; si falla, avisa al
+administrador con el folio). Recarga y retiro llevan también folio y hora
+exacta. Las pruebas nunca mandan correo: `sendEmail` ignora dominios
+reservados (`.local`, `.test`, `example.com`) y llaves que no son de Resend.

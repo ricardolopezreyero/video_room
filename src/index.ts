@@ -15,14 +15,13 @@ import { renderRoomPage } from "./lib/room-page";
 import { verifyUnsubscribeToken } from "./lib/unsubscribe";
 import { currentUser } from "./lib/current-user";
 import { endLiveSession } from "./lib/room-lifecycle";
-import { sendEmail } from "./lib/email";
+import { sendEmail, ADMIN_EMAIL } from "./lib/email";
 import { isReservedSlug } from "./lib/slugs";
 import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { HIGHLIGHT_OPTIONS_CENTS } from "./lib/pricing";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
 
-const ADMIN_EMAIL = "Ricardo@superleads.mx";
 
 export { RoomDurableObject } from "./durable/room";
 

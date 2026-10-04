@@ -10,11 +10,24 @@ const RESEND_API = "https://api.resend.com/emails";
 // verificar aparte — cuando se amplíe el plan o se libere un dominio, basta
 // con cambiar esta línea a hola@video.capitaltorreon.com.
 const FROM = "Video Room <hola@capitaltorreon.com>";
+/** A quién se avisa cuando algo falla por dentro (errores, correos que no salieron). */
+export const ADMIN_EMAIL = "Ricardo@superleads.mx";
+
+// Dominios reservados para pruebas: a esas direcciones nunca se manda nada.
+// Un correo a "@test.local" rebota, y cada rebote le resta reputación al
+// dominio real desde el que escribimos. Las pruebas (vitest) crean usuarios
+// con esos dominios a propósito.
+const DOMINIOS_DE_PRUEBA = /@([^@]+\.)?(test|local|invalid|example)(\.com|\.org|\.net)?$/i;
+export function sePuedeEnviar(apiKey: string, to: string): boolean {
+  if (!apiKey || !apiKey.startsWith("re_")) return false;
+  return !DOMINIOS_DE_PRUEBA.test(to.trim());
+}
 
 export async function sendEmail(
   apiKey: string,
   params: { to: string; subject: string; html: string; text: string; unsubscribeUrl?: string }
 ): Promise<boolean> {
+  if (!sePuedeEnviar(apiKey, params.to)) return false;
   try {
     const res = await fetch(RESEND_API, {
       method: "POST",
@@ -47,7 +60,30 @@ export async function sendEmail(
   }
 }
 
-function escapeHtml(input: string): string {
+/** Varios correos en una sola llamada (lote de Resend). Si el lote falla, se
+ *  mandan uno por uno: que un correo nunca se pierda por culpa del otro. */
+export async function sendEmails(
+  apiKey: string,
+  mails: { to: string; subject: string; html: string; text: string }[]
+): Promise<boolean> {
+  const reales = mails.filter((m) => sePuedeEnviar(apiKey, m.to));
+  if (reales.length !== mails.length) return false;
+  try {
+    const res = await fetch(`${RESEND_API}/batch`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(mails.map((m) => ({ from: FROM, to: m.to, subject: m.subject, html: m.html, text: m.text }))),
+    });
+    if (res.ok) return true;
+    console.error("resend batch", res.status, await res.text().catch(() => ""));
+  } catch (err) {
+    console.error("resend batch", err);
+  }
+  const results = await Promise.all(mails.map((m) => sendEmail(apiKey, m)));
+  return results.every(Boolean);
+}
+
+export function escapeHtml(input: string): string {
   return String(input ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -74,6 +110,57 @@ export function fmtHoraCDMX(unixSeconds: number): string {
   });
 }
 
+/** "$37.50" — con centavos exactos. Para recibos y todo lo que sea dinero
+ *  cobrado: ahí un redondeo es un error. */
+export function fmtPesos(cents: number): string {
+  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
+}
+
+/** "11:58:07 a.m." — con segundos. */
+export function fmtHoraExactaCDMX(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleTimeString("es-MX", {
+    timeZone: "America/Mexico_City",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/** "4 de octubre de 2026" */
+export function fmtFechaCompletaCDMX(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleDateString("es-MX", {
+    timeZone: "America/Mexico_City",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** "sábado, 4 de octubre de 2026 · 11:58:07 a.m., hora de Ciudad de México" —
+ *  el segundo exacto en que pasó, dicho completo. */
+export function fmtMomentoCDMX(unixSeconds: number): string {
+  const d = new Date(unixSeconds * 1000);
+  const fecha = d.toLocaleDateString("es-MX", { timeZone: "America/Mexico_City", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return `${fecha} · ${fmtHoraExactaCDMX(unixSeconds)}, hora de Ciudad de México`;
+}
+
+/** 754 → "12:34"; 3725 → "1:02:05" */
+export function fmtTiempo(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return `${h ? h + ":" : ""}${mm}:${String(r).padStart(2, "0")}`;
+}
+
+/** Folio legible y estable a partir del id interno: "pass_cf7064a0…" →
+ *  "VR-CF70-64A0-7428". Mismo id, mismo folio, en los dos correos y en la
+ *  base; con él se encuentra el movimiento exacto. Para referencias de
+ *  Stripe ("tr_1Qx8…") se toma lo que va después del último guion bajo. */
+export function folioDe(id: string): string {
+  const cuerpo = id.slice(id.lastIndexOf("_") + 1).replace(/[^a-zA-Z0-9]/g, "").toUpperCase().padEnd(12, "0").slice(0, 12);
+  return `VR-${cuerpo.slice(0, 4)}-${cuerpo.slice(4, 8)}-${cuerpo.slice(8, 12)}`;
+}
+
 export function fmtFechaCDMX(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toLocaleDateString("es-MX", {
     timeZone: "America/Mexico_City",
@@ -82,7 +169,7 @@ export function fmtFechaCDMX(unixSeconds: number): string {
   });
 }
 
-function plural(n: number, uno: string, varios: string): string {
+export function plural(n: number, uno: string, varios: string): string {
   return n === 1 ? uno : varios;
 }
 
@@ -91,7 +178,7 @@ interface Stat {
   label: string;
   green?: boolean;
 }
-interface Detail {
+export interface Detail {
   label: string;
   value: string;
   strong?: boolean;
@@ -126,7 +213,7 @@ const TONES = {
 // Tablas, estilos en línea y nada de flex/grid: es lo único que pintan igual
 // Gmail, Outlook y Apple Mail. El ancho de 600px con el bloque de 32px de
 // margen lateral se ve bien en celular sin media queries.
-function renderShell(o: ShellOpts): string {
+export function renderShell(o: ShellOpts): string {
   const t = TONES[o.tone ?? "green"];
   const host = o.appUrl.replace(/^https?:\/\//, "");
   const avatar = o.avatarUrl
@@ -232,7 +319,7 @@ function renderShell(o: ShellOpts): string {
 }
 
 /** Versión en texto plano: mismo contenido, misma acción, para clientes sin HTML. */
-function renderText(o: {
+export function renderText(o: {
   headline: string;
   lines: string[];
   details?: Detail[];
@@ -252,7 +339,7 @@ function renderText(o: {
   return parts.join("\n");
 }
 
-type Mail = { subject: string; html: string; text: string };
+export type Mail = { subject: string; html: string; text: string };
 
 // ---------------------------------------------------------------------------
 // Avisos a seguidores
@@ -470,23 +557,34 @@ export function walletRechargeEmail(opts: {
   avatarUrl: string | null;
   amountCents: number;
   newBalanceCents: number;
+  /** El segundo exacto en que se acreditó. */
+  at: number;
+  /** Referencia del pago en Stripe (sesión de checkout); de ahí sale el folio. */
+  reference: string;
 }): Mail {
-  const { appUrl, name, avatarUrl, amountCents, newBalanceCents } = opts;
+  const { appUrl, name, avatarUrl, amountCents, newBalanceCents, at, reference } = opts;
   const monederoUrl = `${appUrl}/app/monedero`;
   const horas = Math.floor(newBalanceCents / 2000);
-  const subject = `✅ Agregaste ${fmtMXN(amountCents)} a tu saldo`;
+  const folio = folioDe(reference);
+  const subject = `✅ Agregaste ${fmtPesos(amountCents)} MXN a tu saldo · ${folio}`;
   const html = renderShell({
     appUrl,
-    preheader: `Tu recarga de ${fmtMXN(amountCents)} ya está disponible. Saldo total: ${fmtMXN(newBalanceCents)}.`,
+    preheader: `Tu recarga de ${fmtPesos(amountCents)} MXN ya está disponible. Saldo total: ${fmtPesos(newBalanceCents)} MXN. Folio ${folio}.`,
     badgeText: "✅ Recarga exitosa",
     avatarUrl,
     avatarAlt: name,
-    headline: `Agregaste ${fmtMXN(amountCents)} a tu saldo`,
+    headline: `Agregaste ${fmtPesos(amountCents)} a tu saldo`,
     bodyHtml: `Tu recarga ya está disponible y lista para usarse en cualquier sala.`,
     stats: [
-      { value: fmtMXN(amountCents), label: "recargaste", green: true },
-      { value: fmtMXN(newBalanceCents), label: "saldo total" },
-      { value: String(horas), label: plural(horas, "hora de sala", "horas de sala") },
+      { value: fmtPesos(amountCents), label: "recargaste (MXN)", green: true },
+      { value: fmtPesos(newBalanceCents), label: "saldo total" },
+      { value: String(horas), label: plural(horas, "hora de sala a $20", "horas de sala a $20") },
+    ],
+    details: [
+      { label: "Folio", value: folio, strong: true },
+      { label: "Fecha y hora exacta", value: fmtMomentoCDMX(at) },
+      { label: "Referencia de pago (Stripe)", value: reference },
+      { label: "Moneda", value: "Pesos mexicanos (MXN)" },
     ],
     ctaLabel: "Ver mi monedero",
     linkUrl: monederoUrl,
@@ -494,59 +592,16 @@ export function walletRechargeEmail(opts: {
   });
   const text = renderText({
     headline: subject,
-    lines: [`Tu recarga de ${fmtMXN(amountCents)} MXN ya está disponible.`],
+    lines: [`Tu recarga de ${fmtPesos(amountCents)} MXN ya está disponible.`],
     details: [
-      { label: "Saldo total", value: `${fmtMXN(newBalanceCents)} MXN` },
-      { label: "Equivale a", value: `${horas} hora(s) de sala` },
+      { label: "Folio", value: folio },
+      { label: "Fecha y hora exacta", value: fmtMomentoCDMX(at) },
+      { label: "Referencia de pago (Stripe)", value: reference },
+      { label: "Saldo total", value: `${fmtPesos(newBalanceCents)} MXN` },
+      { label: "Equivale a", value: `${horas} hora(s) de sala a $20` },
     ],
     ctaLabel: "Ver mi monedero",
     linkUrl: monederoUrl,
-  });
-  return { subject, html, text };
-}
-
-// Recibo para el espectador al pagar su hora: cuánto pagó, hasta qué hora
-// vale, cuánto saldo le queda — como un boleto.
-export function passReceiptEmail(opts: {
-  appUrl: string;
-  viewerName: string;
-  creatorName: string;
-  creatorAvatar: string | null;
-  roomUrl: string;
-  amountCents: number;
-  expiresAt: number;
-  remainingBalanceCents: number;
-}): Mail {
-  const { appUrl, creatorName, creatorAvatar, roomUrl, amountCents, expiresAt, remainingBalanceCents } = opts;
-  const subject = `🎟️ Entraste a la sala de ${creatorName}`;
-  const html = renderShell({
-    appUrl,
-    preheader: `Tu hora en la sala de ${creatorName} termina a las ${fmtHoraCDMX(expiresAt)}.`,
-    badgeText: "🎟️ Tu entrada",
-    avatarUrl: creatorAvatar,
-    avatarAlt: creatorName,
-    headline: `Entraste a la sala de ${creatorName}`,
-    bodyHtml: `Este es tu recibo. Tu hora corre desde que cruzaste la puerta; si la sala sigue abierta cuando se acabe, puedes renovar con un toque.`,
-    details: [
-      { label: "Pagaste", value: `${fmtMXN(amountCents)} MXN`, strong: true },
-      { label: "Tu hora termina", value: `${fmtHoraCDMX(expiresAt)} (hora CDMX)` },
-      { label: "Saldo que te queda", value: `${fmtMXN(remainingBalanceCents)} MXN` },
-      { label: "Grabación", value: "Ninguna — nada queda guardado" },
-    ],
-    ctaLabel: "Volver a la sala",
-    linkUrl: roomUrl,
-    fineprint: "La mitad de tu entrada va directo al creador en el segundo en que entraste. Si te gustó, puedes mandarle propina desde la sala.",
-  });
-  const text = renderText({
-    headline: subject,
-    lines: ["Este es tu recibo. Tu hora corre desde que cruzaste la puerta."],
-    details: [
-      { label: "Pagaste", value: `${fmtMXN(amountCents)} MXN` },
-      { label: "Tu hora termina", value: `${fmtHoraCDMX(expiresAt)} (CDMX)` },
-      { label: "Saldo que te queda", value: `${fmtMXN(remainingBalanceCents)} MXN` },
-    ],
-    ctaLabel: "Volver a la sala",
-    linkUrl: roomUrl,
   });
   return { subject, html, text };
 }
@@ -572,18 +627,18 @@ export function streamSummaryEmail(opts: {
   for (const r of newRelics) details.push({ label: `${r.icon} Nueva reliquia`, value: `${r.name} — ${r.how}`, strong: true });
   const statsUrl = `${appUrl}/app/estadisticas`;
   const duration = durationMinutes < 1 ? "menos de 1 minuto" : `${durationMinutes} ${plural(durationMinutes, "minuto", "minutos")}`;
-  const subject = `📊 Tu transmisión terminó — ${fmtMXN(earnedCents)} ganados`;
+  const subject = `📊 Tu transmisión terminó — ${fmtPesos(earnedCents)} ganados`;
   const html = renderShell({
     appUrl,
-    preheader: `${peakViewers} ${plural(peakViewers, "persona", "personas")} en el pico, ${fmtMXN(earnedCents)} ganados.`,
+    preheader: `${peakViewers} ${plural(peakViewers, "persona", "personas")} en el pico, ${fmtPesos(earnedCents)} ganados.`,
     badgeText: "📊 Resumen de tu transmisión",
     tone: earnedCents > 0 ? "gold" : "green",
     avatarUrl,
     avatarAlt: name,
-    headline: earnedCents > 0 ? `Ganaste ${fmtMXN(earnedCents)} en esta transmisión` : "Tu transmisión terminó",
+    headline: earnedCents > 0 ? `Ganaste ${fmtPesos(earnedCents)} en esta transmisión` : "Tu transmisión terminó",
     bodyHtml: `Estuviste en vivo <strong>${duration}</strong> en <strong>${escapeHtml(roomTitle)}</strong>. Así te fue:`,
     stats: [
-      { value: fmtMXN(earnedCents), label: "ganados", green: true },
+      { value: fmtPesos(earnedCents), label: "ganados", green: true },
       { value: String(peakViewers), label: plural(peakViewers, "persona en el pico", "personas en el pico") },
       { value: String(hearts), label: plural(hearts, "corazón", "corazones") },
     ],
@@ -597,7 +652,7 @@ export function streamSummaryEmail(opts: {
     headline: subject,
     lines: [`Estuviste en vivo ${duration} en ${roomTitle}.`],
     details: [
-      { label: "Ganaste", value: `${fmtMXN(earnedCents)} MXN` },
+      { label: "Ganaste", value: `${fmtPesos(earnedCents)} MXN` },
       { label: "Pico de personas", value: String(peakViewers) },
       { label: "Corazones", value: String(hearts) },
     ],
@@ -616,40 +671,48 @@ export function payoutSentEmail(opts: {
   totalWithdrawnCents: number;
   transferId: string;
   isFirst: boolean;
+  /** El segundo exacto en que salió la transferencia. */
+  at: number;
 }): Mail {
-  const { appUrl, name, avatarUrl, amountCents, totalWithdrawnCents, transferId, isFirst } = opts;
+  const { appUrl, name, avatarUrl, amountCents, totalWithdrawnCents, transferId, isFirst, at } = opts;
+  const folio = folioDe(transferId);
   const txUrl = `${appUrl}/app/transacciones`;
-  const subject = isFirst ? `💸 ¡Tu primer retiro! ${fmtMXN(amountCents)} van a tu banco` : `💸 ${fmtMXN(amountCents)} van en camino a tu banco`;
+  const subject = isFirst ? `💸 ¡Tu primer retiro! ${fmtPesos(amountCents)} van a tu banco` : `💸 ${fmtPesos(amountCents)} van en camino a tu banco`;
   const html = renderShell({
     appUrl,
-    preheader: `Transferencia de ${fmtMXN(amountCents)} enviada a tu cuenta vía Stripe.`,
+    preheader: `Transferencia de ${fmtPesos(amountCents)} enviada a tu cuenta vía Stripe.`,
     badgeText: isFirst ? "🏆 Primer retiro" : "💸 Retiro enviado",
     tone: "gold",
     avatarUrl,
     avatarAlt: name,
-    headline: isFirst ? `¡Tu primer retiro ya va en camino!` : `${fmtMXN(amountCents)} van en camino a tu banco`,
+    headline: isFirst ? `¡Tu primer retiro ya va en camino!` : `${fmtPesos(amountCents)} van en camino a tu banco`,
     bodyHtml: isFirst
       ? `Esto es lo que querías comprobar: <strong>el dinero de verdad llega</strong>. La transferencia ya salió por Stripe a la cuenta que conectaste.`
       : `La transferencia ya salió por Stripe a la cuenta bancaria que conectaste.`,
     stats: [
-      { value: fmtMXN(amountCents), label: "este retiro", green: true },
-      { value: fmtMXN(totalWithdrawnCents), label: "retirado en total" },
+      { value: fmtPesos(amountCents), label: "este retiro", green: true },
+      { value: fmtPesos(totalWithdrawnCents), label: "retirado en total" },
     ],
     details: [
-      { label: "Referencia", value: transferId },
+      { label: "Folio", value: folio, strong: true },
+      { label: "Fecha y hora exacta", value: fmtMomentoCDMX(at) },
+      { label: "Monto", value: `${fmtPesos(amountCents)} MXN` },
+      { label: "Referencia de Stripe", value: transferId },
       { label: "Llega", value: "En los próximos días hábiles, según tu banco" },
     ],
     ctaLabel: "Ver mis transacciones",
     linkUrl: txUrl,
-    fineprint: "Si en 3 días hábiles no lo ves reflejado, escríbenos respondiendo este correo con la referencia.",
+    fineprint: "Si en 3 días hábiles no lo ves reflejado, responde este correo con el folio y la referencia.",
   });
   const text = renderText({
     headline: subject,
     lines: ["La transferencia ya salió por Stripe a la cuenta bancaria que conectaste."],
     details: [
-      { label: "Monto", value: `${fmtMXN(amountCents)} MXN` },
-      { label: "Retirado en total", value: `${fmtMXN(totalWithdrawnCents)} MXN` },
-      { label: "Referencia", value: transferId },
+      { label: "Folio", value: folio },
+      { label: "Fecha y hora exacta", value: fmtMomentoCDMX(at) },
+      { label: "Monto", value: `${fmtPesos(amountCents)} MXN` },
+      { label: "Retirado en total", value: `${fmtPesos(totalWithdrawnCents)} MXN` },
+      { label: "Referencia de Stripe", value: transferId },
     ],
     ctaLabel: "Ver mis transacciones",
     linkUrl: txUrl,
@@ -668,15 +731,15 @@ export function payoutFailedEmail(opts: {
   const subject = `⚠️ No pudimos completar tu retiro — tu saldo sigue intacto`;
   const html = renderShell({
     appUrl,
-    preheader: `Tu retiro de ${fmtMXN(amountCents)} no se completó. Los ${fmtMXN(amountCents)} siguen en tu balance.`,
+    preheader: `Tu retiro de ${fmtPesos(amountCents)} no se completó. Los ${fmtPesos(amountCents)} siguen en tu balance.`,
     badgeText: "⚠️ Retiro no completado",
     tone: "red",
     avatarUrl,
     avatarAlt: name,
     headline: "No pudimos completar tu retiro",
-    bodyHtml: `Stripe no aceptó la transferencia en este momento. <strong>Tu dinero no se movió</strong>: los ${fmtMXN(amountCents)} regresaron a tu balance de creador tal cual estaban.`,
+    bodyHtml: `Stripe no aceptó la transferencia en este momento. <strong>Tu dinero no se movió</strong>: los ${fmtPesos(amountCents)} regresaron a tu balance de creador tal cual estaban.`,
     details: [
-      { label: "Monto", value: `${fmtMXN(amountCents)} MXN` },
+      { label: "Monto", value: `${fmtPesos(amountCents)} MXN` },
       { label: "Tu balance", value: "Intacto — nada se perdió" },
     ],
     ctaLabel: "Intentar de nuevo",
@@ -685,7 +748,7 @@ export function payoutFailedEmail(opts: {
   });
   const text = renderText({
     headline: subject,
-    lines: [`Stripe no aceptó la transferencia. Los ${fmtMXN(amountCents)} MXN regresaron a tu balance de creador.`],
+    lines: [`Stripe no aceptó la transferencia. Los ${fmtPesos(amountCents)} MXN regresaron a tu balance de creador.`],
     ctaLabel: "Intentar de nuevo",
     linkUrl: monederoUrl,
   });

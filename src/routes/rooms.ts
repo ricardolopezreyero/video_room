@@ -5,7 +5,8 @@ import { creditLedger, newId, isBlocked, isMuted, type Room, type Session, type 
 import { slugify, isNumericSlug, isReservedSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
-import { sendEmail, passReceiptEmail, newFollowerEmail } from "../lib/email";
+import { sendEmail, newFollowerEmail } from "../lib/email";
+import { enviarRecibos } from "../lib/recibos";
 import { emitEvent } from "../lib/webhooks";
 import { evaluateRelics, viewerMarkFor } from "../lib/status";
 import {
@@ -260,30 +261,21 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
     evaluateRelics(c.env, room.owner_id, { sessionId: session.id }),
   ]);
 
-  // Recibo al espectador (como un boleto) y aviso al creador por webhook,
-  // después de responder: el pase ya quedó cobrado y guardado, y el
-  // espectador no tiene por qué esperar a un correo para ver el video.
+  // Recibos a las dos partes (mismo folio, mismo segundo) y aviso al creador
+  // por webhook, después de responder: el pase ya quedó cobrado y guardado, y
+  // quien entra no tiene por qué esperar a un correo para ver el video.
   afterResponse(c, (async () => {
-    try {
-      const owner = await c.env.DB.prepare("SELECT name, avatar_url FROM users WHERE id = ?")
-        .bind(room.owner_id)
-        .first<{ name: string; avatar_url: string | null }>();
-      await sendEmail(c.env.RESEND_API_KEY, {
-        to: user.email,
-        ...passReceiptEmail({
-          appUrl: c.env.APP_URL,
-          viewerName: user.name,
-          creatorName: owner?.name ?? room.title,
-          creatorAvatar: owner?.avatar_url ?? null,
-          roomUrl: `${c.env.APP_URL}/${room.slug}`,
-          amountCents: price,
-          expiresAt,
-          remainingBalanceCents: user.balance_cents - price,
-        }),
-      });
-    } catch (err) {
-      console.error("passReceiptEmail", err);
-    }
+    await enviarRecibos(c.env, {
+      tipo: "entrada",
+      id: passId,
+      at: now,
+      amountCents: price,
+      creatorCents: split.creator,
+      room,
+      viewer: { name: user.name, email: user.email, avatarUrl: user.avatar_url, balanceAfterCents: user.balance_cents - price },
+      session: { started_at: session.started_at, ended_at: session.ended_at },
+      expiresAt,
+    });
     try {
       await emitEvent(c.env, room.owner_id, "viewer.entered", {
         session_id: session.id,
@@ -329,6 +321,7 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
 
   const tipId = newId("tip");
   const creatorCut = tipSplit(amount_cents).creator;
+  const now = Math.floor(Date.now() / 1000);
   const debited = await creditLedger(c.env.DB, user.id, -amount_cents, "propina_enviada", tipId, `propina_env:${tipId}`, "balance_cents");
   if (!debited) return c.json({ error: "no_procesado" }, 500);
   await creditLedger(c.env.DB, room.owner_id, creatorCut, "propina_recibida", tipId, `propina_rec:${tipId}`, "creator_balance_cents");
@@ -350,8 +343,22 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
     creator_cut_cents: creatorCut,
     message: (message ?? "").slice(0, 60),
   });
-  const newRelics = await evaluateRelics(c.env, user.id, { sessionId: session.id });
-  await evaluateRelics(c.env, room.owner_id, { sessionId: session.id });
+  const [newRelics] = await Promise.all([
+    evaluateRelics(c.env, user.id, { sessionId: session.id }),
+    evaluateRelics(c.env, room.owner_id, { sessionId: session.id }),
+  ]);
+  // Recibos a las dos partes, mismo folio, después de responder.
+  afterResponse(c, enviarRecibos(c.env, {
+    tipo: session.status === "live" ? "propina" : "despedida",
+    id: tipId,
+    at: now,
+    amountCents: amount_cents,
+    creatorCents: creatorCut,
+    room,
+    viewer: { name: user.name, email: user.email, avatarUrl: user.avatar_url, balanceAfterCents: user.balance_cents - amount_cents },
+    session: { started_at: session.started_at, ended_at: session.ended_at },
+    message: (message ?? "").slice(0, 60),
+  }));
 
   return c.json({ ok: true, creator_cut_cents: creatorCut, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
 });
@@ -376,6 +383,7 @@ rooms.post("/api/rooms/:slug/highlight", async (c) => {
 
   const tipId = newId("tip");
   const split = tipSplit(amount_cents);
+  const now = Math.floor(Date.now() / 1000);
   const debited = await creditLedger(c.env.DB, user.id, -amount_cents, "destacado_enviado", tipId, `destacado_env:${tipId}`, "balance_cents");
   if (!debited) return c.json({ error: "no_procesado" }, 500);
   await creditLedger(c.env.DB, room.owner_id, split.creator, "destacado_recibido", tipId, `destacado_rec:${tipId}`, "creator_balance_cents");
@@ -393,6 +401,19 @@ rooms.post("/api/rooms/:slug/highlight", async (c) => {
     session_id: session.id, from: { id: user.id, name: user.name }, amount_cents, creator_cut_cents: split.creator, message: body, kind: "highlight",
   });
   const newRelics = await evaluateRelics(c.env, user.id, { sessionId: session.id });
+  // Recibos a las dos partes, mismo folio, después de responder.
+  afterResponse(c, enviarRecibos(c.env, {
+    tipo: "destacado",
+    id: tipId,
+    at: now,
+    amountCents: amount_cents,
+    creatorCents: split.creator,
+    room,
+    viewer: { name: user.name, email: user.email, avatarUrl: user.avatar_url, balanceAfterCents: user.balance_cents - amount_cents },
+    session: { started_at: session.started_at, ended_at: session.ended_at },
+    message: body,
+    expiresAt: Math.floor(until / 1000),
+  }));
   return c.json({ ok: true, until, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
 });
 
@@ -427,6 +448,18 @@ rooms.post("/api/rooms/:slug/membership", async (c) => {
   await emitEvent(c.env, room.owner_id, "tip.received", {
     kind: "membership", from: { id: user.id, name: user.name }, amount_cents: price, creator_cut_cents: split.creator, expires_at: expiresAt,
   });
+  // Recibos a las dos partes, mismo folio, después de responder. La sesión
+  // en vivo (si la hay) se busca allá, fuera del camino de la respuesta.
+  afterResponse(c, enviarRecibos(c.env, {
+    tipo: "membresia",
+    id,
+    at: now,
+    amountCents: price,
+    creatorCents: split.creator,
+    room,
+    viewer: { name: user.name, email: user.email, avatarUrl: user.avatar_url, balanceAfterCents: user.balance_cents - price },
+    expiresAt,
+  }));
   return c.json({ ok: true, expires_at: expiresAt, charged: true });
 });
 
