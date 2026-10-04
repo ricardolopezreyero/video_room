@@ -112,6 +112,10 @@ async function main() {
       </div>
       <p class="muted">Tu saldo sirve para entrar a salas y mandar dinero a creadores.</p>
     </div>
+    <div class="balance-box status-box" id="status-box" style="display:none">
+      <div class="label">Tu estatus</div>
+      <div id="status-content"></div>
+    </div>
     <div class="balance-box phrase-box">
       <div class="label">Frase</div>
       <div class="phrase-text" id="phrase-text">…</div>
@@ -145,6 +149,7 @@ async function main() {
   `;
   loadPhrase('phrase-text', false);
   loadIntegrations();
+  loadStatus();
 
   // Venimos de Stripe: animamos el saldo subiendo del valor de antes al de ahora.
   if (recarga === 'ok') {
@@ -345,6 +350,37 @@ function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
+}
+
+// ---------- Estatus: rango como creador / espectador y reliquias ----------
+// Elegante a propósito: el rango actual grande, una barra fina hacia el
+// siguiente, las reliquias ganadas en color y SOLO las tres siguientes en
+// gris con una línea de cómo se ganan. Nada de puntos ni rachas.
+async function loadStatus() {
+  const res = await fetch('/api/status/me');
+  if (!res.ok) return;
+  const s = await res.json();
+  const box = document.getElementById('status-box');
+  const hoursLeft = (r) => r.next ? Math.max(0, Math.ceil(r.next.hours - r.hours)) : 0;
+  const rank = (r, unit) => `
+    <div>
+      <div class="status-rank">
+        <span class="status-name">${escapeHtml(r.rank.name)}${r.rank.mark ? ` <span style="color:#F5C542;font-size:16px;">${r.rank.mark}</span>` : ''}</span>
+        <span class="status-meta">${r.hours} h ${unit}</span>
+      </div>
+      <div class="status-track"><div style="width:${Math.round((r.next ? r.progress : 1) * 100)}%"></div></div>
+      <div class="status-meta">${r.next ? `${hoursLeft(r)} h más para <strong style="color:#fff;">${escapeHtml(r.next.name)}</strong>` : 'El rango más alto. Gracias por estar aquí.'}</div>
+    </div>`;
+  const relicCard = (r, earned) => `
+    <div class="relic-card ${earned ? 'earned' : 'pending'}" title="${escapeHtml(r.how)}">
+      <span class="relic">${r.icon}</span>
+      <div><div class="relic-name">${escapeHtml(r.name)}</div><div class="relic-how">${earned ? 'Ganada el ' + new Date(r.earned_at * 1000).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : escapeHtml(r.how)}</div></div>
+    </div>`;
+  document.getElementById('status-content').innerHTML = `
+    <div class="status-two">${rank(s.creator, 'en vivo')}${rank(s.viewer, 'viendo a otros')}</div>
+    ${(s.relics.length || s.next_relics.length) ? `<div class="relic-shelf">${s.relics.map((r) => relicCard(r, true)).join('')}${s.next_relics.map((r) => relicCard(r, false)).join('')}</div>` : ''}
+  `;
+  box.style.display = 'block';
 }
 
 // ---------- Integraciones: badge embebible, llaves de API y webhooks ----------

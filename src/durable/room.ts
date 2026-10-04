@@ -181,15 +181,16 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/comment" && request.method === "POST") {
-      const { id, user_id, name, avatar_url, body, is_owner } = await request.json<{
+      const { id, user_id, name, avatar_url, mark, body, is_owner } = await request.json<{
         id: string;
         user_id: string;
         name: string;
         avatar_url?: string | null;
+        mark?: string | null;
         body: string;
         is_owner?: boolean;
       }>();
-      this.broadcast({ type: "comment", id, user_id, name, avatar_url: avatar_url ?? null, body, is_owner: !!is_owner, ts: Date.now() });
+      this.broadcast({ type: "comment", id, user_id, name, avatar_url: avatar_url ?? null, mark: mark ?? null, body, is_owner: !!is_owner, ts: Date.now() });
       return Response.json({ ok: true });
     }
 

@@ -17,6 +17,7 @@ import { currentUser } from "./lib/current-user";
 import { endLiveSession } from "./lib/room-lifecycle";
 import { sendEmail } from "./lib/email";
 import { isReservedSlug } from "./lib/slugs";
+import { publicStatusFor } from "./lib/status";
 import type { Room, Session } from "./lib/db";
 
 const ADMIN_EMAIL = "Ricardo@superleads.mx";
@@ -233,8 +234,12 @@ app.get("/:slug", async (c) => {
     viewerCount = info.viewerCount ?? 0;
   }
 
+  // Estatus público del creador (rango + reliquias): es lo que se enseña bajo
+  // su nombre. Si falla, la sala se pinta igual, sin estatus.
+  const status = await publicStatusFor(c.env, room.owner_id).catch(() => null);
+
   return c.html(
-    renderRoomPage({ room, ownerAvatar: room.owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL })
+    renderRoomPage({ room, ownerAvatar: room.owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status })
   );
 });
 

@@ -9,6 +9,7 @@ import { apiUser, createApiKey, randomHex } from "../lib/api-auth";
 import { computeCreatorStats } from "../lib/stats-core";
 import { deliverToEndpoint, emitEvent, WEBHOOK_EVENTS, type WebhookEndpoint, type WebhookEvent } from "../lib/webhooks";
 import { notifyRoomStartingSoon } from "../lib/notify";
+import { statusFor, publicStatusFor, RELICS, CREATOR_RANKS, VIEWER_RANKS } from "../lib/status";
 import { newId, type Room, type Session, type User } from "../lib/db";
 import type { Env } from "../env";
 
@@ -81,9 +82,29 @@ apiV1.get("/api/v1/public/rooms/:slug", async (c) => {
   ).bind(slug).first<Room & { owner_name: string; owner_avatar: string | null }>();
   if (!room) return c.json({ error: "not_found" }, 404);
   const live = await liveSession(c.env, room.id);
-  const viewers = live ? await liveViewers(c.env, room.id) : 0;
+  const [viewers, status] = await Promise.all([
+    live ? liveViewers(c.env, room.id) : Promise.resolve(0),
+    publicStatusFor(c.env, room.owner_id).catch(() => null),
+  ]);
   c.header("Cache-Control", "public, max-age=10");
-  return c.json(roomPayload(c.env, room, { name: room.owner_name, avatar_url: room.owner_avatar }, live, viewers));
+  return c.json({ ...roomPayload(c.env, room, { name: room.owner_name, avatar_url: room.owner_avatar }, live, viewers), status });
+});
+
+// Estatus de quien pregunta (rangos + reliquias). Con llave o con sesión.
+apiV1.get("/api/status/me", async (c) => {
+  const user = await authedUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  return c.json(await statusFor(c.env, user.id));
+});
+apiV1.get("/api/v1/status", async (c) => {
+  const user = await authedUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  return c.json(await statusFor(c.env, user.id));
+});
+// Catálogo público: qué rangos y reliquias existen y cómo se ganan.
+apiV1.get("/api/v1/public/status-catalog", (c) => {
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.json({ creator_ranks: CREATOR_RANKS, viewer_ranks: VIEWER_RANKS, relics: RELICS });
 });
 
 // ---------------------------------------------------------------------------

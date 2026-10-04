@@ -7,6 +7,7 @@ import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
 import { sendEmail, passReceiptEmail, newFollowerEmail } from "../lib/email";
 import { emitEvent } from "../lib/webhooks";
+import { evaluateRelics, viewerMarkFor } from "../lib/status";
 import { endLiveSession } from "../lib/room-lifecycle";
 import type { Env } from "../env";
 
@@ -238,7 +239,12 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
     expires_at: expiresAt,
   });
 
-  return c.json({ ok: true, expires_at: expiresAt, charged: true });
+  // Hitos que esta entrada pudo desbloquear: para el espectador (primera
+  // entrada, madrugador, fiel) y para el creador (primer peso).
+  const newRelics = await evaluateRelics(c.env, user.id, { sessionId: session.id });
+  await evaluateRelics(c.env, room.owner_id, { sessionId: session.id });
+
+  return c.json({ ok: true, expires_at: expiresAt, charged: true, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
 });
 
 const TIP_SESSION_CAP_CENTS = 200000;
@@ -286,8 +292,10 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
     creator_cut_cents: creatorCut,
     message: (message ?? "").slice(0, 60),
   });
+  const newRelics = await evaluateRelics(c.env, user.id, { sessionId: session.id });
+  await evaluateRelics(c.env, room.owner_id, { sessionId: session.id });
 
-  return c.json({ ok: true, creator_cut_cents: creatorCut });
+  return c.json({ ok: true, creator_cut_cents: creatorCut, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
 });
 
 const MAX_COMMENT_LENGTH = 240;
@@ -324,6 +332,9 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
     "INSERT INTO comments (id, session_id, user_id, body) VALUES (?, ?, ?, ?)"
   ).bind(commentId, session.id, user.id, body).run();
 
+  // La marca de rango del espectador (◆ Asiduo, ✦ Mecenas) viaja con el
+  // comentario: es estatus que se ve donde más importa, en vivo.
+  const mark = user.id === room.owner_id ? null : await viewerMarkFor(c.env, user.id).catch(() => null);
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/comment", {
     method: "POST",
@@ -332,6 +343,7 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
       user_id: user.id,
       name: user.name,
       avatar_url: user.avatar_url,
+      mark,
       body,
       is_owner: user.id === room.owner_id,
     }),

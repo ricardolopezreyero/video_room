@@ -80,7 +80,9 @@
     <tr><td><span class="pill get">GET</span><code>/api/v1/transactions?limit=50&amp;before=…</code></td><td>Tu historial completo de dinero, del más reciente al más viejo. Pagina con <code>next_before</code>.</td></tr>
     <tr><td><span class="pill get">GET</span><code>/api/v1/sessions?limit=20</code></td><td>Tus transmisiones: duración, entradas, espectadores únicos, propinas y lo que ganaste en cada una.</td></tr>
     <tr><td><span class="pill get">GET</span><code>/api/v1/followers</code></td><td>Cuántas personas activaron «Avísame cuando abra».</td></tr>
-    <tr><td><span class="pill get">GET</span><code>/api/v1/public/rooms/:slug</code></td><td>Estado público de cualquier sala. No necesita llave.</td></tr>
+    <tr><td><span class="pill get">GET</span><code>/api/v1/status</code></td><td>Tu estatus: rango como creador y como espectador (horas reales, progreso al siguiente) y tus reliquias con fecha.</td></tr>
+    <tr><td><span class="pill get">GET</span><code>/api/v1/public/rooms/:slug</code></td><td>Estado público de cualquier sala, con el rango y reliquias del creador. No necesita llave.</td></tr>
+    <tr><td><span class="pill get">GET</span><code>/api/v1/public/status-catalog</code></td><td>Catálogo de rangos y reliquias y cómo se gana cada uno. No necesita llave.</td></tr>
   </table>
   <h3>Ejemplo</h3>
 <pre><code>curl -H "Authorization: Bearer vr_live_…" \

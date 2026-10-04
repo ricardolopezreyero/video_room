@@ -323,7 +323,7 @@
       } else if (msg.type === "hearts") {
         spawnFloatingHeart();
       } else if (msg.type === "comment") {
-        appendChatMessage(msg.id, msg.user_id, msg.name, msg.avatar_url, msg.body, msg.is_owner);
+        appendChatMessage(msg.id, msg.user_id, msg.name, msg.avatar_url, msg.body, msg.is_owner, msg.mark);
       } else if (msg.type === "comment_liked") {
         updateCommentLikes(msg.comment_id, msg.likes);
       } else if (msg.type === "pinned") {
@@ -373,7 +373,17 @@
   // Los comentarios son eventos fugaces: solo viven en el DOM mientras la
   // pestaña está abierta. Se arman con createElement/textContent (nunca
   // innerHTML) para que no haya forma de inyectar HTML desde un comentario.
-  function appendChatMessage(commentId, userId, name, avatarUrl, body, isOwnerMsg) {
+  // Un toque de estatus en el momento en que algo se gana: discreto, una
+  // sola línea, y nunca encima de un aviso de dinero.
+  function announceRelics(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    const r = list[0];
+    const extra = list.length > 1 ? ` (+${list.length - 1})` : "";
+    setTimeout(() => toast(`${r.icon} Nueva reliquia: ${r.name}${extra} — ${r.how}`, 6500), 1200);
+    if (navigator.vibrate) navigator.vibrate([12, 60, 12]);
+  }
+
+  function appendChatMessage(commentId, userId, name, avatarUrl, body, isOwnerMsg, mark) {
     const feed = $("chat-feed");
     const row = document.createElement("div");
     row.className = isOwnerMsg ? "chat-msg owner" : "chat-msg";
@@ -385,6 +395,15 @@
     const nameEl = document.createElement("span");
     nameEl.className = "chat-msg-name";
     nameEl.textContent = name;
+    // Marca de rango del espectador (◆ Asiduo, ✦ Mecenas): estatus visible
+    // justo donde el creador decide a quién atender primero.
+    if (mark) {
+      const markEl = document.createElement("span");
+      markEl.className = "chat-msg-mark";
+      markEl.textContent = mark;
+      markEl.title = mark === "✦" ? "Mecenas" : "Asiduo";
+      nameEl.appendChild(markEl);
+    }
     const bodyEl = document.createElement("span");
     bodyEl.className = "chat-msg-body";
     bodyEl.textContent = ` ${body}`;
@@ -1115,6 +1134,7 @@
         sheet.remove();
         if (res.error === "saldo_insuficiente") toast("Sin saldo suficiente. Recarga en tu monedero.");
         else if (res.error) toast("No se pudo mandar el dinero.");
+        else announceRelics(res.new_relics);
       };
     });
     sheet.querySelector("#tip-cancel").onclick = () => sheet.remove();
@@ -1173,6 +1193,7 @@
       if (res.error === "saldo_insuficiente") { endConnecting(); return toast("Sin saldo. Ve a tu monedero para recargar."); }
       if (res.error) { endConnecting(); return toast("No se pudo entrar a la sala."); }
       await startSubscribing();
+      announceRelics(res.new_relics);
     });
     guarded($("btn-notify"), async () => {
       if (!me) return requireLogin();
@@ -1211,7 +1232,11 @@
       if (qualityTimer) clearInterval(qualityTimer);
       if (liveTimerInterval) clearInterval(liveTimerInterval);
       stopOwnerMediaNow();
-      toast(`Ganaste $${Math.round((res.earned_cents ?? 0) / 100)} · Pico ${res.peak_viewers ?? 0} personas`, 2400);
+      const relic = Array.isArray(res.new_relics) && res.new_relics[0];
+      toast(
+        `Ganaste $${Math.round((res.earned_cents ?? 0) / 100)} · Pico ${res.peak_viewers ?? 0} personas${relic ? ` · ${relic.icon} ${relic.name}` : ""}`,
+        2400
+      );
     });
     guarded($("btn-tip"), async () => {
       if (!me) return requireLogin();

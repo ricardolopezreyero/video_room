@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import type { Room, Session } from "./db";
 import { sendEmail, streamSummaryEmail } from "./email";
 import { emitEvent } from "./webhooks";
+import { evaluateRelics, statusFor } from "./status";
 
 // Cierra una sesión en vivo: la marca 'ended', borra sus comentarios (son
 // eventos fugaces, no sobreviven al cierre de la sala), avisa al Durable
@@ -15,7 +16,7 @@ export async function endLiveSession(
   room: Room,
   session: Session,
   waitUntil?: (promise: Promise<unknown>) => void
-): Promise<{ earned_cents: number; peak_viewers: number; hearts: number }> {
+): Promise<{ earned_cents: number; peak_viewers: number; hearts: number; new_relics?: { code: string; name: string; icon: string }[] }> {
   const endedAt = Math.floor(Date.now() / 1000);
   await env.DB.prepare("UPDATE sessions SET status = 'ended', ended_at = ? WHERE id = ?").bind(endedAt, session.id).run();
 
@@ -26,6 +27,14 @@ export async function endLiveSession(
   const stub = env.ROOM_DO.get(env.ROOM_DO.idFromName(room.id));
   const res = await stub.fetch("https://do/stop", { method: "POST" });
   const summary = await res.json<{ earned_cents: number; peak_viewers: number; hearts: number }>();
+
+  // El resumen queda en la sesión: alimenta reliquias (Sala llena, Maratón…)
+  // y la API de sesiones. Luego se revisa qué hitos se ganaron con esta
+  // transmisión, para enseñarlos en el correo y en pantalla.
+  await env.DB.prepare("UPDATE sessions SET peak_viewers = ?, earned_cents = ?, hearts = ? WHERE id = ?")
+    .bind(summary.peak_viewers, summary.earned_cents, summary.hearts, session.id).run().catch(() => {});
+  const newRelics = await evaluateRelics(env, room.owner_id, { sessionId: session.id });
+  const status = await statusFor(env, room.owner_id).catch(() => null);
 
   // Se espera a que termine de mandarse (no waitUntil) — un correo que se
   // manda "en segundo plano" y nunca comprobamos que salió es un correo que
@@ -45,6 +54,10 @@ export async function endLiveSession(
         earnedCents: summary.earned_cents,
         peakViewers: summary.peak_viewers,
         hearts: summary.hearts,
+        newRelics: newRelics.map((r) => ({ icon: r.icon, name: r.name, how: r.how })),
+        rankLine: status
+          ? `${status.creator.rank.name} · ${status.creator.hours} h en vivo${status.creator.next ? ` · ${Math.max(0, Math.ceil(status.creator.next.hours - status.creator.hours))} h para ${status.creator.next.name}` : ""}`
+          : undefined,
       });
       await sendEmail(env.RESEND_API_KEY, { to: owner.email, subject, html, text });
     }
@@ -63,5 +76,5 @@ export async function endLiveSession(
     hearts: summary.hearts,
   });
 
-  return summary;
+  return { ...summary, new_relics: newRelics.map(({ code, name, icon }) => ({ code, name, icon })) };
 }

@@ -561,8 +561,15 @@ export function streamSummaryEmail(opts: {
   earnedCents: number;
   peakViewers: number;
   hearts: number;
+  /** Reliquias ganadas con esta transmisión (si las hubo). */
+  newRelics?: { icon: string; name: string; how: string }[];
+  /** "Residente · 14 h en vivo · 36 h para Titular" */
+  rankLine?: string;
 }): Mail {
-  const { appUrl, name, avatarUrl, roomTitle, durationMinutes, earnedCents, peakViewers, hearts } = opts;
+  const { appUrl, name, avatarUrl, roomTitle, durationMinutes, earnedCents, peakViewers, hearts, newRelics = [], rankLine } = opts;
+  const details: Detail[] = [];
+  if (rankLine) details.push({ label: "Tu rango", value: rankLine, strong: true });
+  for (const r of newRelics) details.push({ label: `${r.icon} Nueva reliquia`, value: `${r.name} — ${r.how}`, strong: true });
   const statsUrl = `${appUrl}/app/estadisticas`;
   const duration = durationMinutes < 1 ? "menos de 1 minuto" : `${durationMinutes} ${plural(durationMinutes, "minuto", "minutos")}`;
   const subject = `📊 Tu transmisión terminó — ${fmtMXN(earnedCents)} ganados`;
@@ -580,6 +587,7 @@ export function streamSummaryEmail(opts: {
       { value: String(peakViewers), label: plural(peakViewers, "persona en el pico", "personas en el pico") },
       { value: String(hearts), label: plural(hearts, "corazón", "corazones") },
     ],
+    details: details.length ? details : undefined,
     ctaLabel: "Ver mis estadísticas",
     linkUrl: statsUrl,
     afterHtml: "Ahí está el detalle: quién entró, cuánto dejó cada quien y de qué campaña vinieron.",

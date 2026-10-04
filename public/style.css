@@ -662,6 +662,32 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
    hay foto (cuenta sin avatar de Google) se ve un círculo vacío, no un hueco. */
 .chat-msg-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: rgba(255,255,255,.1); }
 .chat-msg-name { font-weight: 800; color: var(--green, #56EF9F); flex-shrink: 0; }
+.chat-msg-mark { margin-left: 3px; font-size: 10px; color: #F5C542; vertical-align: 1px; }
+/* ---------- Estatus (RLR) — una firma, no un marcador ---------- */
+.room-status { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 14px; }
+.status-pill {
+  font-size: 11.5px; font-weight: 800; letter-spacing: .2px; color: var(--green, #56EF9F);
+  background: rgba(86,239,159,.1); border: .5px solid rgba(86,239,159,.3); border-radius: 999px; padding: 4px 10px;
+}
+.relic { font-size: 15px; line-height: 1; filter: drop-shadow(0 0 6px rgba(245,197,66,.35)); cursor: default; }
+.status-box .status-rank { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.status-box .status-name { font-size: 26px; font-weight: 800; letter-spacing: -.8px; color: #fff; }
+.status-box .status-meta { font-size: 12.5px; color: #9aa1b0; }
+.status-track { height: 5px; border-radius: 999px; background: rgba(255,255,255,.08); margin: 10px 0 6px; overflow: hidden; }
+.status-track > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, rgba(86,239,159,.6), var(--green)); transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.status-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 480px) { .status-two { grid-template-columns: 1fr; } .status-box .status-rank { justify-content: center; } }
+.relic-shelf { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.relic-card {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; min-width: 150px; flex: 1 1 150px;
+  background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.08); text-align: left;
+}
+.relic-card .relic { font-size: 22px; }
+.relic-card .relic-name { font-size: 13px; font-weight: 800; color: #fff; }
+.relic-card .relic-how { font-size: 11.5px; color: #9aa1b0; line-height: 1.35; }
+.relic-card.pending { opacity: .55; border-style: dashed; }
+.relic-card.pending .relic { filter: grayscale(1); opacity: .7; }
+.relic-card.earned { border-color: rgba(245,197,66,.35); background: rgba(245,197,66,.06); }
 .chat-msg-body { color: #e8edf8; flex: 1; min-width: 0; }
 .pin-trigger {
   background: none; border: none; color: rgba(255,255,255,.4); cursor: pointer;

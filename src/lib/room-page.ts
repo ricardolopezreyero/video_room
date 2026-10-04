@@ -16,8 +16,17 @@ export function renderRoomPage(opts: {
   live: boolean;
   viewerCount: number;
   appUrl: string;
+  status?: { rank: { code: string; name: string }; hours: number; relics: { code: string; name: string; icon: string }[] } | null;
 }): string {
-  const { room, ownerAvatar, live, viewerCount, appUrl } = opts;
+  const { room, ownerAvatar, live, viewerCount, appUrl, status } = opts;
+  // Estatus bajo el nombre: el rango (si ya pasó de "Nuevo") y hasta cinco
+  // reliquias. Discreto a propósito — es una firma, no un marcador.
+  const statusHtml = status && (status.rank.code !== "nuevo" || status.relics.length)
+    ? `<div class="room-status">
+        ${status.rank.code !== "nuevo" ? `<span class="status-pill" title="${String(status.hours)} horas en vivo">${escapeHtml(status.rank.name)} · ${String(status.hours)} h en vivo</span>` : ""}
+        ${status.relics.slice(0, 5).map((r) => `<span class="relic" title="${escapeHtml(r.name)}">${r.icon}</span>`).join("")}
+      </div>`
+    : "";
   const safeTitle = escapeHtml(room.title);
   const safeAvatar = ownerAvatar ? escapeHtml(ownerAvatar) : null;
   const ogImage = safeAvatar ?? `${appUrl}/og-default.svg`;
@@ -66,6 +75,7 @@ export function renderRoomPage(opts: {
     <div id="overlay" class="overlay">
       ${avatarHtml}
       <h1>${live ? `🔴 ${safeTitle} está EN VIVO` : `${safeTitle} — abre pronto`}</h1>
+      ${statusHtml}
       <p id="sub">${desc}</p>
       <div id="connect-spinner" class="connect-spinner" style="display:none"><span></span><span></span><span></span></div>
       <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">Entrar · $20 la hora</button>

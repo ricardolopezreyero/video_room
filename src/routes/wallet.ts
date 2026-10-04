@@ -12,6 +12,7 @@ import {
 } from "../lib/stripe";
 import { sendEmail, walletRechargeEmail, payoutSentEmail, payoutFailedEmail, bankConnectedEmail } from "../lib/email";
 import { emitEvent } from "../lib/webhooks";
+import { evaluateRelics } from "../lib/status";
 import type { Env } from "../env";
 
 export const wallet = new Hono<{ Bindings: Env }>();
@@ -278,7 +279,8 @@ wallet.post("/api/wallet/retiro", async (c) => {
       console.error("payoutSentEmail", err);
     }
     await emitEvent(c.env, user.id, "payout.sent", { amount_cents: amount, transfer_id: transfer.id });
-    return c.json({ ok: true, monto_cents: amount });
+    const newRelics = await evaluateRelics(c.env, user.id);
+    return c.json({ ok: true, monto_cents: amount, new_relics: newRelics.map(({ code, name, icon, how }) => ({ code, name, icon, how })) });
   } catch {
     // La transferencia real falló después de reservar el balance — se
     // regresa el dinero para que nunca se pierda el rastro, y el creador
