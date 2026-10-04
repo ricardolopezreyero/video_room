@@ -410,8 +410,13 @@ window.MotorVideo = (() => {
       c += vec3(0.05, 0.015, -0.05) * cal;
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
     }`;
-  function crearFiltro({ track }) {
+  function crearFiltro({ track, onPerdido }) {
     const canvas = document.createElement("canvas");
+    // Android suelta el contexto WebGL al mandar la app al fondo: el filtro se
+    // apaga solo y la cámara sale directa, en vez de quedarse en negro.
+    let perdido = false;
+    canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); perdido = true; if (onPerdido) onPerdido(); });
+    canvas.addEventListener("webglcontextrestored", () => { perdido = false; });
     const gl = canvas.getContext("webgl", { alpha: false, antialias: false, preserveDrawingBuffer: false, premultipliedAlpha: false, desynchronized: true });
     if (!gl || !canvas.captureStream) return null;
     const sh = (tipo, src) => { const h = gl.createShader(tipo); gl.shaderSource(h, src); gl.compileShader(h); if (!gl.getShaderParameter(h, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(h)); return h; };
@@ -441,7 +446,7 @@ window.MotorVideo = (() => {
     setFuente(track);
     function cuadro() {
       if (!vivo) return;
-      if (activo && video.readyState >= 2 && video.videoWidth) {
+      if (activo && !perdido && video.readyState >= 2 && video.videoWidth) {
         if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; gl.viewport(0, 0, canvas.width, canvas.height); }
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
         gl.uniform1f(U.sat, actual.sat); gl.uniform1f(U.con, actual.con); gl.uniform1f(U.bri, actual.bri);

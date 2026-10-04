@@ -97,7 +97,13 @@ export function renderRoomPage(opts: {
 </head>
 <body data-slug="${room.slug}" data-live="${live}"${opts.modoLlamada ? ' class="llamada"' : ""}>
   <div id="app" class="room-app">
-    <video id="player" playsinline autoplay muted></video>
+    <!-- playsinline: en iPhone, sin esto el video se abre en el reproductor del
+         sistema. x-webkit-airplay: deja que Safari ofrezca AirPlay. Sin
+         disableRemotePlayback: Chrome puede ofrecer Transmitir. -->
+    <video id="player" playsinline webkit-playsinline autoplay muted x-webkit-airplay="allow"></video>
+    <!-- Modo tele: salir con un toque; y si el teléfono está vertical, la pista. -->
+    <button id="tv-exit" class="tv-exit" style="display:none" aria-label="Salir del modo tele">✕ Salir de la tele</button>
+    <div id="tv-hint" class="tv-hint" style="display:none">📱 Gira tu teléfono: así la tele se llena.</div>
     <div id="overlay" class="overlay">
       ${avatarHtml}
       <h1>${live ? `🔴 ${safeTitle} está EN VIVO` : `${safeTitle} — abre pronto`}</h1>
@@ -172,6 +178,7 @@ export function renderRoomPage(opts: {
       </select>
       <button id="btn-screen" class="ctrl-btn" style="display:none" data-label="Pantalla" aria-label="Compartir pantalla">🖥️</button>
       <button id="btn-call" class="ctrl-btn" style="display:none" data-label="Llamada" aria-label="Ver la sala de otra persona mientras transmites">📞</button>
+      <button id="btn-tv" class="ctrl-btn" data-label="Tele" aria-label="Ver en la tele">📺</button>
     </div>
     <div id="studio-bar" class="studio-bar" style="display:none">
       <span class="live-dot" aria-hidden="true"></span>

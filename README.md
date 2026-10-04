@@ -242,3 +242,24 @@ del recibo llevan la liga, y Transacciones tiene una columna "Recibo".
   toast. `MotorAudio.MODOS`, `ORDEN_MODOS`.
 - Ambos viven en una hoja de opciones con tarjetas grandes (`hojaDeOpciones`
   en room.js): un clic y se pone, sin retraso.
+
+## Modo tele (📺)
+
+Botón «Tele» en el dock, para quien ve y para quien transmite. Abre una hoja
+con los pasos de **tu** sistema (iPhone: Centro de control → Duplicar
+pantalla → Apple TV o Roku con AirPlay; Android: ajustes rápidos →
+Transmitir / Smart View → Roku, Fire TV, Android TV) y un botón «Modo tele»
+que deja la pantalla solo con el video: pantalla completa donde el navegador
+lo permite, orientación horizontal donde se puede, teléfono sin dormirse
+(Wake Lock, con un video mudo de 1 px como respaldo donde no existe) y una
+pista para girar el teléfono si está vertical. Si el navegador ofrece mandar
+el video directo (AirPlay / Transmitir), se intenta primero y, si no acepta
+señal en vivo, queda el camino de duplicar. `?modo=tv` entra solo al empezar
+a ver (para una tele con navegador). Roku y Apple TV no tienen navegador ni
+reciben WebRTC: por eso el camino es duplicar la pantalla, no una app.
+
+Robustez por navegador que quedó cuidada: el espectador se des-silencia al
+llegar el video (iPhone exigía `muted` para arrancar); la cámara del creador
+se vuelve a pedir sola si el sistema la apagó al mandar la app al fondo; si
+Android suelta el contexto WebGL, el filtro de color se apaga solo y la
+cámara sale directa; `playsinline` + `x-webkit-airplay` en el video.

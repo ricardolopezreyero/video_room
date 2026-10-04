@@ -229,6 +229,7 @@
     if (ownerStreamStopped) return;
     ownerStreamStopped = true;
     if (llamadaCon) terminarLlamada();
+    soltarWakeLock();
     if (motor) motor.detener();
     if (motorAudio) { try { motorAudio.destruir(); } catch {} }
     if (filtro) { try { filtro.destruir(); } catch {} }
@@ -777,6 +778,7 @@
     cameraTrack = stream.getVideoTracks()[0];
     micTrackCrudo = stream.getAudioTracks()[0];
     try { cameraTrack.contentHint = "motion"; } catch {}
+    pedirWakeLock(); // transmitiendo, la pantalla no se apaga sola
     // La cadena de audio: lo que se publica es el micrófono ya procesado.
     if (motorAudio) { try { motorAudio.destruir(); } catch {} }
     motorAudio = await MotorAudio.crear({
@@ -789,7 +791,7 @@
     try { micTrack.contentHint = /musica|concierto/.test(audioModo) ? "music" : "speech"; } catch {}
     // Filtros de color: la cámara pasa por la GPU solo cuando hay un filtro.
     if (filtro) { try { filtro.destruir(); } catch {} }
-    filtro = MotorVideo.crearFiltro ? MotorVideo.crearFiltro({ track: cameraTrack }) : null;
+    filtro = MotorVideo.crearFiltro ? MotorVideo.crearFiltro({ track: cameraTrack, onPerdido: () => { toast("El efecto de color se apagó (la app estuvo en el fondo). Tu cámara sigue saliendo normal.", 5000); aplicarFiltro("normal"); } }) : null;
     if (filtro) filtro.setFiltro(filtroNombre); else filtroNombre = "normal";
     player.srcObject = new MediaStream([fuenteVideo()]);
     await publicar("Conectando con el estudio…");
@@ -1042,6 +1044,203 @@
     if (par) setTimeout(() => toast(`📞 ¿Volver a la llamada con ${par}? Toca "Llamada".`, 6000), 7000);
   }
 
+  // ---- Pantalla encendida ----
+  // Transmitiendo o viendo en la tele, el teléfono no debe dormirse. Wake Lock
+  // donde existe (Chrome, Safari 16.4+; se pide de nuevo al volver al frente
+  // porque el sistema lo suelta); donde no, un video mudo de 1 px en bucle,
+  // que es lo que el sistema respeta para no apagar la pantalla.
+  let wakeLock = null, wakeDeseado = false, noSleepVideo = null;
+  async function pedirWakeLock() {
+    wakeDeseado = true;
+    if ("wakeLock" in navigator) {
+      try { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); return; } catch {}
+    }
+    if (!noSleepVideo) {
+      noSleepVideo = document.createElement("video");
+      noSleepVideo.setAttribute("playsinline", ""); noSleepVideo.muted = true; noSleepVideo.loop = true;
+      noSleepVideo.style.cssText = "position:fixed; left:-9999px; top:0; width:1px; height:1px; opacity:0;";
+      // mp4 mínimo (un cuadro negro): basta para que el sistema lo cuente como "reproduciendo".
+      noSleepVideo.src = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAu1tZGF0AAACrQYF//+p3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE1MiByMjg1NCBlOWE1OTAzIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxNyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTMgbG9va2FoZWFkX3RocmVhZHM9MSBzbGljZWRfdGhyZWFkcz0wIG5yPTAgZGVjaW1hdGU9MSBpbnRlcmxhY2VkPTAgYmx1cmF5X2NvbXBhdD0wIGNvbnN0cmFpbmVkX2ludHJhPTAgYmZyYW1lcz0zIGJfcHlyYW1pZD0yIGJfYWRhcHQ9MSBiX2JpYXM9MCBkaXJlY3Q9MSB3ZWlnaHRiPTEgb3Blbl9nb3A9MCB3ZWlnaHRwPTIga2V5aW50PTI1MCBrZXlpbnRfbWluPTI1IHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAD2WIhAA3//728P4FNjuZQQAAAu5tb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAAPoAAAAZAABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACGHRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAEAAAAAAAAAZAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAgAAAAIAAAAAACRlZHRzAAAAHGVsc3QAAAAAAAAAAQAAAGQAAAAAAAEAAAAAAZBtZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAACgAAAAEAFXEAAAAAAAtaGRscgAAAAAAAAAAdmlkZQAAAAAAAAAAAAAAAFZpZGVvSGFuZGxlcgAAAAE7bWluZgAAABR2bWhkAAAAAQAAAAAAAAAAAAAAJGRpbmYAAAAcZHJlZgAAAAAAAAABAAAADHVybCAAAAABAAAA+3N0YmwAAACXc3RzZAAAAAAAAAABAAAAh2F2YzEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAgACAEgAAABIAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY//8AAAAxYXZjQwFkAAr/4QAYZ2QACqzZX4iIhAAAAwAEAAADAFA8SJZYAQAGaOvjyyLAAAAAGHN0dHMAAAAAAAAAAQAAAAEAAAQAAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAABAAAAAQAAABRzdHN6AAAAAAAAAsUAAAABAAAAFHN0Y28AAAAAAAAAAQAAADAAAABidWR0YQAAAFptZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyYXBwbAAAAAAAAAAAAAAAAC1pbHN0AAAAJal0b28AAAAdZGF0YQAAAAEAAAAATGF2ZjU2LjQwLjEwMQ==";
+      document.body.appendChild(noSleepVideo);
+    }
+    noSleepVideo.play().catch(() => {});
+  }
+  function soltarWakeLock() {
+    wakeDeseado = false;
+    if (wakeLock) { try { wakeLock.release(); } catch {} wakeLock = null; }
+    if (noSleepVideo) { try { noSleepVideo.pause(); } catch {} }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (wakeDeseado) pedirWakeLock();
+    // iPhone y Android pueden apagar la cámara al mandar la app al fondo: al
+    // volver, si el track murió, se vuelve a pedir y se cambia en caliente.
+    if (isOwner && cameraTrack && cameraTrack.readyState === "ended" && !usingScreenShare && !ownerStreamStopped && !sessionEnded) reactivarCamara();
+  });
+  async function reactivarCamara() {
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false });
+      const t = st.getVideoTracks()[0];
+      t.enabled = camOn;
+      cameraTrack = t;
+      try { t.contentHint = "motion"; } catch {}
+      if (filtro) filtro.setFuente(t);
+      if (videoSender) await videoSender.replaceTrack(fuenteVideo());
+      if (motor) motor.setTrack(t);
+      player.srcObject = micTrack ? new MediaStream([fuenteVideo(), micTrack]) : new MediaStream([fuenteVideo()]);
+      toast("📷 Tu cámara volvió.", 3000);
+    } catch {
+      toast("Tu cámara se detuvo al salir de la app. Toca 📷 dos veces para reactivarla.", 6000);
+    }
+  }
+
+  // ---- Modo tele: la pantalla del teléfono se vuelve solo el video ----
+  // La tele recibe lo que el teléfono muestra (AirPlay en iPhone → Apple TV o
+  // Roku con AirPlay; Duplicar pantalla en Android → Roku, Fire TV, Android
+  // TV). Aquí la pantalla se limpia: solo el video, a pantalla completa donde
+  // el navegador lo permite, sin que el teléfono se duerma, con pista para
+  // girarlo si está vertical. Si el navegador ofrece mandar el video directo
+  // (AirPlay/Transmitir), se intenta primero.
+  let modoTv = false, tvOcultarTimer = null, modoTvAuto = false;
+  const esIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const esAndroid = /Android/.test(navigator.userAgent);
+  function pantallaCompleta(on) {
+    const d = document, el = d.documentElement;
+    try {
+      if (on) {
+        const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+        if (req) { const r = req.call(el, { navigationUI: "hide" }); if (r && r.catch) r.catch(() => {}); }
+      } else if (d.fullscreenElement || d.webkitFullscreenElement) {
+        const ex = d.exitFullscreen || d.webkitExitFullscreen || d.msExitFullscreen;
+        if (ex) { const r = ex.call(d); if (r && r.catch) r.catch(() => {}); }
+      }
+    } catch {}
+  }
+  function pistaOrientacion() {
+    const hint = $("tv-hint");
+    if (!hint) return;
+    hint.style.display = modoTv && window.innerHeight > window.innerWidth ? "block" : "none";
+  }
+  function mostrarSalirTv() {
+    const b = $("tv-exit");
+    if (!b || !modoTv) return;
+    b.style.display = "inline-flex";
+    clearTimeout(tvOcultarTimer);
+    tvOcultarTimer = setTimeout(() => { b.style.display = "none"; }, 3500);
+  }
+  function entrarTv() {
+    modoTv = true;
+    document.body.classList.add("modo-tv");
+    pantallaCompleta(true);
+    try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {}); } catch {}
+    pedirWakeLock();
+    pistaOrientacion();
+    mostrarSalirTv();
+    if (player.paused) player.play().catch(() => {});
+  }
+  function salirTv() {
+    if (!modoTv) return;
+    modoTv = false;
+    document.body.classList.remove("modo-tv");
+    pantallaCompleta(false);
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch {}
+    if (!isOwner) soltarWakeLock();
+    $("tv-exit").style.display = "none";
+    $("tv-hint").style.display = "none";
+  }
+  window.addEventListener("resize", pistaOrientacion);
+  document.addEventListener("fullscreenchange", () => { if (modoTv && !document.fullscreenElement) salirTv(); });
+  async function abrirHojaTele() {
+    const pasosIOS = `<ol class="tv-pasos"><li>Abre el <strong>Centro de control</strong> (desliza desde la esquina superior derecha).</li><li>Toca <strong>Duplicar pantalla</strong> (dos rectángulos).</li><li>Elige tu <strong>Apple TV</strong> o tu <strong>Roku</strong> (los Roku recientes aceptan AirPlay).</li></ol>`;
+    const pasosAndroid = `<ol class="tv-pasos"><li>Baja los <strong>ajustes rápidos</strong> desde arriba.</li><li>Toca <strong>Transmitir</strong>, <strong>Smart View</strong> o <strong>Duplicar pantalla</strong> (el nombre cambia según la marca).</li><li>Elige tu <strong>Roku</strong>, <strong>Fire TV</strong> o <strong>Android TV</strong>. En el Roku, activa antes <em>Ajustes → Sistema → Duplicación de pantalla</em>.</li></ol>`;
+    const pasos = esIOS ? pasosIOS : esAndroid ? pasosAndroid : `<p class="sheet-sub">Desde una computadora: conecta la tele por HDMI o usa AirPlay (Mac) / Transmitir (Chrome, menú ⋮ → Transmitir → Pantalla).</p>`;
+    const puedeDirecto = !!(player.remote && typeof player.remote.prompt === "function");
+    const sheet = document.createElement("div");
+    sheet.className = "sheet";
+    sheet.innerHTML = `
+      <div class="sheet-inner">
+        <h3>📺 Ver en la tele</h3>
+        <p class="sheet-sub">La tele muestra lo que ves aquí. Primero limpia la pantalla (solo el video, sin que el teléfono se apague) y luego duplícala a la tele desde tu sistema:</p>
+        ${pasos}
+        ${puedeDirecto ? `<button id="tv-directo" class="btn-ghost">Mandar el video directo (AirPlay / Transmitir)</button>` : ""}
+        <button id="tv-ir" class="btn-primary">Modo tele: solo el video</button>
+        <button id="tv-cancel">Cancelar</button>
+      </div>`;
+    document.body.appendChild(sheet);
+    const cerrar = () => sheet.remove();
+    sheet.querySelector("#tv-cancel").onclick = cerrar;
+    sheet.querySelector("#tv-ir").onclick = () => { cerrar(); entrarTv(); toast(esIOS ? "📺 Ahora abre el Centro de control → Duplicar pantalla." : esAndroid ? "📺 Ahora baja los ajustes rápidos → Transmitir / Smart View." : "📺 Listo: duplica esta pantalla a tu tele.", 7000); };
+    const directo = sheet.querySelector("#tv-directo");
+    if (directo) directo.onclick = async () => {
+      try {
+        await player.remote.prompt();
+        toast("📺 Si tu tele lo acepta, el video ya va para allá.", 5000);
+        cerrar();
+      } catch {
+        directo.style.display = "none";
+        toast("Tu navegador no manda el video en vivo directo. Usa Modo tele + Duplicar pantalla.", 6000);
+      }
+    };
+  }
+
+  // ---- Modo llamada: dos salas, dos vías ----
+  // Tú transmites desde tu sala y, en la misma pantalla, ves la sala de la
+  // otra persona (entras a ella como cualquier espectador: paga su hora, y
+  // ella entra a la tuya). La otra sala abre dentro de un recuadro con
+  // ?modo=llamada (solo su video, sin chat ni dock) y tu cámara queda chica
+  // en una esquina. Para verlo en la tele: AirPlay (iPhone → Apple TV) o
+  // Duplicar pantalla (Android → Roku); lo que se refleja es esta pantalla.
+  let llamadaCon = null;
+  function slugDeLlamada(texto) {
+    const t = (texto || "").trim();
+    if (!t) return null;
+    try {
+      const u = new URL(t, location.href);
+      if (u.origin === location.origin) return (u.pathname.split("/").filter(Boolean)[0] || "").toLowerCase() || null;
+    } catch {}
+    return t.replace(/^@/, "").replace(/^\/+/, "").split(/[/?#\s]/)[0].toLowerCase() || null;
+  }
+  function iniciarLlamada(otra) {
+    if (!otra || otra === slug) return toast("Esa es tu propia sala. Pega el link de la otra persona.");
+    llamadaCon = otra;
+    localStorage.setItem(`vr_llamada_${slug}`, otra);
+    $("call-frame").src = `/${encodeURIComponent(otra)}?modo=llamada`;
+    $("call-wrap").style.display = "block";
+    document.body.classList.add("en-llamada");
+    $("btn-call").classList.add("active");
+    if (chatVisible) { chatVisible = false; $("chat-panel").style.display = "none"; $("btn-chat").classList.remove("active"); }
+    toast(`📞 Viendo la sala de ${otra}. Para la tele: AirPlay o Duplicar pantalla.`, 6000);
+  }
+  function terminarLlamada() {
+    llamadaCon = null;
+    $("call-frame").src = "about:blank";
+    $("call-wrap").style.display = "none";
+    document.body.classList.remove("en-llamada");
+    $("btn-call").classList.remove("active");
+  }
+  function abrirHojaLlamada() {
+    if (llamadaCon) return terminarLlamada();
+    const recordada = localStorage.getItem(`vr_llamada_${slug}`) || "";
+    const sheet = document.createElement("div");
+    sheet.className = "sheet";
+    sheet.innerHTML = `
+      <div class="sheet-inner">
+        <h3>📞 Llamada: ver a otra persona mientras transmites</h3>
+        <p class="sheet-sub">Pega el link de su sala. Entras a su sala como cualquier persona (pagas su hora con tu saldo) y ella entra a la tuya: dos salas, dos vías. Tu cámara queda chiquita en una esquina y la de ella en grande.</p>
+        <input id="call-slug" placeholder="video.capitaltorreon.com/su-nombre" value="${recordada.replace(/"/g, "&quot;")}" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <p class="sheet-sub">Para verlo en la tele: en iPhone, AirPlay a tu Apple TV; en Android, «Duplicar pantalla» a tu Roku. Lo que se refleja es exactamente esta pantalla.</p>
+        <button id="call-go" class="btn-primary">Ver su sala</button>
+        <button id="call-cancel">Cancelar</button>
+      </div>`;
+    document.body.appendChild(sheet);
+    const cerrar = () => sheet.remove();
+    sheet.querySelector("#call-cancel").onclick = cerrar;
+    const ir = () => { const otra = slugDeLlamada(sheet.querySelector("#call-slug").value); if (!otra) return toast("Pega el link o el nombre de su sala."); cerrar(); iniciarLlamada(otra); };
+    sheet.querySelector("#call-go").onclick = ir;
+    sheet.querySelector("#call-slug").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); ir(); } });
+    setTimeout(() => sheet.querySelector("#call-slug").focus(), 50);
+  }
+
   function toggleMic() {
     micOn = !micOn;
     if (micTrack) micTrack.enabled = micOn;
@@ -1250,6 +1449,8 @@
       let done = false;
       newPc.ontrack = (ev) => {
         player.srcObject = ev.streams[0];
+        player.muted = false; // el espectador oye; el "muted" del HTML era solo para arrancar
+        player.play().catch(() => {});
         maybeSetupWaveform(ev.streams[0]);
         if (!done) { done = true; resolve(); }
       };
@@ -1515,6 +1716,8 @@
     effectiveTier = initialTier;
     updateAudioOnlyBadge();
     hideOverlaySmoothly();
+    pedirWakeLock(); // viendo, el teléfono tampoco se duerme
+    if (modoTvAuto) setTimeout(entrarTv, 600);
     showControlsWithEntrance();
     revealChatUI();
     setupQualitySelector();
@@ -1774,6 +1977,12 @@
     guarded($("btn-call"), async () => abrirHojaLlamada());
     guarded($("btn-fx"), async () => abrirHojaEfectos());
     guarded($("btn-audio"), async () => abrirHojaAudio());
+    guarded($("btn-tv"), async () => abrirHojaTele());
+    $("tv-exit").addEventListener("click", salirTv);
+    player.addEventListener("pointerdown", () => { if (modoTv) mostrarSalirTv(); }, { passive: true });
+    // ?modo=tv (una tele con navegador, o un link pensado para ella): al
+    // empezar a ver, la pantalla se limpia sola.
+    if (new URLSearchParams(location.search).get("modo") === "tv") modoTvAuto = true;
     $("call-close").addEventListener("click", terminarLlamada);
     guarded($("btn-chat"), async () => {
       chatVisible = !chatVisible;

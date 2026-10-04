@@ -1035,3 +1035,27 @@ body.llamada #player { object-fit: contain; }
 .fx-item.active .fx-nombre { color: var(--green, #56EF9F); }
 .fx-desc { font-size: 11.5px; line-height: 1.35; color: #b9c0cc; }
 @media (max-width: 360px) { .fx-grid { grid-template-columns: 1fr; } }
+
+
+/* ===== Modo tele: solo el video, para duplicar la pantalla a la tele ===== */
+body.modo-tv { background: #000; }
+body.modo-tv .controls, body.modo-tv #chat-panel, body.modo-tv .studio-bar, body.modo-tv .viewer-presence,
+body.modo-tv .goal-bar, body.modo-tv #audio-only-badge, body.modo-tv .toast, body.modo-tv .call-close { display: none !important; }
+body.modo-tv .pinned-msg { top: calc(10px + env(safe-area-inset-top)); font-size: 15px; }
+body.modo-tv #player { object-fit: contain; background: #000; }
+body.modo-tv.en-llamada #player { object-fit: cover; }
+.tv-exit {
+  position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  align-items: center; gap: 6px; background: rgba(13,17,23,.78); color: #fff; border: .5px solid rgba(255,255,255,.25);
+  border-radius: 999px; padding: 10px 16px; font-size: 13px; font-weight: 800; font-family: inherit; cursor: pointer; z-index: 40;
+}
+.tv-hint {
+  position: absolute; bottom: calc(18px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  background: rgba(13,17,23,.8); color: #fff; border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 700; z-index: 40;
+  white-space: nowrap;
+}
+.tv-pasos { margin: 8px 0 14px; padding-left: 20px; color: #d9dde3; font-size: 13.5px; line-height: 1.55; }
+.tv-pasos li { margin: 4px 0; }
+.tv-pasos strong { color: #fff; }
+.sheet-inner #tv-cancel, .sheet-inner #call-cancel, .sheet-inner #fx-cerrar { background: none; border: none; color: #9aa1b0; padding: 8px 0; cursor: pointer; font-family: inherit; }
+.sheet-inner .btn-primary, .sheet-inner .btn-ghost { width: 100%; margin: 6px 0; }
