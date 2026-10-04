@@ -104,9 +104,20 @@
     };
   }
 
-  function buzz() {
-    if (navigator.vibrate) navigator.vibrate(10);
+  function buzz(ms = 10) {
+    if (navigator.vibrate) navigator.vibrate(ms);
   }
+
+  // El "sentir del clic" es uno solo para todos los controles de la sala: una
+  // vibración corta en el instante en que el dedo baja (no cuando termina la
+  // acción, que puede tardar), a la par del encogimiento que hace el CSS en
+  // :active. Delegado en el dock para que valga también para botones que se
+  // muestren después (pantalla, girar cámara).
+  controls.addEventListener("pointerdown", (ev) => {
+    const btn = ev.target.closest("button, select");
+    if (btn && !btn.disabled) buzz(8);
+  }, { passive: true });
+  $("btn-stop").addEventListener("pointerdown", () => buzz(14), { passive: true });
 
   // Cronómetro de "cuánto llevo en vivo" — nace en el momento exacto en que
   // arranca a transmitir, o (si recarga la página a medio stream) desde la
@@ -583,7 +594,7 @@
   }
 
   function revealChatUI() {
-    $("btn-chat").style.display = "inline-block";
+    $("btn-chat").style.display = "flex";
     $("chat-panel").style.display = chatVisible ? "flex" : "none";
   }
 
@@ -730,14 +741,14 @@
   function showCreatorToolbar() {
     $("btn-tip").style.display = "none";
     $("btn-hand").style.display = "none";
-    $("btn-mic").style.display = "inline-block";
-    $("btn-cam").style.display = "inline-block";
+    $("btn-mic").style.display = "flex";
+    $("btn-cam").style.display = "flex";
     // Se muestra si el navegador de verdad soporta compartir pantalla (en la
     // mayoría de navegadores móviles ni siquiera existe la API, así que ahí
     // no aparece solo). El withTimeout() de toggleScreenShare()/stopScreenShare()
     // ya evita que cancelar el picker nativo deje los botones sin responder.
     if ("getDisplayMedia" in navigator.mediaDevices) {
-      $("btn-screen").style.display = "inline-block";
+      $("btn-screen").style.display = "flex";
     }
     setupCameraSwitcher();
     startQualityMonitor();
@@ -745,7 +756,6 @@
 
   function toggleMic() {
     micOn = !micOn;
-    buzz();
     if (micTrack) micTrack.enabled = micOn;
     $("btn-mic").textContent = micOn ? "🎙️" : "🔇";
     $("btn-mic").classList.toggle("off", !micOn);
@@ -757,7 +767,6 @@
 
   function toggleCam() {
     camOn = !camOn;
-    buzz();
     if (cameraTrack) cameraTrack.enabled = camOn;
     $("btn-cam").textContent = camOn ? "📷" : "🚫";
     $("btn-cam").classList.toggle("off", !camOn);
@@ -768,7 +777,6 @@
   }
 
   async function toggleScreenShare() {
-    buzz();
     if (usingScreenShare) return stopScreenShare();
     let screenStream;
     try {
@@ -832,7 +840,7 @@
     if (cams.length < 2) return; // nada que cambiar
     const isTouch = window.matchMedia("(pointer: coarse)").matches;
     if (isTouch) {
-      $("btn-flip-cam").style.display = "inline-block";
+      $("btn-flip-cam").style.display = "flex";
       guarded($("btn-flip-cam"), () => switchCamera({ flip: true }));
     } else {
       const select = $("cam-select");

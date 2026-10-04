@@ -480,33 +480,76 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   0%, 80%, 100% { transform: scale(.6); opacity: .4; }
   40% { transform: scale(1); opacity: 1; }
 }
+/* ---------- Dock de controles (RLR) ----------
+   Pensado para el pulgar en celular: una sola fila que ocupa casi todo el
+   ancho, botones de 52px (mínimo cómodo de toque) con etiqueta debajo para que
+   nadie tenga que adivinar qué hace un emoji, repartidos parejo. El de 💵 es
+   la acción principal del espectador y pesa más (más grande, verde); para el
+   creador pesan mic y cámara. El "sentir" del toque es el mismo en todos:
+   se encoge al presionar en ~90ms y vibra (room.js), sin menú de long-press
+   ni resaltado azul del navegador. */
 .controls {
   position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: calc(24px + env(safe-area-inset-bottom));
-  display: flex; gap: 16px; background: rgba(13,17,23,0.7); padding: 10px 16px; border-radius: 28px;
-  border: .5px solid rgba(86,239,159,.15);
-  flex-wrap: wrap; justify-content: center;
-  /* "left:50%" sin un ancho explícito hace que el navegador calcule el
-     shrink-to-fit con la mitad del viewport como base disponible, y envuelve
-     los botones antes de tiempo — width:max-content lo corrige. */
-  width: max-content; max-width: min(92vw, 440px);
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  display: flex; align-items: flex-end; justify-content: space-evenly; gap: 4px;
+  width: min(calc(100vw - 20px), 460px);
+  background: rgba(13,17,23,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  padding: 10px 8px 8px; border-radius: 26px;
+  border: .5px solid rgba(86,239,159,.18); box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
-.controls.entering { animation: controls-in .4s ease; }
+.controls.entering { animation: controls-in .4s cubic-bezier(.2,.8,.2,1); }
 @keyframes controls-in {
-  from { opacity: 0; transform: translate(-50%, 10px); }
+  from { opacity: 0; transform: translate(-50%, 14px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
-.controls button { font-size: 1.4rem; background: none; border: none; color: #fff; cursor: pointer; padding: 4px 8px; border-radius: 50%; transition: background .2s; }
-/* Mic y cámara son los controles que el creador más toca en vivo — llevan un
-   fondo propio para pesar más que los secundarios (pantalla, cambiar de
-   cámara, chat), y su estado "apagado" es un tinte rojo inconfundible de un
-   vistazo, no solo una opacidad más baja que hay que comparar con cuidado. */
-#btn-mic, #btn-cam { background: rgba(255,255,255,.1); }
-.ctrl-btn.off { background: rgba(229,72,77,.32); }
-.ctrl-btn.active { text-shadow: 0 0 10px var(--green, #56EF9F); }
+.controls .ctrl-btn {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; padding: 0;
+  margin-bottom: 16px; /* deja sitio a la etiqueta */
+  font-size: 1.45rem; line-height: 1; color: #fff; font-family: inherit;
+  background: rgba(255,255,255,.07);
+  transition: transform .09s cubic-bezier(.2,.8,.2,1), background .15s, box-shadow .15s;
+  touch-action: manipulation;
+}
+.controls .ctrl-btn::after {
+  content: attr(data-label); position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+  font-size: 10px; font-weight: 700; letter-spacing: .2px; color: rgba(255,255,255,.62); white-space: nowrap;
+  pointer-events: none;
+}
+.controls .ctrl-btn:active { transform: scale(.86); background: rgba(255,255,255,.2); }
+/* Mandar dinero: la acción que mueve el producto. Más grande y en verde. */
+.controls .ctrl-btn.primary { width: 60px; height: 60px; font-size: 1.7rem; background: var(--green, #56EF9F); box-shadow: 0 6px 20px rgba(86,239,159,.35); }
+.controls .ctrl-btn.primary::after { color: var(--green, #56EF9F); }
+.controls .ctrl-btn.primary:active { background: #3fd98a; }
+/* Mic y cámara (creador): fondo propio para pesar más que los secundarios. */
+#btn-mic, #btn-cam { background: rgba(255,255,255,.14); }
+/* Estados de un vistazo: apagado = rojo inconfundible; activo = anillo verde. */
+.controls .ctrl-btn.off { background: rgba(229,72,77,.42); }
+.controls .ctrl-btn.off::after { color: #ff9a9e; }
+.controls .ctrl-btn.active { box-shadow: 0 0 0 2px var(--green, #56EF9F), 0 0 18px rgba(86,239,159,.35); }
+.controls .ctrl-btn.active::after { color: var(--green, #56EF9F); }
+.controls .ctrl-btn:disabled { opacity: .55; transform: none; }
+/* Los selectores (calidad / cámara en escritorio) se visten como un botón
+   más del dock; el picker nativo del celular es el mejor control posible, se
+   deja tal cual. */
 .cam-select {
-  background: rgba(13,17,23,.7); color: #fff; border: .5px solid rgba(86,239,159,.3); border-radius: 999px;
-  padding: 4px 10px; font-size: .8rem; font-family: inherit; max-width: 120px;
+  height: 36px; margin-bottom: 24px; align-self: center;
+  background: rgba(255,255,255,.07); color: #fff; border: .5px solid rgba(86,239,159,.3); border-radius: 999px;
+  padding: 0 12px; font-size: .78rem; font-weight: 700; font-family: inherit; max-width: 112px;
+  touch-action: manipulation; -webkit-appearance: none; appearance: none;
+}
+/* En celulares angostos el creador trae hasta 6 controles en el dock: se
+   aprietan un poco (48px sigue siendo área de toque cómoda) y el selector de
+   calidad se encoge — "Auto" cabe, y las opciones largas viven en el picker. */
+@media (max-width: 400px) {
+  .controls .ctrl-btn { width: 48px; height: 48px; font-size: 1.35rem; }
+  .controls .ctrl-btn.primary { width: 56px; height: 56px; font-size: 1.6rem; }
+  .cam-select { max-width: 72px; padding: 0 9px; font-size: .74rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .controls .ctrl-btn, .controls.entering { transition: none; animation: none; }
+  .controls .ctrl-btn:active { transform: none; }
 }
 /* Barra de estudio: todo lo que el creador quiere monitorear de un vistazo
    mientras transmite —en vivo desde cuándo, cuánta gente, cuánto ganó, su
@@ -529,11 +572,16 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
    de estudio — no debe competir con la barra de controles principal ni ser
    el primer botón que se toca. */
 .btn-stop-secondary {
-  background: rgba(255,255,255,.08); color: rgba(255,255,255,.65);
-  font-size: .72rem; font-weight: 600; padding: 5px 11px; border-radius: 999px;
-  border: .5px solid rgba(255,255,255,.15); cursor: pointer; font-family: inherit;
+  background: rgba(255,255,255,.08); color: rgba(255,255,255,.7);
+  font-size: .74rem; font-weight: 700; min-height: 34px; padding: 6px 13px; border-radius: 999px;
+  border: .5px solid rgba(255,255,255,.18); cursor: pointer; font-family: inherit;
+  touch-action: manipulation; transition: transform .09s cubic-bezier(.2,.8,.2,1), background .15s;
 }
-.btn-stop-secondary:hover { color: #fff; border-color: rgba(255,255,255,.3); }
+.btn-stop-secondary:active { transform: scale(.94); background: rgba(229,72,77,.35); color: #fff; }
+@media (hover: hover) { .btn-stop-secondary:hover { color: #fff; border-color: rgba(255,255,255,.3); } }
+/* El conteo de espectadores es un botón para el creador (abre el panel de
+   conectados) — que tenga área de toque de verdad, no solo el texto. */
+#viewer-count.clickable { padding: 6px 4px; margin: -6px -4px; }
 /* Pastilla de presencia del espectador — misma idea que la barra de estudio
    del creador, pero minimalista, y arriba a la IZQUIERDA a propósito: el
    audio-only-badge (raro, condicional) ya vive arriba a la derecha, y
@@ -546,7 +594,8 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   border: .5px solid rgba(86,239,159,.15);
 }
 .chat-panel {
-  position: absolute; left: 12px; right: 12px; bottom: calc(96px + env(safe-area-inset-bottom));
+  /* El dock ahora mide ~100px (botones + etiquetas): el chat se apoya justo encima. */
+  position: absolute; left: 12px; right: 12px; bottom: calc(118px + env(safe-area-inset-bottom));
   max-height: 42vh; display: none; flex-direction: column; gap: 8px;
   background: linear-gradient(180deg, rgba(13,17,23,.35), rgba(13,17,23,.88));
   border-radius: 16px; padding: 10px 12px; border: .5px solid rgba(86,239,159,.15);
@@ -613,9 +662,10 @@ footer.site-footer .logo { color: rgba(255,255,255,.6); font-weight: 800; font-s
   .studio-bar { top: 24px; right: 24px; font-size: 14px; padding: 10px 16px; gap: 12px; }
   .chat-panel {
     left: auto; right: 24px; width: 360px;
-    bottom: calc(104px + env(safe-area-inset-bottom)); max-height: 46vh;
+    bottom: calc(126px + env(safe-area-inset-bottom)); max-height: 46vh;
   }
-  .controls { bottom: calc(32px + env(safe-area-inset-bottom)); }
+  .controls { bottom: calc(28px + env(safe-area-inset-bottom)); width: max-content; gap: 10px; padding: 10px 14px 8px; }
+}
 }
 .conn-quality {
   display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;

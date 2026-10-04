@@ -92,22 +92,25 @@ export function renderRoomPage(opts: {
       <p class="chat-privacy-note">🔒 Nada se graba — se borra al cerrar la sala.</p>
     </div>
     <div id="viewer-presence" class="viewer-presence" style="display:none">🟢 <span id="presence-count">0</span> en la sala</div>
+    <!-- Dock de controles: pensado para el pulgar. Cada botón mide 52px con su
+         etiqueta debajo (data-label la pinta el CSS, así room.js puede seguir
+         cambiando el emoji con textContent sin borrar la etiqueta). -->
     <div id="controls" class="controls" style="display:none">
-      <button id="btn-tip">💵</button>
-      <button id="btn-hand" class="ctrl-btn">🎤</button>
-      <button id="btn-chat" class="ctrl-btn" style="display:none" title="Comentarios">💬</button>
-      <button id="btn-mic" class="ctrl-btn" style="display:none" title="Silenciar micrófono">🎙️</button>
-      <button id="btn-cam" class="ctrl-btn" style="display:none" title="Apagar cámara">📷</button>
-      <button id="btn-flip-cam" class="ctrl-btn" style="display:none" title="Cambiar cámara">🔄</button>
-      <select id="cam-select" class="cam-select" style="display:none"></select>
-      <select id="quality-select" class="cam-select" style="display:none" title="Calidad de video">
-        <option value="auto">Auto (recomendado)</option>
+      <button id="btn-tip" class="ctrl-btn primary" data-label="Dinero" aria-label="Mandar dinero">💵</button>
+      <button id="btn-hand" class="ctrl-btn" data-label="Mano" aria-label="Levantar la mano">🎤</button>
+      <button id="btn-chat" class="ctrl-btn" style="display:none" data-label="Chat" aria-label="Comentarios">💬</button>
+      <button id="btn-mic" class="ctrl-btn" style="display:none" data-label="Mic" aria-label="Silenciar micrófono">🎙️</button>
+      <button id="btn-cam" class="ctrl-btn" style="display:none" data-label="Cámara" aria-label="Apagar cámara">📷</button>
+      <button id="btn-flip-cam" class="ctrl-btn" style="display:none" data-label="Girar" aria-label="Cambiar cámara">🔄</button>
+      <select id="cam-select" class="cam-select" style="display:none" aria-label="Cámara"></select>
+      <select id="quality-select" class="cam-select" style="display:none" aria-label="Calidad de video">
+        <option value="auto">Auto</option>
         <option value="high">Alta · 1080p</option>
         <option value="medium">Media · 480p</option>
         <option value="low">Baja · 180p</option>
-        <option value="off">Apagado (solo audio)</option>
+        <option value="off">Solo audio</option>
       </select>
-      <button id="btn-screen" class="ctrl-btn" style="display:none" title="Compartir pantalla">🖥️</button>
+      <button id="btn-screen" class="ctrl-btn" style="display:none" data-label="Pantalla" aria-label="Compartir pantalla">🖥️</button>
     </div>
     <div id="studio-bar" class="studio-bar" style="display:none">
       <span class="live-dot" aria-hidden="true"></span>
