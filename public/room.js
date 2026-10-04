@@ -57,53 +57,41 @@
   let shownCamToast = false;
   let shownBadConnToast = false;
   let qualityTimer = null;
+  // Motor de video (ver motor-video.js): el del creador mueve resolución,
+  // fps, bits y códec según su aparato y su internet; el espectador pide la
+  // capa que su aparato y su red aguantan. Y la reconexión de los dos lados.
+  let motor = null;
+  let audioSender = null;
+  let codecNombre = "auto";
+  let publishGen = 0;
+  let republishTimer = null;
+  let republicando = false;
+  let roomTitle = "";
+  let viewerSessionId = null;
+  let videoMid = null;
+  let simulcastViewer = false;
+  let viewerCap = "f";
+  let viewerCapChecked = false;
+  let lector = null;
+  let colchonMs = 0;
+  let reconectando = false;
+  let viewerReconnTimer = null;
+  let ownerOfflineSince = 0;
+  let ownerOfflineTimer = null;
+  let esperaTimer = null;
+  let bannerTimer = null;
+  let enterLabel = "";
   let liveTimerInterval = null;
   let shownHeartHintToast = false;
   let shownPrivacyToast = false;
   let handRaised = false;
   let handRaiseTimer = null;
 
-  // El creador publica 3 calidades de video (alta = la cámara tal cual, media
-  // y baja = la misma imagen redibujada más chica en un <canvas> oculto). Así
-  // el espectador puede pedir solo la calidad que quiere ver, sin gastar ancho
-  // de banda en resoluciones que ni va a mostrar — ver setupTieredVideoTracks().
-  let hiddenSourceVideo = null;
-
-  function setHiddenSourceTrack(track) {
-    if (!hiddenSourceVideo) {
-      hiddenSourceVideo = document.createElement("video");
-      hiddenSourceVideo.muted = true;
-      hiddenSourceVideo.playsInline = true;
-      hiddenSourceVideo.style.cssText = "position:fixed; left:-9999px; top:0; width:2px; height:2px;";
-      document.body.appendChild(hiddenSourceVideo);
-    }
-    hiddenSourceVideo.srcObject = new MediaStream([track]);
-    hiddenSourceVideo.play().catch(() => {});
-  }
-
-  function setupTieredVideoTracks(track) {
-    setHiddenSourceTrack(track);
-    const specs = [
-      { width: 640, height: 360, fps: 24 },
-      { width: 320, height: 180, fps: 15 },
-    ];
-    const canvases = specs.map((s) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = s.width;
-      canvas.height = s.height;
-      return { ctx: canvas.getContext("2d"), width: s.width, height: s.height, canvas };
-    });
-    (function draw() {
-      requestAnimationFrame(draw);
-      if (hiddenSourceVideo.readyState >= 2) {
-        canvases.forEach((c) => c.ctx.drawImage(hiddenSourceVideo, 0, 0, c.width, c.height));
-      }
-    })();
-    return {
-      mediumTrack: canvases[0].canvas.captureStream(specs[0].fps).getVideoTracks()[0],
-      lowTrack: canvases[1].canvas.captureStream(specs[1].fps).getVideoTracks()[0],
-    };
-  }
+  // Las tres calidades que puede pedir un espectador (alta/media/baja) las
+  // genera el propio codificador de video en simulcast (ver publicar()):
+  // una sola cámara, tres capas, cero redibujado en canvas. Antes la media y
+  // la baja se pintaban 60 veces por segundo en dos canvas ocultos, lo que
+  // calentaba el teléfono del creador y le quitaba cuadros a la capa alta.
 
   function buzz(ms = 10) {
     if (navigator.vibrate) navigator.vibrate(ms);
@@ -151,8 +139,11 @@
     setTimeout(() => heart.remove(), 2200);
   }
 
+  // Se pide lo máximo que la cámara pueda dar (hasta 4K a 60 fps); el motor
+  // ajusta después la captura al peldaño que de verdad cabe en el internet y
+  // el aparato de ese momento.
   function videoConstraints() {
-    return { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, facingMode: preferredFacing };
+    return { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 60 }, facingMode: preferredFacing };
   }
 
   function toast(msg, ms = 4000) {
@@ -218,6 +209,8 @@
   function stopOwnerMediaNow() {
     if (ownerStreamStopped) return;
     ownerStreamStopped = true;
+    if (motor) motor.detener();
+    clearTimeout(republishTimer);
     if (cameraTrack) { try { cameraTrack.stop(); } catch {} }
     if (micTrack) { try { micTrack.stop(); } catch {} }
     if (pc) { try { pc.close(); } catch {} pc = null; }
@@ -351,8 +344,20 @@
         $("pinned-msg").style.display = "none";
       } else if (msg.type === "raise_hand") {
         if (isOwner) toast(`🎤 ${msg.name} levantó la mano`, 5000);
+      } else if (msg.type === "owner_offline") {
+        if (!isOwner) {
+          ownerOfflineSince = msg.since || Date.now();
+          clearTimeout(ownerOfflineTimer);
+          ownerOfflineTimer = setTimeout(() => { if (ownerOfflineSince) mostrarEsperaCreador(msg.grace_ms || 0); }, 4000);
+        }
+      } else if (msg.type === "owner_online") {
+        if (!isOwner) detenerEsperaCreador(false);
+      } else if (msg.type === "republished") {
+        // La señal vive en otra sesión del SFU: quien estaba viendo se reengancha solo.
+        if (!isOwner && me && effectiveTier != null) reconectarEspectador("republished");
       } else if (msg.type === "ended") {
         sessionEnded = true;
+        detenerEsperaCreador(true);
         if (isOwner) {
           stopOwnerMediaNow();
         } else if (me && pc) {
@@ -730,13 +735,15 @@
     setupWaveform(stream);
   }
 
-  async function startPublishing(sessionId) {
-    updateConnecting("Accediendo a tu cámara y micrófono…");
+  async function startPublishing(sessionId, opts = {}) {
+    updateConnecting(opts.reanudar ? "Reanudando tu transmisión…" : "Accediendo a tu cámara y micrófono…");
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints(),
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        // Estéreo y 48 kHz si la fuente lo da: el motor decide después cuántos
+        // kilobits merece el audio según el internet (nunca menos de 32).
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 2 }, sampleRate: { ideal: 48000 } },
       });
     } catch {
       throw new Error("sin_camara");
@@ -745,35 +752,149 @@
     player.muted = true;
     cameraTrack = stream.getVideoTracks()[0];
     micTrack = stream.getAudioTracks()[0];
-    const { mediumTrack, lowTrack } = setupTieredVideoTracks(cameraTrack);
-    pc = new RTCPeerConnection();
-    const tracks = [];
-    const toPublish = [
-      { track: micTrack, name: "audio" },
-      { track: cameraTrack, name: "video_high" },
-      { track: mediumTrack, name: "video_medium" },
-      { track: lowTrack, name: "video_low" },
-    ];
-    toPublish.forEach(({ track, name }, i) => {
-      const transceiver = pc.addTransceiver(track, { direction: "sendonly" });
-      if (name === "video_high") videoSender = transceiver.sender;
-      tracks.push({ mid: String(i), trackName: name });
-    });
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    updateConnecting("Conectando con el estudio…");
-    const res = await api(`/api/rooms/${slug}/publish`, { body: { sdp: offer.sdp, tracks } });
-    if (res.error) throw new Error("publish_error");
-    await pc.setRemoteDescription({ type: "answer", sdp: res.answer_sdp });
+    try { cameraTrack.contentHint = "motion"; } catch {}
+    await publicar("Conectando con el estudio…");
     hideOverlaySmoothly();
     showControlsWithEntrance();
     studioBar.style.display = "flex";
-    startLiveTimer(Date.now());
+    if (!opts.reanudar) startLiveTimer(Date.now());
     showCreatorToolbar();
     revealChatUI();
     maybeSetupWaveform(stream);
-    toast("✨ Estás en vivo, disfruta.", 6000);
+    toast(opts.reanudar ? "✅ Tu transmisión se reanudó. Tu público se reconecta solo." : "✨ Estás en vivo, disfruta.", 6000);
   }
+
+  // El creador recargó la página (o el celular mató la pestaña al cambiar de
+  // app) con la transmisión abierta: se vuelve a publicar sola, sin tocar
+  // nada. Si el navegador no deja usar la cámara sin un toque, queda el botón.
+  async function reanudarPublicacion(sessionId) {
+    // Si en 3 s no arrancó (el navegador está preguntando por la cámara, o
+    // no deja usarla sin un toque), aparece el botón para retomar a mano; si
+    // lo automático termina después, el botón se va solo.
+    const mostrarBoton = () => {
+      overlay.classList.remove("fade-out");
+      overlay.style.display = "flex";
+      $("btn-start").textContent = "🔴 Reanudar mi transmisión";
+      $("btn-start").style.display = "block";
+      sub.textContent = "Tu transmisión sigue abierta. Toca para volver a transmitir desde aquí.";
+    };
+    const espera = setTimeout(mostrarBoton, 3000);
+    try {
+      await startPublishing(sessionId, { reanudar: true });
+      clearTimeout(espera);
+      $("btn-start").style.display = "none";
+    } catch {
+      clearTimeout(espera);
+      mostrarBoton();
+    }
+  }
+
+  // Arma la conexión con el SFU y publica audio + video. El video va en
+  // simulcast: tres capas (f completa, h mitad, q cuarto) del mismo
+  // codificador, para que cada espectador reciba la que su internet aguanta
+  // sin que el creador haga nada. Se usa al arrancar y cada vez que hay que
+  // volver a publicar después de un corte.
+  async function publicar(mensaje, opts = {}) {
+    const gen = ++publishGen;
+    const nuevoPc = new RTCPeerConnection();
+    const simulcast = opts.simulcast !== false;
+    const ajustes = (cameraTrack.getSettings && cameraTrack.getSettings()) || {};
+    const codec = await MotorVideo.elegirCodecs({ w: ajustes.width || 1920, h: ajustes.height || 1080, fps: ajustes.frameRate || 30 });
+    codecNombre = codec.nombre;
+    const audioTx = nuevoPc.addTransceiver(micTrack, { direction: "sendonly" });
+    const videoTx = nuevoPc.addTransceiver(cameraTrack, simulcast
+      ? {
+          direction: "sendonly",
+          sendEncodings: [
+            { rid: "f", scaleResolutionDownBy: 1 },
+            { rid: "h", scaleResolutionDownBy: 2 },
+            { rid: "q", scaleResolutionDownBy: 4 },
+          ],
+        }
+      : { direction: "sendonly" });
+    if (codec.lista) { try { videoTx.setCodecPreferences(codec.lista); } catch {} }
+    const offer = await nuevoPc.createOffer();
+    await nuevoPc.setLocalDescription(offer);
+    if (mensaje) updateConnecting(mensaje);
+    // Sin simulcast el track se llama "video_high": es el nombre que el
+    // camino viejo de /subscribe entrega a todos los espectadores.
+    const tracks = [
+      { mid: audioTx.mid != null ? String(audioTx.mid) : "0", trackName: "audio" },
+      { mid: videoTx.mid != null ? String(videoTx.mid) : "1", trackName: simulcast ? "video" : "video_high" },
+    ];
+    const res = await api(`/api/rooms/${slug}/publish`, { body: { sdp: offer.sdp, tracks } });
+    if (res.error) {
+      try { nuevoPc.close(); } catch {}
+      // El SFU no aceptó la oferta en simulcast: se intenta una vez a la
+      // antigua (una sola capa) antes de darse por vencido.
+      if (simulcast && res.error === "calls_error") return publicar(mensaje, { simulcast: false });
+      throw new Error("publish_error");
+    }
+    if (gen !== publishGen) { try { nuevoPc.close(); } catch {} return; }
+    // La respuesta del SFU es la que gobierna nuestro codificador de audio: se
+    // le piden estéreo, FEC y hasta 128 kb/s (el SFU solo reenvía paquetes).
+    await nuevoPc.setRemoteDescription({ type: "answer", sdp: MotorVideo.mejorarAudioSdp(res.answer_sdp) });
+    const viejo = pc;
+    pc = nuevoPc;
+    videoSender = videoTx.sender;
+    audioSender = audioTx.sender;
+    if (viejo && viejo !== nuevoPc) { try { viejo.close(); } catch {} }
+    vigilarConexionCreador(nuevoPc);
+    if (motor) {
+      motor.setPc(pc, videoSender, audioSender);
+    } else {
+      motor = new MotorVideo.MotorPublicador({ pc, sender: videoSender, audioSender, track: cameraTrack, codec: codecNombre, onCambio: pintarCalidadCreador });
+      motor.arrancar().catch(() => {});
+    }
+  }
+
+  // Lo que el creador ve de su propia señal: "1080p · 30 fps · H264 · 4.1 Mb/s".
+  function pintarCalidadCreador(p, info) {
+    const el = $("stream-quality");
+    if (!el) return;
+    el.textContent = MotorVideo.etiqueta(p, info && info.codec !== "auto" ? info.codec : null, info && info.kbps);
+    if (info && info.motivo === "baja") el.title = "Bajamos un peldaño para que no se trabe (primero cuadros, luego resolución).";
+    else if (info && info.motivo === "sube") el.title = "Tu internet dio para más: subimos un peldaño.";
+  }
+
+  // Si la conexión del creador se cae (cambio de red, túnel, wifi que se va),
+  // se vuelve a publicar sola en cuanto hay red: nueva sesión en el SFU y
+  // los espectadores se reenganchan solos (el Durable Object les avisa).
+  function vigilarConexionCreador(conn) {
+    conn.onconnectionstatechange = () => {
+      if (conn !== pc || sessionEnded || ownerStreamStopped) return;
+      const st = conn.connectionState;
+      if (st === "failed") republicar("failed");
+      else if (st === "disconnected") {
+        clearTimeout(republishTimer);
+        republishTimer = setTimeout(() => {
+          if (conn === pc && conn.connectionState === "disconnected") republicar("disconnected");
+        }, 4000);
+      } else if (st === "connected") clearTimeout(republishTimer);
+    };
+  }
+  async function republicar(motivo) {
+    if (republicando || sessionEnded || ownerStreamStopped || !cameraTrack) return;
+    republicando = true;
+    const el = $("stream-quality");
+    if (el) el.textContent = "reconectando…";
+    toast("📶 Se cortó tu conexión. Reconectando la transmisión… tu público ve que estás volviendo.", 6000);
+    let espera = 1500;
+    while (!sessionEnded && !ownerStreamStopped) {
+      try {
+        await publicar(null);
+        toast("✅ Volviste. Tu público se reconecta solo.", 4000);
+        break;
+      } catch {
+        await new Promise((r) => setTimeout(r, espera));
+        espera = Math.min(12000, Math.round(espera * 1.8));
+      }
+    }
+    republicando = false;
+  }
+  window.addEventListener("online", () => {
+    if (isOwner && pc && pc.connectionState !== "connected" && !sessionEnded) republicar("online");
+  });
 
   // Botones de 💵/🎤 son para el viewer (mandar dinero / levantar la mano) y no
   // aplican en la propia sala del creador — se ocultan y en su lugar aparecen
@@ -832,7 +953,8 @@
     if (cameraTrack) cameraTrack.stop();
     cameraTrack = screenTrack;
     cameraTrack.enabled = camOn;
-    setHiddenSourceTrack(screenTrack); // las calidades media/baja siguen la pantalla compartida
+    try { screenTrack.contentHint = "detail"; } catch {} // texto nítido antes que movimiento
+    if (motor) motor.setTrack(screenTrack);
     player.srcObject = micTrack ? new MediaStream([screenTrack, micTrack]) : screenStream;
     screenTrack.onended = () => stopScreenShare();
     usingScreenShare = true;
@@ -865,7 +987,8 @@
     await videoSender.replaceTrack(camTrack);
     if (cameraTrack) cameraTrack.stop();
     cameraTrack = camTrack;
-    setHiddenSourceTrack(camTrack);
+    try { camTrack.contentHint = "motion"; } catch {}
+    if (motor) motor.setTrack(camTrack);
     player.srcObject = micTrack ? new MediaStream([camTrack, micTrack]) : camStream;
   }
 
@@ -905,6 +1028,8 @@
     await videoSender.replaceTrack(newTrack);
     if (cameraTrack) cameraTrack.stop();
     cameraTrack = newTrack;
+    try { newTrack.contentHint = "motion"; } catch {}
+    if (motor) motor.setTrack(newTrack);
     player.srcObject = micTrack ? new MediaStream([newTrack, micTrack]) : newStream;
   }
 
@@ -960,9 +1085,16 @@
   let goodStreak = 0;
   let badStreak = 0;
 
+  const ORDEN = ["low", "medium", "high"];
+  const RID = { high: "f", medium: "h", low: "q" };
+  const TOPE = { f: 2, h: 1, q: 0 };
+
+  // En "Auto" la meta es la máxima… que este aparato decodifique sin sufrir
+  // (ver techoDecodificacion): un teléfono viejo recibe la media aunque su
+  // internet dé para la alta, porque la alta la tiraría a cuadros.
   function targetTierForPref() {
     if (qualityPref === "off") return "off";
-    if (qualityPref === "auto") return "high";
+    if (qualityPref === "auto") return ORDEN[Math.min(2, TOPE[viewerCap] ?? 2)];
     return qualityPref;
   }
 
@@ -993,31 +1125,53 @@
       await api(`/api/rooms/${slug}/renegotiate`, { body: { session_id: res.viewer_session_id, sdp: answer.sdp } });
     }
     await ready;
-    return { pc: newPc };
+    return { pc: newPc, sessionId: res.viewer_session_id, videoMid: res.video_mid || null, simulcast: !!res.simulcast };
   }
 
-  // Cambia de calidad ya conectado: cierra la sesión vieja y abre una nueva
-  // pidiendo el track que corresponde — un parpadeo breve es normal (mismo
-  // comportamiento que el selector de calidad de YouTube/Twitch).
+  // Hace oficial una conexión nueva del espectador: cierra la vieja, guarda
+  // lo necesario para cambiar de capa sin reconectar y la pone a vigilar.
+  function adoptarConexionEspectador(result) {
+    const vieja = pc;
+    pc = result.pc;
+    viewerSessionId = result.sessionId;
+    videoMid = result.videoMid;
+    simulcastViewer = result.simulcast;
+    if (vieja && vieja !== pc) { try { vieja.close(); } catch {} }
+    lector = new MotorVideo.LectorEntrada(pc);
+    viewerCapChecked = false;
+    colchonMs = 0;
+    vigilarConexionEspectador(pc);
+  }
+
+  // Cambia de calidad ya conectado. Con simulcast el SFU cambia la capa en la
+  // misma conexión (sin parpadeo); si el creador publica a la vieja (tres
+  // tracks) o el cambio falla, se vuelve a suscribir como antes.
   async function switchQuality(newTier, opts = {}) {
-    if (switchingQuality || newTier === effectiveTier) return;
+    if (switchingQuality || newTier === effectiveTier || reconectando) return;
     switchingQuality = true;
     clearTimeout(rampUpTimer);
-    const oldPc = pc;
+    const labels = { high: "Alta", medium: "Media", low: "Baja", off: "Apagado (solo audio)" };
+    if (simulcastViewer && videoMid && viewerSessionId && pc && newTier !== "off" && effectiveTier !== "off") {
+      let r;
+      try { r = await api(`/api/rooms/${slug}/layer`, { body: { session_id: viewerSessionId, mid: videoMid, rid: RID[newTier] } }); } catch { r = { error: "red" }; }
+      if (!r.error) {
+        switchingQuality = false;
+        effectiveTier = newTier;
+        updateAudioOnlyBadge();
+        if (!opts.silent) toast(`Calidad: ${labels[newTier]}`);
+        return;
+      }
+    }
     const result = await subscribeAt(newTier);
     switchingQuality = false;
     if (result.error) {
       if (!opts.silent) toast("No se pudo cambiar la calidad.");
       return;
     }
-    if (oldPc) oldPc.close();
-    pc = result.pc;
+    adoptarConexionEspectador(result);
     effectiveTier = newTier;
     updateAudioOnlyBadge();
-    if (!opts.silent) {
-      const labels = { high: "Alta", medium: "Media", low: "Baja", off: "Apagado (solo audio)" };
-      toast(`Calidad: ${labels[newTier]}`);
-    }
+    if (!opts.silent) toast(`Calidad: ${labels[newTier]}`);
   }
 
   function setupQualitySelector() {
@@ -1030,7 +1184,7 @@
       clearTimeout(rampUpTimer);
       if (qualityPref === "auto") {
         startViewerQualityMonitor();
-        switchQuality("high");
+        switchQuality(targetTierForPref());
       } else {
         stopViewerQualityMonitor();
         switchQuality(qualityPref);
@@ -1043,55 +1197,170 @@
     viewerQualityTimer = null;
   }
 
-  // Solo corre en modo "Auto". Sondea la conexión cada 4s; baja un escalón
-  // rápido (2 lecturas malas seguidas) para no dejar que se trabe, sube un
-  // escalón con calma (3 lecturas buenas seguidas) para no ir subiendo y
-  // bajando. Nunca apaga el video sola — eso lo decide el espectador.
+  // Lo que el espectador ve de la señal: "1080p30" junto al conteo de la sala.
+  function pintarCalidadEspectador(l) {
+    const el = $("viewer-quality");
+    if (!el) return;
+    el.textContent = l && l.alto ? `${l.alto}p${l.fps ? Math.round(l.fps) : ""}` : "";
+  }
+
+  // Solo corre en modo "Auto". Cada 2 s lee lo que de verdad llega (pérdida,
+  // rtt, congelamientos, cuadros tirados, cuánto tarda este aparato en
+  // decodificar) y decide: baja un escalón rápido (2 lecturas malas), sube
+  // con calma (3 buenas) y nunca por encima del techo del aparato. Con red
+  // temblorosa pone un colchón de unos cientos de ms (estabilidad a cambio de
+  // ese retraso) y lo quita cuando se calma. Nunca apaga el video sola.
   function startViewerQualityMonitor() {
     stopViewerQualityMonitor();
     goodStreak = 0;
     badStreak = 0;
     viewerQualityTimer = setInterval(async () => {
-      if (!pc || switchingQuality || effectiveTier === "off") return;
-      let rtt = null;
-      let lost = null;
-      try {
-        const stats = await pc.getStats();
-        stats.forEach((r) => {
-          if (r.type === "candidate-pair" && r.state === "succeeded" && r.currentRoundTripTime != null) {
-            rtt = r.currentRoundTripTime;
-          }
-          if (r.type === "inbound-rtp" && r.kind === "video" && r.packetsLost != null && r.packetsReceived != null) {
-            const total = r.packetsLost + r.packetsReceived;
-            lost = total > 0 ? r.packetsLost / total : 0;
-          }
-        });
-      } catch {
-        return;
+      if (!pc || switchingQuality || reconectando || effectiveTier === "off" || !lector) return;
+      let l;
+      try { l = await lector.leer(); } catch { return; }
+      pintarCalidadEspectador(l);
+      if (!viewerCapChecked && l.codec && l.alto) {
+        viewerCapChecked = true;
+        const factor = effectiveTier === "high" ? 1 : effectiveTier === "medium" ? 2 : 4;
+        const alto = l.alto * factor;
+        MotorVideo.techoDecodificacion(l.codec, Math.round((alto * 16) / 9), alto, Math.max(30, Math.round(l.fps || 30)))
+          .then((cap) => { viewerCap = cap; })
+          .catch(() => {});
       }
-      const bad = (rtt != null && rtt > 0.35) || (lost != null && lost > 0.06);
-      const good = (rtt == null || rtt < 0.15) && (lost == null || lost < 0.02);
+      const presupuestoDecod = l.fps ? (1000 / l.fps) * 0.75 : 25;
+      const bad = (l.rtt != null && l.rtt > 0.35) || (l.perdida != null && l.perdida > 0.06) || l.congelamientos > 0 || l.tirados > 8 || (l.msDecod != null && l.msDecod > presupuestoDecod);
+      const good = (l.rtt == null || l.rtt < 0.15) && (l.perdida == null || l.perdida < 0.02) && l.congelamientos === 0 && l.tirados <= 2;
       if (bad) { badStreak++; goodStreak = 0; } else if (good) { goodStreak++; badStreak = 0; } else { badStreak = 0; goodStreak = 0; }
 
-      const order = ["low", "medium", "high"];
-      const idx = order.indexOf(effectiveTier);
-      if (badStreak >= 2 && idx > 0) {
+      if (bad && colchonMs < 500) { colchonMs = colchonMs ? 500 : 250; MotorVideo.ajustarColchon(pc, colchonMs); }
+      else if (goodStreak >= 5 && colchonMs) { colchonMs = colchonMs === 500 ? 250 : 0; MotorVideo.ajustarColchon(pc, colchonMs); }
+
+      const idx = ORDEN.indexOf(effectiveTier);
+      const tope = Math.min(ORDEN.length - 1, TOPE[viewerCap] ?? 2);
+      if ((badStreak >= 2 && idx > 0) || idx > tope) {
         badStreak = 0;
-        switchQuality(order[idx - 1], { silent: true });
+        switchQuality(ORDEN[Math.min(idx - 1, tope)], { silent: true });
         if (!shownAutoDownToast) {
           shownAutoDownToast = true;
           toast("📶 Bajamos la calidad para que no se trabe.");
         }
-      } else if (goodStreak >= 3 && idx < order.length - 1) {
+      } else if (goodStreak >= 3 && idx < tope) {
         goodStreak = 0;
-        switchQuality(order[idx + 1], { silent: true });
+        switchQuality(ORDEN[idx + 1], { silent: true });
         if (!shownAutoUpToast) {
           shownAutoUpToast = true;
           toast("✨ Tu conexión mejoró, subimos la calidad.");
         }
       }
-    }, 4000);
+    }, 2000);
   }
+
+  // ---- Cortes: los del espectador y los del creador ----
+  function mostrarBanner(texto, sub, volvio) {
+    const b = $("reconnect-banner");
+    if (!b) return;
+    $("reconnect-text").textContent = texto;
+    $("reconnect-sub").textContent = sub || "";
+    b.classList.toggle("volvio", !!volvio);
+    b.style.display = "flex";
+    clearTimeout(bannerTimer);
+  }
+  function ocultarBanner(despedida) {
+    const b = $("reconnect-banner");
+    if (!b) return;
+    player.classList.remove("esperando");
+    if (despedida) {
+      mostrarBanner(despedida, "", true);
+      bannerTimer = setTimeout(() => { b.style.display = "none"; }, 2200);
+    } else {
+      b.style.display = "none";
+    }
+  }
+  function fmtEspera(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+  // Al creador se le fue el internet: se dice quién falta, cuánto llevamos
+  // esperando y que el chat sigue vivo. Un parpadeo del socket (menos de 4 s)
+  // no merece pantalla.
+  // Quien ya está viendo lo ve como franja sobre el video; quien todavía no
+  // entró lo lee en la portada, con "Entrar" apagado: no se le cobra una hora
+  // de una sala cuyo creador no está.
+  let esperaDentro = false;
+  function mostrarEsperaCreador(graceMs) {
+    esperaDentro = effectiveTier != null;
+    if (esperaDentro) player.classList.add("esperando");
+    const pinta = () => {
+      if (!ownerOfflineSince) return;
+      const llevamos = Date.now() - ownerOfflineSince;
+      const quedan = graceMs ? Math.max(0, graceMs - llevamos) : 0;
+      const titulo = `${roomTitle || "El creador"} perdió la conexión`;
+      const detalle = `Esperando a que vuelva… ${fmtEspera(llevamos)}` + (esperaDentro ? " · El chat sigue vivo." : ".") + (graceMs ? ` Si no vuelve en ${fmtEspera(quedan)}, la transmisión se cierra sola.` : "");
+      if (esperaDentro) mostrarBanner(titulo, detalle);
+      else {
+        sub.textContent = `${titulo}. ${detalle}`;
+        $("btn-enter").disabled = true;
+        $("btn-enter").textContent = "Esperando al creador…";
+      }
+    };
+    pinta();
+    clearInterval(esperaTimer);
+    esperaTimer = setInterval(pinta, 1000);
+  }
+  function detenerEsperaCreador(silencioso) {
+    clearInterval(esperaTimer);
+    clearTimeout(ownerOfflineTimer);
+    const estaba = !!ownerOfflineSince;
+    ownerOfflineSince = 0;
+    if (!estaba) return;
+    if (esperaDentro) {
+      if (silencioso) ocultarBanner(); else ocultarBanner(`${roomTitle || "El creador"} volvió`);
+    } else {
+      sub.textContent = originalSub;
+      const be = $("btn-enter");
+      be.disabled = false;
+      if (be.textContent === "Esperando al creador…") be.textContent = enterLabel || "Entrar";
+      if (!silencioso) toast(`✅ ${roomTitle || "El creador"} volvió.`, 4000);
+    }
+  }
+  // La propia conexión del espectador se cayó: se vuelve a suscribir sola,
+  // con pausas crecientes, hasta que vuelva la señal. El pase sigue vigente
+  // y no se cobra de nuevo.
+  function vigilarConexionEspectador(conn) {
+    conn.onconnectionstatechange = () => {
+      if (conn !== pc || sessionEnded) return;
+      const st = conn.connectionState;
+      if (st === "failed") reconectarEspectador("failed");
+      else if (st === "disconnected") {
+        clearTimeout(viewerReconnTimer);
+        viewerReconnTimer = setTimeout(() => {
+          if (conn === pc && conn.connectionState === "disconnected") reconectarEspectador("disconnected");
+        }, 4000);
+      } else if (st === "connected") clearTimeout(viewerReconnTimer);
+    };
+  }
+  async function reconectarEspectador(motivo) {
+    if (reconectando || sessionEnded || !me || effectiveTier == null) return;
+    reconectando = true;
+    if (motivo === "republished") mostrarBanner("Un momento…", `${roomTitle || "El creador"} volvió. Reconectando la señal…`);
+    else mostrarBanner("Se cortó tu conexión", "Reconectando… Tu hora sigue igual y no se te cobra de nuevo.");
+    let espera = 1500;
+    while (!sessionEnded) {
+      let result;
+      try { result = await subscribeAt(effectiveTier === "off" ? "off" : (effectiveTier || "low")); } catch { result = { error: "red" }; }
+      if (!result.error) {
+        adoptarConexionEspectador(result);
+        ocultarBanner("Listo, volviste");
+        break;
+      }
+      await new Promise((r) => setTimeout(r, espera));
+      espera = Math.min(15000, Math.round(espera * 1.6));
+    }
+    reconectando = false;
+  }
+  window.addEventListener("online", () => {
+    if (!isOwner && pc && pc.connectionState !== "connected" && !sessionEnded) reconectarEspectador("online");
+  });
 
   async function startSubscribing() {
     updateConnecting("Conectando con la transmisión…");
@@ -1105,7 +1374,7 @@
         : "No se pudo conectar.";
       return toast(msg);
     }
-    pc = result.pc;
+    adoptarConexionEspectador(result);
     effectiveTier = initialTier;
     updateAudioOnlyBadge();
     hideOverlaySmoothly();
@@ -1215,6 +1484,7 @@
       ]);
     }
     if (status.error) return;
+    roomTitle = status.room.title || "";
 
     connectWs();
 
@@ -1228,6 +1498,7 @@
       tipGoalCents = offer.tip_goal_cents || null;
       const price = Math.round((offer.price_cents || 2000) / 100);
       $("btn-enter").textContent = offer.member_until ? "Entrar · eres miembro" : `Entrar · $${price} la hora`;
+      enterLabel = $("btn-enter").textContent;
       if (!isOwner && offer.membership_cents) {
         const mb = $("btn-membership");
         if (offer.member_until) {
@@ -1267,6 +1538,7 @@
         studioBar.style.display = "flex";
         startLiveTimer(status.live_session.started_at * 1000);
         revealChatUI();
+        reanudarPublicacion(status.live_session.id);
       }
     }
 
@@ -1384,4 +1656,13 @@
   }
 
   init();
+
+  // Solo en local: simular mensajes del socket y leer el estado del motor
+  // desde la consola, para probar cortes sin cortar nada.
+  if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+    window.__vr = {
+      simular: (msg) => ws && ws.onmessage({ data: JSON.stringify(msg) }),
+      estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld }),
+    };
+  }
 })();

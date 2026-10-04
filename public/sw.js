@@ -9,12 +9,12 @@
 // publicación nueva tarda exactamente una navegación en llegar; a cambio,
 // ninguna navegación espera a la red.
 var _k = "eye", _rev = 181218;
-var VERSION = "2026-10-04a";
+var VERSION = "2026-10-04c";
 var CACHE = "video-room-" + VERSION;
 var GUARDADO = [
   "/", "/app/monedero", "/app/estadisticas", "/app/transacciones", "/app/faq",
   "/app/manifiesto", "/app/api", "/app/bienvenida",
-  "/style.css", "/veloz.js", "/room.js", "/utm.js", "/og-default.svg",
+  "/style.css", "/veloz.js", "/room.js", "/motor-video.js", "/utm.js", "/og-default.svg",
   "/fonts/plus-jakarta-sans.woff2", "/fonts/plus-jakarta-sans-italic.woff2"
 ];
 var ES_GUARDADO = new Set(GUARDADO);
@@ -56,7 +56,10 @@ self.addEventListener("fetch", function (e) {
 function delDiscoPrimero(e, ruta) {
   return caches.open(CACHE).then(function (cache) {
     return cache.match(ruta).then(function (guardada) {
-      var red = fetch(new Request(ruta, { credentials: "same-origin" })).then(function (r) {
+      // "no-cache": la renovación de fondo pregunta al servidor de verdad
+      // (ETag), no a la caché HTTP del navegador — si no, una publicación
+      // nueva tardaría hasta 10 minutos (max-age) además de una navegación.
+      var red = fetch(new Request(ruta, { credentials: "same-origin", cache: "no-cache" })).then(function (r) {
         if (r && r.ok) cache.put(ruta, r.clone());
         return r;
       }).catch(function () { return null; });

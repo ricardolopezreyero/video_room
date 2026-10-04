@@ -11,4 +11,5 @@ export interface Env {
   CALLS_APP_ID: string;
   CALLS_APP_TOKEN: string;
   RESEND_API_KEY: string;
+  CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
 }

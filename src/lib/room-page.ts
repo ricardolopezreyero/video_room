@@ -20,8 +20,12 @@ export function renderRoomPage(opts: {
   /** Lo que room.js pedía a /api al arrancar (estado, quién soy, oferta):
    *  va dentro del HTML para que la sala sea usable en cuanto se pinta. */
   inicio?: unknown;
+  /** Versión desplegada: va como ?v= en scripts y estilos, para que un deploy
+   *  nunca mezcle este HTML con un room.js viejo guardado en caché. */
+  assetVersion?: string;
 }): string {
   const { room, ownerAvatar, live, viewerCount, appUrl, status, inicio } = opts;
+  const v = opts.assetVersion ? `?v=${encodeURIComponent(opts.assetVersion)}` : "";
   // "<" escapado: un título con "</script>" no puede romper la página.
   const inicioJson = inicio ? JSON.stringify(inicio).replace(/</g, "\\u003c") : null;
   // Estatus bajo el nombre: el rango (si ya pasó de "Nuevo") y hasta cinco
@@ -81,8 +85,8 @@ export function renderRoomPage(opts: {
 <meta name="twitter:image" content="${ogImage}">
 <link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>${avatarPreconnect}
 <link rel="icon" href="/og-default.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css">
-<script src="/veloz.js"></script>
+<link rel="stylesheet" href="/style.css${v}">
+<script src="/veloz.js${v}"></script>
 </head>
 <body data-slug="${room.slug}" data-live="${live}">
   <div id="app" class="room-app">
@@ -122,7 +126,15 @@ export function renderRoomPage(opts: {
       </div>
       <p class="chat-privacy-note">🔒 Nada se graba — se borra al cerrar la sala.</p>
     </div>
-    <div id="viewer-presence" class="viewer-presence" style="display:none">🟢 <span id="presence-count">0</span> en la sala</div>
+    <div id="viewer-presence" class="viewer-presence" style="display:none">🟢 <span id="presence-count">0</span> en la sala<span id="viewer-quality" class="stream-quality"></span></div>
+    <!-- Cuando se corta el internet (el del creador o el propio), esto es lo
+         que se ve: quién falta, cuánto llevamos esperando, y que el chat
+         sigue vivo. Nunca una pantalla negra sin explicación. -->
+    <div id="reconnect-banner" class="reconnect-banner" style="display:none">
+      <div class="reconnect-dots"><span></span><span></span><span></span></div>
+      <div class="reconnect-text" id="reconnect-text">Reconectando…</div>
+      <div class="reconnect-sub" id="reconnect-sub"></div>
+    </div>
     <!-- Dock de controles: pensado para el pulgar. Cada botón mide 52px con su
          etiqueta debajo (data-label la pinta el CSS, así room.js puede seguir
          cambiando el emoji con textContent sin borrar la etiqueta). -->
@@ -135,10 +147,10 @@ export function renderRoomPage(opts: {
       <button id="btn-flip-cam" class="ctrl-btn" style="display:none" data-label="Girar" aria-label="Cambiar cámara">🔄</button>
       <select id="cam-select" class="cam-select" style="display:none" aria-label="Cámara"></select>
       <select id="quality-select" class="cam-select" style="display:none" aria-label="Calidad de video">
-        <option value="auto">Auto</option>
-        <option value="high">Alta · 1080p</option>
-        <option value="medium">Media · 480p</option>
-        <option value="low">Baja · 180p</option>
+        <option value="auto">Auto · máxima</option>
+        <option value="high">Alta</option>
+        <option value="medium">Media</option>
+        <option value="low">Baja</option>
         <option value="off">Solo audio</option>
       </select>
       <button id="btn-screen" class="ctrl-btn" style="display:none" data-label="Pantalla" aria-label="Compartir pantalla">🖥️</button>
@@ -147,6 +159,7 @@ export function renderRoomPage(opts: {
       <span class="live-dot" aria-hidden="true"></span>
       <span id="live-timer">0:00</span>
       <span id="viewer-count" title="Espectadores en este momento">👁 0</span>
+      <span id="stream-quality" class="stream-quality" title="Calidad que estás mandando ahora mismo"></span>
       <span id="ticker-text" title="Ganado en esta transmisión">$0</span>
       <span id="conn-quality" class="conn-quality" title="Calidad de tu conexión"></span>
       <button id="btn-stop" class="btn-stop-secondary">Terminar</button>
@@ -172,7 +185,8 @@ export function renderRoomPage(opts: {
     </div>
   </div>
   ${inicioJson ? `<script>window.__VR_INICIO = ${inicioJson};</script>` : ""}
-  <script src="/room.js" defer></script>
+  <script src="/motor-video.js${v}" defer></script>
+  <script src="/room.js${v}" defer></script>
 </body>
 </html>`;
 }

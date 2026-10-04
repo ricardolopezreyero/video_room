@@ -1,5 +1,7 @@
 // RLR
 import type { Env } from "../env";
+import type { Room, Session } from "../lib/db";
+import { endLiveSession } from "../lib/room-lifecycle";
 
 interface TipEvent {
   from: string;
@@ -21,9 +23,15 @@ interface PersistedState {
   sampledHearts?: number;
   sampledComments?: number;
   comments?: number;
+  ownerOfflineSince?: number;
 }
 
 const SAMPLE_EVERY_MS = 60_000;
+// Si al creador se le va el internet, la sala espera: su público ve que se
+// cortó y que lo estamos esperando; el chat sigue vivo. Si en este tiempo no
+// vuelve, la transmisión se cierra sola con el flujo normal (resumen,
+// propina de despedida). Se revisa en la misma alarma del muestreo.
+const OWNER_GRACE_MS = 5 * 60_000;
 
 // Cloudflare puede hibernar este Durable Object (evictarlo de memoria) mientras
 // los WebSockets siguen abiertos en el edge — es el propósito de acceptWebSocket().
@@ -43,6 +51,7 @@ export class RoomDurableObject implements DurableObject {
   sampledHearts = 0;
   sampledComments = 0;
   comments = 0;
+  ownerOfflineSince = 0;
   private ready: Promise<void>;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -61,6 +70,7 @@ export class RoomDurableObject implements DurableObject {
         this.sampledHearts = stored.sampledHearts ?? 0;
         this.sampledComments = stored.sampledComments ?? 0;
         this.comments = stored.comments ?? 0;
+        this.ownerOfflineSince = stored.ownerOfflineSince ?? 0;
       }
     });
   }
@@ -72,6 +82,10 @@ export class RoomDurableObject implements DurableObject {
   async alarm() {
     await this.ready;
     if (!this.sessionId || !this.startedAtMs) return;
+    if (this.ownerOfflineSince && Date.now() - this.ownerOfflineSince >= OWNER_GRACE_MS) {
+      await this.terminarPorAusencia();
+      return;
+    }
     const minute = Math.max(0, Math.round((Date.now() - this.startedAtMs) / SAMPLE_EVERY_MS));
     const heartsDelta = Math.max(0, this.hearts - this.sampledHearts);
     const commentsDelta = Math.max(0, this.comments - this.sampledComments);
@@ -88,6 +102,64 @@ export class RoomDurableObject implements DurableObject {
     await this.state.storage.setAlarm(Date.now() + SAMPLE_EVERY_MS);
   }
 
+  // El creador no volvió en el tiempo de gracia: se cierra la sesión con el
+  // mismo camino que "Terminar" (resumen al creador, despedida al público).
+  private async terminarPorAusencia(): Promise<void> {
+    const sessionId = this.sessionId;
+    if (!sessionId) return;
+    try {
+      const session = await this.env.DB.prepare("SELECT * FROM sessions WHERE id = ? AND status = 'live'").bind(sessionId).first<Session>();
+      const room = session ? await this.env.DB.prepare("SELECT * FROM rooms WHERE id = ?").bind(session.room_id).first<Room>() : null;
+      const summary = await this.detenerInterno();
+      if (session && room) await endLiveSession(this.env, room, session, undefined, { summary });
+    } catch (err) {
+      console.error("terminarPorAusencia", err);
+    }
+  }
+
+  // Lo que hace /stop: cierra el muestreo, avisa "ended" a todos, cierra los
+  // sockets y deja el estado en cero. Devuelve el resumen de la transmisión.
+  private async detenerInterno(): Promise<{ earned_cents: number; peak_viewers: number; hearts: number; comments: number }> {
+    const summary = {
+      earned_cents: this.totalCents,
+      peak_viewers: this.peakViewers,
+      hearts: this.hearts,
+      comments: this.comments,
+    };
+    try {
+      if (this.sessionId && this.startedAtMs) {
+        const minute = Math.max(0, Math.round((Date.now() - this.startedAtMs) / SAMPLE_EVERY_MS));
+        await this.env.DB.prepare(
+          "INSERT OR REPLACE INTO session_samples (session_id, minute, viewers, hearts, comments) VALUES (?, ?, ?, ?, ?)"
+        ).bind(this.sessionId, minute, this.viewerCount(), Math.max(0, this.hearts - this.sampledHearts), Math.max(0, this.comments - this.sampledComments)).run();
+      }
+    } catch (err) {
+      console.error("sample-final", err);
+    }
+    await this.state.storage.deleteAlarm();
+    this.broadcast({ type: "ended" });
+    for (const ws of this.state.getWebSockets()) {
+      try {
+        ws.close(1000, "sesión terminada");
+      } catch {
+        // ya cerrado
+      }
+    }
+    this.sessionId = null;
+    this.sfuSessionId = null;
+    this.sfuTracks = [];
+    this.totalCents = 0;
+    this.peakViewers = 0;
+    this.hearts = 0;
+    this.comments = 0;
+    this.sampledHearts = 0;
+    this.sampledComments = 0;
+    this.startedAtMs = 0;
+    this.ownerOfflineSince = 0;
+    await this.persist();
+    return summary;
+  }
+
   private async persist() {
     const data: PersistedState = {
       totalCents: this.totalCents,
@@ -100,6 +172,7 @@ export class RoomDurableObject implements DurableObject {
       sampledHearts: this.sampledHearts,
       sampledComments: this.sampledComments,
       comments: this.comments,
+      ownerOfflineSince: this.ownerOfflineSince,
     };
     await this.state.storage.put("state", data);
   }
@@ -144,6 +217,11 @@ export class RoomDurableObject implements DurableObject {
       if (uid && cid) server.serializeAttachment({ uid, cid, isOwner });
       const count = this.viewerCount();
       this.peakViewers = Math.max(this.peakViewers, count);
+      if (isOwner && this.ownerOfflineSince) {
+        // El creador volvió: su público deja de esperar.
+        this.ownerOfflineSince = 0;
+        this.broadcast({ type: "owner_online" });
+      }
       await this.persist();
       this.broadcast({ type: "viewers", count });
       return new Response(null, { status: 101, webSocket: client });
@@ -179,50 +257,14 @@ export class RoomDurableObject implements DurableObject {
       this.sampledHearts = 0;
       this.sampledComments = 0;
       this.startedAtMs = Date.now();
+      this.ownerOfflineSince = 0;
       await this.persist();
       await this.state.storage.setAlarm(Date.now() + SAMPLE_EVERY_MS);
       return Response.json({ ok: true });
     }
 
     if (url.pathname === "/stop" && request.method === "POST") {
-      const summary = {
-        earned_cents: this.totalCents,
-        peak_viewers: this.peakViewers,
-        hearts: this.hearts,
-        comments: this.comments,
-      };
-      // Última muestra (el minuto final) y fin del muestreo.
-      try {
-        if (this.sessionId && this.startedAtMs) {
-          const minute = Math.max(0, Math.round((Date.now() - this.startedAtMs) / SAMPLE_EVERY_MS));
-          await this.env.DB.prepare(
-            "INSERT OR REPLACE INTO session_samples (session_id, minute, viewers, hearts, comments) VALUES (?, ?, ?, ?, ?)"
-          ).bind(this.sessionId, minute, this.viewerCount(), Math.max(0, this.hearts - this.sampledHearts), Math.max(0, this.comments - this.sampledComments)).run();
-        }
-      } catch (err) {
-        console.error("sample-final", err);
-      }
-      await this.state.storage.deleteAlarm();
-      this.broadcast({ type: "ended" });
-      for (const ws of this.state.getWebSockets()) {
-        try {
-          ws.close(1000, "sesión terminada");
-        } catch {
-          // ya cerrado
-        }
-      }
-      this.sessionId = null;
-      this.sfuSessionId = null;
-      this.sfuTracks = [];
-      this.totalCents = 0;
-      this.peakViewers = 0;
-      this.hearts = 0;
-      this.comments = 0;
-      this.sampledHearts = 0;
-      this.sampledComments = 0;
-      this.startedAtMs = 0;
-      await this.persist();
-      return Response.json(summary);
+      return Response.json(await this.detenerInterno());
     }
 
     if (url.pathname === "/entrada" && request.method === "POST") {
@@ -253,9 +295,14 @@ export class RoomDurableObject implements DurableObject {
 
     if (url.pathname === "/set-sfu-session" && request.method === "POST") {
       const body = await request.json<{ sfuSessionId: string; tracks: { mid: string; trackName: string }[] }>();
+      const republicada = !!this.sfuSessionId && this.sfuSessionId !== body.sfuSessionId && !!this.sessionId;
       this.sfuSessionId = body.sfuSessionId;
       this.sfuTracks = body.tracks;
       await this.persist();
+      // El creador volvió a publicar (se le cortó el internet y regresó): la
+      // señal vive en otra sesión del SFU, así que cada espectador se vuelve a
+      // suscribir solo, sin tocar nada.
+      if (republicada) this.broadcast({ type: "republished" });
       return Response.json({ ok: true });
     }
 
@@ -372,11 +419,30 @@ export class RoomDurableObject implements DurableObject {
     }
   }
 
-  async webSocketClose(_ws: WebSocket) {
-    this.broadcast({ type: "viewers", count: this.viewerCount() });
+  async webSocketClose(ws: WebSocket) {
+    await this.socketCerrado(ws);
   }
 
-  async webSocketError(_ws: WebSocket) {
+  async webSocketError(ws: WebSocket) {
+    await this.socketCerrado(ws);
+  }
+
+  // Si el que se desconectó es el creador (y no queda otra pestaña suya), su
+  // público se entera al instante y empieza el tiempo de gracia.
+  private async socketCerrado(ws: WebSocket): Promise<void> {
+    let attachment: { isOwner?: boolean } | null = null;
+    try { attachment = ws.deserializeAttachment() as { isOwner?: boolean } | null; } catch {}
+    if (attachment?.isOwner && this.sessionId) {
+      const otraDelCreador = this.state.getWebSockets().some((w) => {
+        if (w === ws) return false;
+        try { return !!(w.deserializeAttachment() as { isOwner?: boolean } | null)?.isOwner; } catch { return false; }
+      });
+      if (!otraDelCreador && !this.ownerOfflineSince) {
+        this.ownerOfflineSince = Date.now();
+        await this.persist();
+        this.broadcast({ type: "owner_offline", since: this.ownerOfflineSince, grace_ms: OWNER_GRACE_MS });
+      }
+    }
     this.broadcast({ type: "viewers", count: this.viewerCount() });
   }
 }

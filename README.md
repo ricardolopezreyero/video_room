@@ -131,3 +131,51 @@ manda en un solo lote a Resend después de responder; si falla, avisa al
 administrador con el folio). Recarga y retiro llevan también folio y hora
 exacta. Las pruebas nunca mandan correo: `sendEmail` ignora dominios
 reservados (`.local`, `.test`, `example.com`) y llaves que no son de Resend.
+
+## Motor de video: la máxima calidad que caben el aparato y el internet
+
+Vive en `public/motor-video.js` (y en `room.js`, que lo usa). El objetivo no
+es ahorrar internet: es usar el que hay, con margen para que nunca se trabe.
+
+- **Captura y simulcast.** Se pide a la cámara lo máximo que dé (hasta 4K a
+  60 fps). El codificador manda **tres capas** de la misma señal (completa,
+  mitad, cuarto); el SFU de Cloudflare reenvía a cada espectador la que pidió,
+  y cambiar de capa no reconecta ni parpadea. Antes la media y la baja se
+  redibujaban 60 veces por segundo en dos canvas ocultos en el teléfono del
+  creador.
+- **La escalera.** Todas las combinaciones resolución × fps que la cámara
+  puede dar, de mejor a peor, con los kb/s que cada peldaño necesita (bits por
+  píxel generosos). La regla del producto: ante apuros, primero se sacrifican
+  cuadros por segundo y luego resolución; al recuperarse, al revés.
+- **El motor del creador** mide cada 2 s el ancho de banda disponible, la
+  pérdida y si el codificador se limita por CPU, y mueve el peldaño: baja
+  rápido, sube con calma (3 lecturas buenas, 6 s entre cambios). El CPU pone
+  techo por 60 s cuando no puede; `MediaCapabilities` pone el techo del aparato
+  desde el inicio. La cámara captura justo lo del peldaño (`applyConstraints`),
+  y el codificador recibe tope de bits y fps por capa.
+- **El códec.** H.264 va primero siempre que el aparato lo codifique: es el
+  único que decodifican por hardware prácticamente todos los celulares
+  (iPhone incluido), y el SFU no transcodifica, así que lo que manda el creador
+  es lo que todos reciben. VP9 y VP8 como respaldo; AV1 y H.265 no (muchos
+  teléfonos del público los decodifican por software y se calientan).
+- **Audio.** Opus a 48 kHz, estéreo si la fuente lo da, FEC en banda, sin DTX,
+  hasta 128 kb/s; el motor lo escalona (128 → 32 kb/s) según lo que sobra,
+  nunca menos de 32.
+- **El espectador** mide lo que le llega (pérdida, rtt, congelamientos, cuadros
+  tirados, tiempo de decodificación) y pide la capa que su red Y su aparato
+  aguantan (`MediaCapabilities.decodingInfo`). Con red temblorosa pone un
+  colchón de 250–500 ms (estabilidad a cambio de ese retraso) y lo quita al
+  calmarse. Muestra "1080p30" junto al conteo de la sala.
+- **Los cortes.** Si la conexión del creador se cae, vuelve a publicar sola en
+  cuanto hay red; el Durable Object avisa `republished` y cada espectador se
+  reengancha solo. Mientras, el público ve quién falta y cuánto llevamos
+  esperando (franja sobre el video; en la portada, con "Entrar" apagado para no
+  cobrar una hora sin creador); el chat sigue vivo. Si el creador no vuelve en
+  **5 minutos**, la transmisión se cierra sola con el flujo normal (resumen,
+  propina de despedida). Si la que se cae es la del espectador, se vuelve a
+  suscribir sola con pausas crecientes; su pase sigue vigente.
+
+Decisiones de producto (4-oct-2026): nada se graba; en vivo real con
+reconexión, no un buffer de 5 minutos (eso sería un retraso de 5 minutos); 8K
+no existe hoy en navegadores ni cámaras de teléfono, el motor apunta al máximo
+real del aparato.

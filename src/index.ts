@@ -273,13 +273,17 @@ app.get("/:slug", async (c) => {
   // El HTML lleva datos de quien lo pide: nunca compartido, nunca servido
   // viejo. Link: lo que la página va a necesitar, anunciado desde ya
   // (Early Hints) para que baje en paralelo con el HTML mismo.
+  // Versión desplegada en los scripts (?v=): en producción es el id de la
+  // versión del Worker; en local, cambia cada 10 s para no pelear con cachés.
+  const assetVersion = (c.env.CF_VERSION_METADATA?.id ?? "").slice(0, 8) || String(Math.floor(Date.now() / 10000));
+  const v = `?v=${assetVersion}`;
   c.header("Cache-Control", "private, no-cache");
   c.header(
     "Link",
-    "</style.css>; rel=preload; as=style, </veloz.js>; rel=preload; as=script, </room.js>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin"
+    `</style.css${v}>; rel=preload; as=style, </veloz.js${v}>; rel=preload; as=script, </motor-video.js${v}>; rel=preload; as=script, </room.js${v}>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin`
   );
   return c.html(
-    renderRoomPage({ room: roomRow, ownerAvatar: owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status, inicio })
+    renderRoomPage({ room: roomRow, ownerAvatar: owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status, inicio, assetVersion })
   );
 });
 

@@ -15,7 +15,8 @@ export async function endLiveSession(
   env: Env,
   room: Room,
   session: Session,
-  waitUntil?: (promise: Promise<unknown>) => void
+  waitUntil?: (promise: Promise<unknown>) => void,
+  opts: { summary?: { earned_cents: number; peak_viewers: number; hearts: number; comments?: number } } = {}
 ): Promise<{ earned_cents: number; peak_viewers: number; hearts: number; new_relics?: { code: string; name: string; icon: string }[] }> {
   const endedAt = Math.floor(Date.now() / 1000);
   await env.DB.prepare("UPDATE sessions SET status = 'ended', ended_at = ? WHERE id = ?").bind(endedAt, session.id).run();
@@ -24,9 +25,14 @@ export async function endLiveSession(
   if (waitUntil) waitUntil(deleteComments);
   else await deleteComments;
 
-  const stub = env.ROOM_DO.get(env.ROOM_DO.idFromName(room.id));
-  const res = await stub.fetch("https://do/stop", { method: "POST" });
-  const summary = await res.json<{ earned_cents: number; peak_viewers: number; hearts: number; comments?: number }>();
+  // Si el cierre lo pidió el propio Durable Object (creador ausente), el
+  // resumen ya viene calculado y no hay que volver a llamarlo.
+  let summary = opts.summary;
+  if (!summary) {
+    const stub = env.ROOM_DO.get(env.ROOM_DO.idFromName(room.id));
+    const res = await stub.fetch("https://do/stop", { method: "POST" });
+    summary = await res.json<{ earned_cents: number; peak_viewers: number; hearts: number; comments?: number }>();
+  }
   // El conteo de comentarios sobrevive al borrado de los comentarios.
   await env.DB.prepare("UPDATE sessions SET comments_count = ? WHERE id = ?").bind(summary.comments ?? 0, session.id).run().catch(() => {});
 

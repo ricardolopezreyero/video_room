@@ -947,3 +947,36 @@ html.vr-saliendo body {
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
   html.vr-saliendo body { transition: none; }
 }
+
+
+/* ===== Motor de video: lo que se ve de la calidad y de los cortes ===== */
+.stream-quality {
+  color: #e5e7eb; font-size: 11.5px; font-weight: 700; letter-spacing: .1px;
+  font-variant-numeric: tabular-nums; opacity: .85;
+}
+.stream-quality:empty { display: none; }
+#viewer-quality::before { content: " · "; color: rgba(255,255,255,.4); }
+/* El corte, con dignidad: una franja sobre el video que dice quién falta y
+   cuánto llevamos esperando. El video de atrás se queda en su último cuadro,
+   atenuado; el chat sigue vivo debajo. */
+.reconnect-banner {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  background: rgba(13,17,23,.86); color: #fff; padding: 22px 26px; border-radius: 18px;
+  border: .5px solid rgba(255,255,255,.12); text-align: center; max-width: min(86vw, 420px);
+  z-index: 35; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  animation: reconnect-in .35s ease-out both;
+}
+@keyframes reconnect-in { from { opacity: 0; transform: translate(-50%, -46%); } }
+.reconnect-banner.volvio { border-color: rgba(86,239,159,.5); }
+.reconnect-text { font-weight: 800; font-size: 16px; letter-spacing: -.2px; }
+.reconnect-sub { font-size: 13px; color: #b9c0cc; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.reconnect-dots { display: flex; gap: 6px; }
+.reconnect-dots span {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green, #56EF9F);
+  animation: connect-dot-bounce 1.2s infinite ease-in-out;
+}
+.reconnect-dots span:nth-child(2) { animation-delay: .15s; }
+.reconnect-dots span:nth-child(3) { animation-delay: .3s; }
+.reconnect-banner.volvio .reconnect-dots { display: none; }
+#player.esperando { filter: brightness(.45) saturate(.6); transition: filter .4s ease; }

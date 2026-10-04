@@ -90,15 +90,26 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   const info = await infoRes.json<{ sfuSessionId: string | null; tracks: { mid: string; trackName: string }[] }>();
   if (!info.sfuSessionId) return c.json({ error: "creador_no_transmitiendo" }, 400);
 
-  // El creador publica audio + 3 calidades de video (video_low/medium/high) —
-  // el espectador solo jala la calidad que quiere ver, para no gastar ancho de
-  // banda en resoluciones que ni siquiera va a mostrar. Si por lo que sea los
-  // nombres no calzan (ej. un cliente viejo durante un deploy), se cae de
-  // vuelta a pedir todos los tracks, como antes.
+  // El creador publica "audio" + "video" en simulcast (tres capas: f completa,
+  // h mitad, q cuarto). El espectador pide la capa que quiere ver y el SFU le
+  // manda solo esa; si no está disponible, la siguiente hacia abajo. Los
+  // publicadores viejos (un cliente sin recargar durante un deploy) siguen
+  // mandando tres tracks separados (video_low/medium/high): se atiende igual.
   const { quality, cid } = body;
-  const wantedNames = quality === "off" ? ["audio"] : ["audio", `video_${quality ?? "high"}`];
-  const filtered = info.tracks.filter((t) => wantedNames.includes(t.trackName));
-  const tracksToRequest = filtered.length > 0 ? filtered : info.tracks;
+  const RID: Record<string, string> = { high: "f", medium: "h", low: "q" };
+  const simulcast = info.tracks.some((t) => t.trackName === "video");
+  let tracksToRequest: unknown[];
+  if (simulcast) {
+    const audio = info.tracks.filter((t) => t.trackName === "audio").map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName }));
+    const video = quality === "off"
+      ? []
+      : [{ location: "remote", sessionId: info.sfuSessionId, trackName: "video", simulcast: { preferredRid: RID[quality ?? "high"] ?? "f", priorityOrdering: "asciibetical", ridNotAvailable: "asciibetical" } }];
+    tracksToRequest = [...audio, ...video];
+  } else {
+    const wantedNames = quality === "off" ? ["audio"] : ["audio", `video_${quality ?? "high"}`];
+    const filtered = info.tracks.filter((t) => wantedNames.includes(t.trackName));
+    tracksToRequest = (filtered.length > 0 ? filtered : info.tracks).map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName }));
+  }
 
   // Una sola cuenta solo puede estar viendo activamente desde un dispositivo a
   // la vez — si esta misma cuenta ya tenía otra pestaña/dispositivo conectado
@@ -110,21 +121,53 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
 
   const viewerSessionId = await viewerSessionP;
   if (viewerSessionId instanceof Error) return c.json({ error: "calls_error", detail: viewerSessionId.message }, 502);
-  const res = await fetch(callsUrl(c.env, `/sessions/${viewerSessionId}/tracks/new`), {
+  let res = await fetch(callsUrl(c.env, `/sessions/${viewerSessionId}/tracks/new`), {
     method: "POST",
     headers: callsHeaders(c.env),
-    body: JSON.stringify({
-      tracks: tracksToRequest.map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName })),
-    }),
+    body: JSON.stringify({ tracks: tracksToRequest }),
   });
+  if (!res.ok && simulcast) {
+    // Si el SFU no acepta la selección de capa, se pide el track tal cual:
+    // mejor ver la capa que mande el SFU que no ver nada.
+    const sinCapa = (tracksToRequest as { simulcast?: unknown }[]).map(({ simulcast: _s, ...t }) => t);
+    res = await fetch(callsUrl(c.env, `/sessions/${viewerSessionId}/tracks/new`), {
+      method: "POST",
+      headers: callsHeaders(c.env),
+      body: JSON.stringify({ tracks: sinCapa }),
+    });
+  }
   if (!res.ok) return c.json({ error: "calls_error", detail: await res.text() }, 502);
-  const json = await res.json<{ sessionDescription?: { sdp: string }; requiresImmediateRenegotiation: boolean }>();
+  const json = await res.json<{
+    sessionDescription?: { sdp: string };
+    requiresImmediateRenegotiation: boolean;
+    tracks?: { mid?: string; trackName?: string; error?: unknown }[];
+  }>();
+  const videoMid = json.tracks?.find((t) => t.trackName === "video" && t.mid)?.mid ?? null;
 
   return c.json({
     viewer_session_id: viewerSessionId,
     offer_sdp: json.sessionDescription?.sdp ?? null,
     requires_renegotiation: json.requiresImmediateRenegotiation,
+    simulcast,
+    video_mid: videoMid,
   });
+});
+
+// Cambio de capa ya conectado: el SFU cambia qué capa reenvía a esta
+// suscripción, sin abrir otra conexión ni parpadear. Solo aplica a
+// publicadores en simulcast; con los viejos el cliente vuelve a suscribirse.
+calls.post("/api/rooms/:slug/layer", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const { session_id, mid, rid } = await c.req.json<{ session_id: string; mid: string; rid: string }>().catch(() => ({ session_id: "", mid: "", rid: "" }));
+  if (!session_id || !mid || !["f", "h", "q"].includes(rid)) return c.json({ error: "parametros" }, 400);
+  const res = await fetch(callsUrl(c.env, `/sessions/${session_id}/tracks/update`), {
+    method: "PUT",
+    headers: callsHeaders(c.env),
+    body: JSON.stringify({ tracks: [{ mid, simulcast: { preferredRid: rid } }] }),
+  });
+  if (!res.ok) return c.json({ error: "calls_error", detail: await res.text() }, 502);
+  return c.json({ ok: true });
 });
 
 calls.post("/api/rooms/:slug/renegotiate", async (c) => {
