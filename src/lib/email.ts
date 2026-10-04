@@ -1,6 +1,10 @@
 // RLR
 const RESEND_API = "https://api.resend.com/emails";
-const FROM = "Video Room <hola@videoroom.live>";
+// Sale desde el dominio raíz (verificado en Resend). El plan actual de Resend
+// está al tope de dominios, así que video.capitaltorreon.com no se pudo
+// verificar aparte — cuando se amplíe el plan o se libere un dominio, basta
+// con cambiar esta línea a hola@video.capitaltorreon.com.
+const FROM = "Video Room <hola@capitaltorreon.com>";
 
 export async function sendEmail(
   apiKey: string,

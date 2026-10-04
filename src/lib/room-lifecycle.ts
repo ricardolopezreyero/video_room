@@ -26,26 +26,30 @@ export async function endLiveSession(
   const res = await stub.fetch("https://do/stop", { method: "POST" });
   const summary = await res.json<{ earned_cents: number; peak_viewers: number; hearts: number }>();
 
-  const sendSummary = (async () => {
+  // Se espera a que termine de mandarse (no waitUntil) — un correo que se
+  // manda "en segundo plano" y nunca comprobamos que salió es un correo que
+  // en la práctica no confiamos en que llegue.
+  try {
     const owner = await env.DB.prepare("SELECT email, name, avatar_url FROM users WHERE id = ?")
       .bind(room.owner_id)
       .first<{ email: string; name: string; avatar_url: string | null }>();
-    if (!owner) return;
-    const durationMinutes = Math.max(0, Math.round((endedAt - session.started_at) / 60));
-    const { subject, html, text } = streamSummaryEmail({
-      appUrl: env.APP_URL,
-      name: owner.name,
-      avatarUrl: owner.avatar_url,
-      roomTitle: room.title,
-      durationMinutes,
-      earnedCents: summary.earned_cents,
-      peakViewers: summary.peak_viewers,
-      hearts: summary.hearts,
-    });
-    await sendEmail(env.RESEND_API_KEY, { to: owner.email, subject, html, text });
-  })();
-  if (waitUntil) waitUntil(sendSummary);
-  else await sendSummary;
+    if (owner) {
+      const durationMinutes = Math.max(0, Math.round((endedAt - session.started_at) / 60));
+      const { subject, html, text } = streamSummaryEmail({
+        appUrl: env.APP_URL,
+        name: owner.name,
+        avatarUrl: owner.avatar_url,
+        roomTitle: room.title,
+        durationMinutes,
+        earnedCents: summary.earned_cents,
+        peakViewers: summary.peak_viewers,
+        hearts: summary.hearts,
+      });
+      await sendEmail(env.RESEND_API_KEY, { to: owner.email, subject, html, text });
+    }
+  } catch (err) {
+    console.error(err);
+  }
 
   return summary;
 }

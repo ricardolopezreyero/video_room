@@ -35,8 +35,20 @@ void _rev;
 // (fácil de teclear de más, o de que un cliente/red social la agregue sola)
 // caía en un 404 genérico en vez de abrir la sala. Con GET/HEAD alcanza:
 // nada más se comparte o se teclea a mano con esos métodos.
+// El proyecto vive en video.capitaltorreon.com. El dominio anterior
+// (videoroom.live) sigue atado al Worker solo para que los links viejos no
+// mueran: cualquier petición que llegue por ahí se manda al nuevo con 301,
+// conservando ruta y query. Los webhooks/API no pasan por aquí porque
+// Stripe y el cliente ya apuntan al dominio nuevo.
+const DOMINIOS_VIEJOS = new Set(["videoroom.live", "www.videoroom.live"]);
 app.use(async (c, next) => {
   const url = new URL(c.req.url);
+  if (DOMINIOS_VIEJOS.has(url.hostname)) {
+    url.protocol = "https:";
+    url.hostname = new URL(c.env.APP_URL).hostname;
+    url.port = "";
+    return c.redirect(url.toString(), 301);
+  }
   if ((c.req.method === "GET" || c.req.method === "HEAD") && url.pathname.length > 1 && url.pathname.endsWith("/")) {
     url.pathname = url.pathname.slice(0, -1);
     return c.redirect(url.pathname + url.search, 301);

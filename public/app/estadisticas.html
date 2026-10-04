@@ -152,7 +152,7 @@ function render() {
     : `<div class="empty-state">Comparte tu link con <code>?utm_source=instagram&amp;utm_campaign=lanzamiento</code> (o la campaña que uses) y aquí vas a ver cuánta gente entró por cada una.</div>`;
 
   content.innerHTML = `
-    <p class="muted">Sala: videoroom.live/${escapeHtml(data.room_slug)}</p>
+    <p class="muted">Sala: video.capitaltorreon.com/${escapeHtml(data.room_slug)}</p>
     <div class="filter-pills" id="view-pills" style="margin-bottom:0;">
       <button data-view="demo" class="${viewMode === 'demo' ? 'active' : ''}">Demo</button>
       <button data-view="vivo" class="${viewMode === 'vivo' ? 'active' : ''}">En vivo</button>
@@ -257,7 +257,7 @@ document.getElementById('btn-bell').onclick = async () => {
 // mano en todo momento — quedan fijas en la barra de arriba en vez de vivir
 // solo en el monedero.
 function setupNavShortcuts(slug) {
-  const fullUrl = 'https://videoroom.live/' + slug;
+  const fullUrl = 'https://video.capitaltorreon.com/' + slug;
   const transmitBtn = document.getElementById('btn-transmit-nav');
   transmitBtn.href = '/' + slug;
   transmitBtn.style.display = 'inline-block';

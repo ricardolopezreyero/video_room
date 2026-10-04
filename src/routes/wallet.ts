@@ -140,8 +140,13 @@ wallet.post("/webhook/stripe", async (c) => {
           .bind(userId)
           .first<{ email: string; name: string; avatar_url: string | null; balance_cents: number }>();
         if (user) {
-          c.executionCtx.waitUntil(
-            sendEmail(c.env.RESEND_API_KEY, {
+          // Se manda esperando la respuesta (no waitUntil) y con su propio
+          // try/catch: el dinero ya se acreditó pase lo que pase con el
+          // correo, así que un fallo aquí nunca debe tumbar el webhook ni
+          // hacer que Stripe lo reintente — pero si de verdad falla, mejor
+          // enterarnos por correo que quedarnos sin ninguna pista.
+          try {
+            const ok = await sendEmail(c.env.RESEND_API_KEY, {
               to: user.email,
               ...walletRechargeEmail({
                 appUrl: c.env.APP_URL,
@@ -150,8 +155,18 @@ wallet.post("/webhook/stripe", async (c) => {
                 amountCents,
                 newBalanceCents: user.balance_cents,
               }),
-            })
-          );
+            });
+            if (!ok) throw new Error("sendEmail devolvió false (Resend rechazó el envío)");
+          } catch (err) {
+            c.executionCtx.waitUntil(
+              sendEmail(c.env.RESEND_API_KEY, {
+                to: "Ricardo@superleads.mx",
+                subject: "🔴 Falló el correo de recarga de saldo",
+                html: `<pre style="white-space:pre-wrap; font-family:monospace;">user_id: ${userId}\nsession: ${session.id}\namount_cents: ${amountCents}\n\n${String((err as Error)?.stack || err)}</pre>`,
+                text: `user_id: ${userId} session: ${session.id} amount_cents: ${amountCents}\n${String((err as Error)?.stack || err)}`,
+              }).catch(() => {})
+            );
+          }
         }
       }
     }

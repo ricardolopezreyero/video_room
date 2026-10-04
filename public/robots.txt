@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://videoroom.live/sitemap.xml
+Sitemap: https://video.capitaltorreon.com/sitemap.xml

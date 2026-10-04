@@ -2,7 +2,7 @@
 
 ### Prende tu cámara. Comparte un link. Ve entrar el dinero.
 
-**En vivo:** [videoroom.superleads.mx](https://videoroom.superleads.mx)
+**En vivo:** [video.capitaltorreon.com](https://video.capitaltorreon.com)
 
 Video Room es la sala de video en vivo que convierte tu tiempo en dinero real, al instante — sin seguidores mínimos, sin algoritmos que decidan quién te ve, sin esperar a fin de mes para cobrar. Prendes tu cámara, mandas tu link, y cada persona que entra te paga. Así de directo.
 

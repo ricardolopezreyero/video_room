@@ -4,6 +4,8 @@ compatibility_date = "2026-07-01"
 compatibility_flags = ["nodejs_compat"]
 
 routes = [
+  { pattern = "video.capitaltorreon.com", custom_domain = true },
+  # Dominio anterior: se queda solo para redirigir 301 al nuevo (ver src/index.ts).
   { pattern = "videoroom.live", custom_domain = true }
 ]
 
@@ -29,7 +31,7 @@ tag = "v1"
 new_sqlite_classes = ["RoomDurableObject"]
 
 [vars]
-APP_URL = "https://videoroom.live"
+APP_URL = "https://video.capitaltorreon.com"
 
 [triggers]
 crons = ["*/30 * * * *"]

@@ -232,7 +232,7 @@ async function loadRoom(autoCopy) {
   const room = await res.json();
   renderRoom(room);
   if (autoCopy) {
-    const fullUrl = 'https://videoroom.live/' + room.slug;
+    const fullUrl = 'https://video.capitaltorreon.com/' + room.slug;
     navigator.clipboard.writeText(fullUrl).then(() => {
       showToast('🔗 Tu link ya está copiado — compártelo cuando quieras.', 4500);
     }).catch(() => {
@@ -243,7 +243,7 @@ async function loadRoom(autoCopy) {
 
 function renderRoom(room) {
   const el = document.getElementById('room-info');
-  const url = 'videoroom.live/' + room.slug;
+  const url = 'video.capitaltorreon.com/' + room.slug;
   setupNavShortcuts(room.slug);
   const ageMsg = room.age_days <= 0
     ? 'La acabas de recibir.'
@@ -383,7 +383,7 @@ document.getElementById('btn-bell').onclick = async () => {
 // mano en todo momento — antes vivían enterradas en la tarjeta de "Tu sala"
 // y había que bajar a buscarlas. Ahora quedan fijas en la barra de arriba.
 function setupNavShortcuts(slug) {
-  const fullUrl = 'https://videoroom.live/' + slug;
+  const fullUrl = 'https://video.capitaltorreon.com/' + slug;
   const transmitBtn = document.getElementById('btn-transmit-nav');
   transmitBtn.href = '/' + slug;
   transmitBtn.style.display = 'inline-block';

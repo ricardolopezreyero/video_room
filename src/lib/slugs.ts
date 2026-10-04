@@ -13,7 +13,7 @@ export function isNumericSlug(slug: string): boolean {
   return /^[0-9]+$/.test(slug);
 }
 
-// Las salas viven en la raíz del dominio (videoroom.live/:slug) — estas
+// Las salas viven en la raíz del dominio (video.capitaltorreon.com/:slug) — estas
 // palabras siguen siendo rutas reales de la app y nunca deben poder asignarse
 // como slug de sala, o el link de alguien dejaría de servir su sala.
 const RESERVED_SLUGS = new Set([

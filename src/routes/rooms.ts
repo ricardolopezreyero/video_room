@@ -107,8 +107,14 @@ rooms.post("/api/rooms/:slug/start", async (c) => {
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId }) });
 
-  // No bloquea la respuesta: el creador no debe esperar a que salgan los correos.
-  c.executionCtx.waitUntil(notifyRoomLive(c.env, room, sessionId, user.name, user.avatar_url, user.email));
+  // Se espera a que termine (no waitUntil) para que el envío sea confiable —
+  // un fallo aquí no debe tumbar el inicio de la transmisión, así que va en
+  // su propio try/catch.
+  try {
+    await notifyRoomLive(c.env, room, sessionId, user.name, user.avatar_url, user.email);
+  } catch (err) {
+    console.error(err);
+  }
 
   return c.json({ session_id: sessionId });
 });
