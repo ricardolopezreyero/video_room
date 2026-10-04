@@ -69,3 +69,7 @@ npx wrangler dev --port 8787
 **Deploy:** automático vía GitHub Actions en cada push a `main` (`.github/workflows/deploy.yml`), con typecheck y pruebas corriendo antes de subir — o manual con `npx wrangler deploy`.
 
 **Roadmap:** retiros para creadores en Brasil (hoy Stripe Connect solo cubre México en este proyecto — Brasil es el único otro país de LATAM que Stripe soporta, pero pagarle bien a un creador ahí requiere conversión de moneda en tiempo real, que todavía no existe aquí).
+
+## Login
+
+Este servicio entra con el login único de CapitalTorreon: **[login.capitaltorreon.com](https://login.capitaltorreon.com)**. Todo funciona sin entrar; entrar solo agrega (guardar, recuperar, ser reconocido). El botón se monta solo con dos líneas (`<div data-login-ct>` + `login.js`) y el servidor verifica el pase con `verificar.js`; nunca se agrega un origen en Google Cloud ni se pone un botón de Google propio. El porqué y las reglas, en [El camino del login](https://github.com/ricardolopezreyero/login-capitaltorreon/blob/main/docs/El_Camino_del_Login_v1_2026-10-04_1135.md).
