@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import type { Room, Session } from "./db";
 import { sendEmail, streamSummaryEmail } from "./email";
+import { emitEvent } from "./webhooks";
 
 // Cierra una sesión en vivo: la marca 'ended', borra sus comentarios (son
 // eventos fugaces, no sobreviven al cierre de la sala), avisa al Durable
@@ -50,6 +51,17 @@ export async function endLiveSession(
   } catch (err) {
     console.error(err);
   }
+
+  await emitEvent(env, room.owner_id, "room.ended", {
+    session_id: session.id,
+    room: { slug: room.slug, url: `${env.APP_URL}/${room.slug}` },
+    started_at: session.started_at,
+    ended_at: endedAt,
+    duration_seconds: Math.max(0, endedAt - session.started_at),
+    earned_cents: summary.earned_cents,
+    peak_viewers: summary.peak_viewers,
+    hearts: summary.hearts,
+  });
 
   return summary;
 }

@@ -4,6 +4,7 @@ import { signSession, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "../lib/ses
 import { newId, type User } from "../lib/db";
 import { nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
+import { sendEmail, welcomeEmail } from "../lib/email";
 import type { Env } from "../env";
 
 export const auth = new Hono<{ Bindings: Env }>();
@@ -77,6 +78,17 @@ auth.get("/auth/google/callback", async (c) => {
     await c.env.DB.prepare(
       "INSERT INTO rooms (id, owner_id, slug, title) VALUES (?, ?, ?, ?)"
     ).bind(newId("room"), userId, slug, profile.name).run();
+
+    // Primer correo de su vida en Video Room: su link ya existe. Si Resend
+    // falla, el alta sigue igual — nunca debe estorbar el login.
+    try {
+      await sendEmail(c.env.RESEND_API_KEY, {
+        to: profile.email,
+        ...welcomeEmail({ appUrl: c.env.APP_URL, name: profile.name, avatarUrl: profile.picture ?? null, roomUrl: `${c.env.APP_URL}/${slug}` }),
+      });
+    } catch (err) {
+      console.error("welcomeEmail", err);
+    }
   }
 
   const token = await signSession(c.env.SESSION_SECRET, { uid: userId, exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS });

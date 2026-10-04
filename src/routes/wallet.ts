@@ -10,7 +10,8 @@ import {
   stripeCreateTransfer,
   StripeApiError,
 } from "../lib/stripe";
-import { sendEmail, walletRechargeEmail } from "../lib/email";
+import { sendEmail, walletRechargeEmail, payoutSentEmail, payoutFailedEmail, bankConnectedEmail } from "../lib/email";
+import { emitEvent } from "../lib/webhooks";
 import type { Env } from "../env";
 
 export const wallet = new Hono<{ Bindings: Env }>();
@@ -88,6 +89,17 @@ wallet.get("/api/wallet/connect/return", async (c) => {
     await c.env.DB.prepare("UPDATE users SET stripe_connect_payouts_enabled = ? WHERE id = ?")
       .bind(account.payouts_enabled ? 1 : 0, user.id)
       .run();
+    // Solo la primera vez que queda habilitado: el hito de "ya puedo cobrar".
+    if (account.payouts_enabled && !user.stripe_connect_payouts_enabled) {
+      try {
+        await sendEmail(c.env.RESEND_API_KEY, {
+          to: user.email,
+          ...bankConnectedEmail({ appUrl: c.env.APP_URL, name: user.name, avatarUrl: user.avatar_url, creatorBalanceCents: user.creator_balance_cents }),
+        });
+      } catch (err) {
+        console.error("bankConnectedEmail", err);
+      }
+    }
     return c.redirect(`${c.env.APP_URL}/app/monedero?connect=${account.payouts_enabled ? "ok" : "pendiente"}`);
   } catch {
     return c.redirect(`${c.env.APP_URL}/app/monedero?connect=error`);
@@ -139,6 +151,11 @@ wallet.post("/webhook/stripe", async (c) => {
         const user = await c.env.DB.prepare("SELECT email, name, avatar_url, balance_cents FROM users WHERE id = ?")
           .bind(userId)
           .first<{ email: string; name: string; avatar_url: string | null; balance_cents: number }>();
+        await emitEvent(c.env, userId, "wallet.recharged", {
+          amount_cents: amountCents,
+          balance_cents: user?.balance_cents ?? null,
+          checkout_session: session.id,
+        });
         if (user) {
           // Se manda esperando la respuesta (no waitUntil) y con su propio
           // try/catch: el dinero ya se acreditó pase lo que pase con el
@@ -238,12 +255,43 @@ wallet.post("/api/wallet/retiro", async (c) => {
     await c.env.DB.prepare(
       "INSERT INTO ledger (id, user_id, amount_cents, type, ref_id, idem_key) VALUES (?, ?, ?, ?, ?, ?)"
     ).bind(newId("ldg"), user.id, -amount, "retiro", transfer.id, retiroId).run();
+
+    // Recibo del retiro: el correo que más confianza construye de todo el
+    // producto. El dinero ya salió; esto no puede afectar la transferencia.
+    try {
+      const total = await c.env.DB.prepare(
+        "SELECT COALESCE(SUM(-amount_cents), 0) as total, COUNT(*) as n FROM ledger WHERE user_id = ? AND type = 'retiro'"
+      ).bind(user.id).first<{ total: number; n: number }>();
+      await sendEmail(c.env.RESEND_API_KEY, {
+        to: user.email,
+        ...payoutSentEmail({
+          appUrl: c.env.APP_URL,
+          name: user.name,
+          avatarUrl: user.avatar_url,
+          amountCents: amount,
+          totalWithdrawnCents: total?.total ?? amount,
+          transferId: transfer.id,
+          isFirst: (total?.n ?? 1) === 1,
+        }),
+      });
+    } catch (err) {
+      console.error("payoutSentEmail", err);
+    }
+    await emitEvent(c.env, user.id, "payout.sent", { amount_cents: amount, transfer_id: transfer.id });
     return c.json({ ok: true, monto_cents: amount });
   } catch {
     // La transferencia real falló después de reservar el balance — se
     // regresa el dinero para que nunca se pierda el rastro, y el creador
     // puede volver a intentar el retiro cuando quiera.
     await creditLedger(c.env.DB, user.id, amount, "retiro_fallido_reembolso", null, `retiro_reembolso:${retiroId}`, "creator_balance_cents");
+    try {
+      await sendEmail(c.env.RESEND_API_KEY, {
+        to: user.email,
+        ...payoutFailedEmail({ appUrl: c.env.APP_URL, name: user.name, avatarUrl: user.avatar_url, amountCents: amount }),
+      });
+    } catch (err) {
+      console.error("payoutFailedEmail", err);
+    }
     return c.json({ error: "transferencia_fallida" }, 502);
   }
 });

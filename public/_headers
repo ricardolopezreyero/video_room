@@ -21,3 +21,11 @@
 
 /app/bienvenida
   Content-Type: text/html; charset=utf-8
+
+/app/api
+  Content-Type: text/html; charset=utf-8
+
+/embed.js
+  Content-Type: text/javascript; charset=utf-8
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=300

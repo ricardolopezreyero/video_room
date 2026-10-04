@@ -10,6 +10,7 @@ import { calls } from "./routes/calls";
 import { stats } from "./routes/stats";
 import { notifications } from "./routes/notifications";
 import { phrase } from "./routes/phrase";
+import { apiV1 } from "./routes/api-v1";
 import { renderRoomPage } from "./lib/room-page";
 import { verifyUnsubscribeToken } from "./lib/unsubscribe";
 import { currentUser } from "./lib/current-user";
@@ -84,6 +85,7 @@ app.route("/", calls);
 app.route("/", stats);
 app.route("/", notifications);
 app.route("/", phrase);
+app.route("/", apiV1);
 
 // Las salas vivían en /r/:slug — ahora viven en la raíz (videoroom.live/:slug,
 // links más cortos y pegados al dominio). Los links viejos siguen sirviendo
@@ -128,7 +130,7 @@ app.get("/sitemap.xml", async (c) => {
 
   return c.body(
     `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` +
-      `<url><loc>${c.env.APP_URL}/</loc></url>${urls}</urlset>`,
+      `<url><loc>${c.env.APP_URL}/</loc></url><url><loc>${c.env.APP_URL}/app/api</loc></url>${urls}</urlset>`,
     200,
     { "Content-Type": "application/xml; charset=utf-8" }
   );

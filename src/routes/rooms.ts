@@ -5,6 +5,8 @@ import { creditLedger, newId, isBlocked, isMuted, type Room, type Session, type 
 import { slugify, isNumericSlug, isReservedSlug, nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
+import { sendEmail, passReceiptEmail, newFollowerEmail } from "../lib/email";
+import { emitEvent } from "../lib/webhooks";
 import { endLiveSession } from "../lib/room-lifecycle";
 import type { Env } from "../env";
 
@@ -115,6 +117,10 @@ rooms.post("/api/rooms/:slug/start", async (c) => {
   } catch (err) {
     console.error(err);
   }
+  await emitEvent(c.env, user.id, "room.live", {
+    session_id: sessionId,
+    room: { slug: room.slug, url: `${c.env.APP_URL}/${room.slug}` },
+  });
 
   return c.json({ session_id: sessionId });
 });
@@ -202,6 +208,36 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   await stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name }) });
 
+  // Recibo al espectador (como un boleto) y aviso al creador por webhook. El
+  // pase ya quedó cobrado y guardado: nada de esto puede afectar la entrada.
+  try {
+    const owner = await c.env.DB.prepare("SELECT name, avatar_url FROM users WHERE id = ?")
+      .bind(room.owner_id)
+      .first<{ name: string; avatar_url: string | null }>();
+    await sendEmail(c.env.RESEND_API_KEY, {
+      to: user.email,
+      ...passReceiptEmail({
+        appUrl: c.env.APP_URL,
+        viewerName: user.name,
+        creatorName: owner?.name ?? room.title,
+        creatorAvatar: owner?.avatar_url ?? null,
+        roomUrl: `${c.env.APP_URL}/${room.slug}`,
+        amountCents: 2000,
+        expiresAt,
+        remainingBalanceCents: user.balance_cents - 2000,
+      }),
+    });
+  } catch (err) {
+    console.error("passReceiptEmail", err);
+  }
+  await emitEvent(c.env, room.owner_id, "viewer.entered", {
+    session_id: session.id,
+    viewer: { id: user.id, name: user.name },
+    amount_cents: 2000,
+    creator_cut_cents: 1000,
+    expires_at: expiresAt,
+  });
+
   return c.json({ ok: true, expires_at: expiresAt, charged: true });
 });
 
@@ -242,6 +278,13 @@ rooms.post("/api/rooms/:slug/tip", async (c) => {
   await stub.fetch("https://do/tip", {
     method: "POST",
     body: JSON.stringify({ from: user.name, avatar_url: user.avatar_url, amount_cents, message: (message ?? "").slice(0, 60) }),
+  });
+  await emitEvent(c.env, room.owner_id, "tip.received", {
+    session_id: session.id,
+    from: { id: user.id, name: user.name },
+    amount_cents,
+    creator_cut_cents: creatorCut,
+    message: (message ?? "").slice(0, 60),
   });
 
   return c.json({ ok: true, creator_cut_cents: creatorCut });
@@ -341,7 +384,39 @@ rooms.post("/api/rooms/:slug/notify-me", async (c) => {
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
   if (!room) return c.json({ error: "not_found" }, 404);
   if (await isBlocked(c.env.DB, room.id, user.id)) return c.json({ error: "bloqueado" }, 403);
-  await c.env.DB.prepare("INSERT OR IGNORE INTO notify_me (room_id, user_id) VALUES (?, ?)").bind(room.id, user.id).run();
+  const ins = await c.env.DB.prepare("INSERT OR IGNORE INTO notify_me (room_id, user_id) VALUES (?, ?)").bind(room.id, user.id).run();
+
+  // Solo la primera vez (INSERT real, no un re-clic): el creador se entera de
+  // que alguien lo espera — la señal más temprana de demanda que tiene.
+  if (ins.meta.changes > 0 && user.id !== room.owner_id) {
+    const [owner, count] = await Promise.all([
+      c.env.DB.prepare("SELECT name, email, avatar_url FROM users WHERE id = ?").bind(room.owner_id).first<{ name: string; email: string; avatar_url: string | null }>(),
+      c.env.DB.prepare("SELECT COUNT(*) as n FROM notify_me WHERE room_id = ?").bind(room.id).first<{ n: number }>(),
+    ]);
+    const followerCount = count?.n ?? 1;
+    if (owner) {
+      try {
+        await sendEmail(c.env.RESEND_API_KEY, {
+          to: owner.email,
+          ...newFollowerEmail({
+            appUrl: c.env.APP_URL,
+            creatorName: owner.name,
+            creatorAvatar: owner.avatar_url,
+            followerName: user.name,
+            followerAvatar: user.avatar_url,
+            followerCount,
+            roomUrl: `${c.env.APP_URL}/${room.slug}`,
+          }),
+        });
+      } catch (err) {
+        console.error("newFollowerEmail", err);
+      }
+    }
+    await emitEvent(c.env, room.owner_id, "follower.added", {
+      follower: { id: user.id, name: user.name },
+      followers: followerCount,
+    });
+  }
   return c.json({ ok: true });
 });
 

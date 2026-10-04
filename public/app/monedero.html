@@ -137,8 +137,14 @@ async function main() {
       <div class="label">Tu sala</div>
       <div id="room-info">Cargando…</div>
     </div>
+    <div class="balance-box" id="integrations-box">
+      <div class="label">Integraciones · conecta Video Room con tu sitio o tus herramientas</div>
+      <p class="muted" style="margin:4px 0 14px;">Somos un servicio: tu sala se puede leer, escuchar y mostrar desde cualquier otra plataforma. <a class="app-nav-link" href="/app/api">Ver la documentación de la API →</a></p>
+      <div id="integrations">Cargando…</div>
+    </div>
   `;
   loadPhrase('phrase-text', false);
+  loadIntegrations();
 
   // Venimos de Stripe: animamos el saldo subiendo del valor de antes al de ahora.
   if (recarga === 'ok') {
@@ -339,6 +345,130 @@ function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
+}
+
+// ---------- Integraciones: badge embebible, llaves de API y webhooks ----------
+// Todo lo que un tercero necesita para usarnos como servicio vive aquí, en
+// el mismo monedero, sin salir a otra página (la documentación es el único
+// link afuera, y es pública).
+let roomSlugForIntegrations = null;
+async function loadIntegrations() {
+  const el = document.getElementById('integrations');
+  const [keysRes, hooksRes, roomRes] = await Promise.all([
+    fetch('/api/integrations/keys'), fetch('/api/v1/webhooks'), fetch('/api/rooms/mine'),
+  ]);
+  if (!keysRes.ok || !hooksRes.ok) { el.innerHTML = '<p class="muted">No se pudieron cargar las integraciones.</p>'; return; }
+  const keys = (await keysRes.json()).keys || [];
+  const hooks = await hooksRes.json();
+  roomSlugForIntegrations = roomRes.ok ? (await roomRes.json()).slug : null;
+  const origin = location.origin;
+  const embed = `<script src="${origin}/embed.js" data-room="${roomSlugForIntegrations || 'tu-sala'}"><\/script>`;
+  const fecha = (ts) => ts ? new Date(ts * 1000).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : '—';
+
+  el.innerHTML = `
+    <div class="int-section">
+      <div class="int-title">1 · Botón «En vivo» para tu sitio</div>
+      <p class="muted">Pega esta línea en tu página web, blog o Notion y aparece un botón que dice si estás en vivo y cuánta gente hay. Se actualiza solo.</p>
+      <div class="code-box"><code id="embed-code">${escapeHtml(embed)}</code><button class="btn-ghost small" id="btn-copy-embed">Copiar</button></div>
+      <div id="embed-preview" style="margin-top:10px;"></div>
+    </div>
+    <div class="int-section">
+      <div class="int-title">2 · Llaves de API</div>
+      <p class="muted">Con una llave, otra plataforma puede leer tu sala, tus estadísticas y tus transacciones, o avisar que empiezas. La llave completa se enseña una sola vez.</p>
+      <div id="keys-list">${keys.length ? keys.map((k) => `
+        <div class="int-row">
+          <div class="int-row-main"><strong>${escapeHtml(k.name)}</strong><span class="muted mono">${escapeHtml(k.prefix)}…</span></div>
+          <span class="muted">creada ${fecha(k.created_at)} · último uso ${fecha(k.last_used_at)}</span>
+          <button class="btn-ghost small danger" data-revoke="${escapeHtml(k.id)}">Revocar</button>
+        </div>`).join('') : '<p class="muted">Todavía no tienes llaves.</p>'}</div>
+      <div class="int-form">
+        <input id="key-name" placeholder="Nombre (ej. Mi sitio WordPress)" maxlength="60">
+        <button class="btn-navy" id="btn-new-key">Crear llave</button>
+      </div>
+      <div id="new-key-out"></div>
+    </div>
+    <div class="int-section">
+      <div class="int-title">3 · Webhooks</div>
+      <p class="muted">Te avisamos a una URL tuya cada vez que pasa algo: empiezas a transmitir, entra alguien, recibes propina, te siguen, recargas, retiras. Cada aviso va firmado.</p>
+      <div id="hooks-list">${hooks.webhooks.length ? hooks.webhooks.map((h) => `
+        <div class="int-row">
+          <div class="int-row-main"><span class="mono">${escapeHtml(h.url)}</span><span class="muted">${h.events.join(', ')}</span></div>
+          <span class="muted">${h.last_status ? (h.last_error ? '⚠️ ' + escapeHtml(h.last_error) : '✅ ' + h.last_status) : 'sin entregas'}</span>
+          <button class="btn-ghost small" data-test="${escapeHtml(h.id)}">Probar</button>
+          <button class="btn-ghost small danger" data-del="${escapeHtml(h.id)}">Quitar</button>
+        </div>`).join('') : '<p class="muted">Todavía no tienes webhooks.</p>'}</div>
+      <div class="int-form">
+        <input id="hook-url" placeholder="https://tusitio.com/videoroom" inputmode="url">
+        <button class="btn-navy" id="btn-new-hook">Agregar webhook</button>
+      </div>
+      <div class="int-events">${hooks.events.filter((e) => e !== 'ping').map((e) => `<label><input type="checkbox" name="hook-ev" value="${e}" checked> ${e}</label>`).join('')}</div>
+      <div id="new-hook-out"></div>
+    </div>
+  `;
+
+  // Vista previa real del badge: el mismo script que pegaría el tercero.
+  if (roomSlugForIntegrations) {
+    const s = document.createElement('script');
+    s.src = '/embed.js'; s.setAttribute('data-room', roomSlugForIntegrations);
+    document.getElementById('embed-preview').appendChild(s);
+  }
+  document.getElementById('btn-copy-embed').onclick = () => { navigator.clipboard.writeText(embed); showToast('Código copiado.'); };
+
+  document.getElementById('btn-new-key').onclick = async () => {
+    const name = document.getElementById('key-name').value.trim();
+    const r = await fetch('/api/integrations/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const j = await r.json();
+    if (!r.ok) return alert(j.error === 'too_many' ? 'Máximo 10 llaves. Revoca alguna primero.' : 'No se pudo crear la llave.');
+    document.getElementById('new-key-out').innerHTML = `
+      <div class="secret-box">
+        <div class="label">Tu llave nueva — cópiala ahora, no se vuelve a mostrar</div>
+        <div class="code-box"><code>${escapeHtml(j.key)}</code><button class="btn-ghost small" id="btn-copy-key">Copiar</button></div>
+        <p class="muted">Úsala como <span class="mono">Authorization: Bearer ${escapeHtml(j.prefix)}…</span></p>
+      </div>`;
+    document.getElementById('btn-copy-key').onclick = () => { navigator.clipboard.writeText(j.key); showToast('Llave copiada.'); };
+    const list = document.getElementById('keys-list');
+    if (list.querySelector('p')) list.innerHTML = '';
+    list.insertAdjacentHTML('afterbegin', `<div class="int-row"><div class="int-row-main"><strong>${escapeHtml(name || 'Mi integración')}</strong><span class="muted mono">${escapeHtml(j.prefix)}…</span></div><span class="muted">recién creada</span><button class="btn-ghost small danger" data-revoke="${escapeHtml(j.id)}">Revocar</button></div>`);
+    document.getElementById('key-name').value = '';
+  };
+
+  document.getElementById('btn-new-hook').onclick = async () => {
+    const url = document.getElementById('hook-url').value.trim();
+    if (!/^https:\/\//i.test(url)) return alert('La URL debe empezar con https://');
+    const events = [...document.querySelectorAll('input[name="hook-ev"]:checked')].map((i) => i.value);
+    if (!events.length) return alert('Elige al menos un evento.');
+    const r = await fetch('/api/v1/webhooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, events }) });
+    const j = await r.json();
+    if (!r.ok) return alert(j.error === 'too_many' ? 'Máximo 10 webhooks.' : 'No se pudo agregar el webhook.');
+    document.getElementById('new-hook-out').innerHTML = `
+      <div class="secret-box">
+        <div class="label">Secreto para verificar la firma — cópialo ahora, no se vuelve a mostrar</div>
+        <div class="code-box"><code>${escapeHtml(j.secret)}</code><button class="btn-ghost small" id="btn-copy-whsec">Copiar</button></div>
+        <p class="muted">Cada aviso trae <span class="mono">X-VideoRoom-Signature: t=…,v1=HMAC-SHA256(secreto, t + "." + cuerpo)</span>. Cómo verificarla está en la documentación.</p>
+      </div>`;
+    document.getElementById('btn-copy-whsec').onclick = () => { navigator.clipboard.writeText(j.secret); showToast('Secreto copiado.'); };
+    showToast('✅ Webhook agregado. Tócale «Probar» para mandar un ping.', 4500);
+    setTimeout(loadIntegrations, 1200);
+  };
+
+  el.querySelectorAll('[data-revoke]').forEach((b) => b.onclick = async () => {
+    if (!confirm('¿Revocar esta llave? Lo que la use dejará de funcionar al instante.')) return;
+    await fetch(`/api/integrations/keys/${b.dataset.revoke}`, { method: 'DELETE' });
+    loadIntegrations();
+  });
+  el.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
+    if (!confirm('¿Quitar este webhook?')) return;
+    await fetch(`/api/v1/webhooks/${b.dataset.del}`, { method: 'DELETE' });
+    loadIntegrations();
+  });
+  el.querySelectorAll('[data-test]').forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    const r = await fetch(`/api/v1/webhooks/${b.dataset.test}/test`, { method: 'POST' });
+    const j = await r.json();
+    showToast(j.ok ? `✅ Tu servidor respondió ${j.status}.` : `⚠️ Falló: ${j.error || 'sin respuesta'}`, 5000);
+    b.disabled = false;
+    loadIntegrations();
+  });
 }
 
 let notifData = { unread_count: 0, items: [] };
