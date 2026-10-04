@@ -221,8 +221,8 @@ wallet.get("/api/wallet/transactions", async (c) => {
   if (!user) return c.json({ error: "no_session" }, 401);
 
   const { results } = await c.env.DB.prepare(
-    "SELECT id, type, amount_cents, created_at FROM ledger WHERE user_id = ? ORDER BY created_at ASC"
-  ).bind(user.id).all<{ id: string; type: string; amount_cents: number; created_at: number }>();
+    "SELECT id, type, amount_cents, created_at, ref_id FROM ledger WHERE user_id = ? ORDER BY created_at ASC"
+  ).bind(user.id).all<{ id: string; type: string; amount_cents: number; created_at: number; ref_id: string | null }>();
 
   const running = { balance_cents: 0, creator_balance_cents: 0 };
   const transactions = results.map((row) => {

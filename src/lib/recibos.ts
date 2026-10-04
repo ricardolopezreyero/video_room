@@ -32,6 +32,21 @@ import {
 
 export type TipoRecibo = "entrada" | "propina" | "despedida" | "destacado" | "membresia";
 
+// Liga firmada al recibo en PDF: quien tiene el correo puede descargarlo sin
+// pedirle que inicie sesión (como un recibo de verdad). La firma sale del id
+// y del secreto de sesión; sin ella, hace falta ser una de las dos partes.
+async function hmacHex(secret: string, data: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+export async function firmaRecibo(secret: string, id: string): Promise<string> {
+  return (await hmacHex(secret, `recibo:${id}`)).slice(0, 24);
+}
+export async function urlRecibo(env: Env, id: string): Promise<string> {
+  return `${env.APP_URL}/recibo/${encodeURIComponent(id)}?t=${await firmaRecibo(env.SESSION_SECRET, id)}`;
+}
+
 export interface EventoDinero {
   tipo: TipoRecibo;
   /** id del pase / propina / membresía: de aquí sale el folio. */
@@ -52,6 +67,8 @@ export interface EventoDinero {
   message?: string | null;
   /** Entrada: fin de la hora. Membresía: fin del mes. Destacado: fin de los 3 min. */
   expiresAt?: number | null;
+  /** Liga firmada al recibo en PDF (el objeto para guardar). */
+  pdfUrl?: string | null;
 }
 
 const TITULO: Record<TipoRecibo, string> = {
@@ -100,9 +117,12 @@ export function recibosDe(ev: EventoDinero): { viewer: Mail; creator: Mail } {
   const roomUrl = `${ev.appUrl}/${encodeURIComponent(ev.room.slug)}`;
   const txUrl = `${ev.appUrl}/app/transacciones`;
   const msg = (ev.message ?? "").trim();
+  const pdf = ev.pdfUrl
+    ? ` <a href="${escapeHtml(ev.pdfUrl)}" style="color:#1f9d5c; font-weight:700; text-decoration:underline;">Descarga el recibo en PDF</a>: con la hora exacta en grande y las dos fotos, para guardarlo.`
+    : "";
   const sello = (otro: string) =>
-    `Este mismo folio <strong>${escapeHtml(folio)}</strong> le llegó a <strong>${escapeHtml(otro)}</strong> en su recibo, en este mismo segundo. Para los dos quedó constancia de que estuvieron ahí.`;
-  const selloTexto = (otro: string) => `Este mismo folio ${folio} le llegó a ${otro} en su recibo, en este mismo segundo.`;
+    `Este mismo folio <strong>${escapeHtml(folio)}</strong> le llegó a <strong>${escapeHtml(otro)}</strong> en su recibo, en este mismo segundo. Para los dos quedó constancia de que estuvieron ahí.${pdf}`;
+  const selloTexto = (otro: string) => `Este mismo folio ${folio} le llegó a ${otro} en su recibo, en este mismo segundo.${ev.pdfUrl ? ` Recibo en PDF: ${ev.pdfUrl}` : ""}`;
 
   // ---------- quien ve ----------
   let vBadge: string, vHeadline: string, vBody: string, vSubject: string, vCta = "Volver a la sala";
@@ -294,6 +314,7 @@ export async function enviarRecibos(env: Env, e: EventoDineroRuta): Promise<void
       session: session ? { startedAt: session.started_at, endedAt: session.ended_at } : null,
       message: e.message ?? null,
       expiresAt: e.expiresAt ?? null,
+      pdfUrl: await urlRecibo(env, e.id),
     };
     const { viewer, creator } = recibosDe(ev);
     const ok = await sendEmails(env.RESEND_API_KEY, [

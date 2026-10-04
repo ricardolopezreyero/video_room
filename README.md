@@ -217,3 +217,13 @@ entra a la tuya: dos salas, dos vías, con el mismo cobro de siempre. Para la
 tele: AirPlay (iPhone → Apple TV) o «Duplicar pantalla» (Android → Roku); lo
 que se refleja es exactamente esa pantalla. Roku y Apple TV no tienen
 navegador ni reciben WebRTC: por eso el camino es reflejar, no una app.
+
+## El recibo como objeto (PDF)
+
+`GET /recibo/<pass_|tip_|mem_…>` genera en el Worker (pdf-lib + Plus Jakarta
+Sans) un PDF para guardar: el creador al frente (foto y nombre), **el segundo
+exacto en grande**, las dos fotos unidas, los montos exactos, folio y la firma
+chiquita de Video Room abajo ("un servicio de CapitalTorreon.com"). Lo abre
+quien tenga la liga firmada del correo (`?t=`, sin login) o cualquiera de las
+dos partes con su sesión; `?descargar=1` lo baja como archivo. Los dos correos
+del recibo llevan la liga, y Transacciones tiene una columna "Recibo".

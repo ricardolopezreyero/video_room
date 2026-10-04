@@ -21,6 +21,8 @@ import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { HIGHLIGHT_OPTIONS_CENTS } from "./lib/pricing";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
+import { cargarEvento, pdfRecibo, firmaRecibo } from "./lib/recibo-pdf";
+import { folioDe } from "./lib/email";
 
 
 export { RoomDurableObject } from "./durable/room";
@@ -89,6 +91,29 @@ app.route("/", stats);
 app.route("/", notifications);
 app.route("/", phrase);
 app.route("/", apiV1);
+
+// El recibo como objeto: PDF con el segundo exacto en grande y las dos fotos.
+// Lo abre quien tenga la liga firmada del correo (?t=) o cualquiera de las
+// dos partes con su sesión. ?descargar=1 lo baja como archivo.
+app.get("/recibo/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^(pass|tip|mem)_[a-f0-9]{32}$/.test(id)) return c.text("Recibo no encontrado.", 404);
+  const [ev, user] = await Promise.all([cargarEvento(c.env, id), currentUser(c).catch(() => null)]);
+  if (!ev) return c.text("Recibo no encontrado.", 404);
+  const t = c.req.query("t");
+  const firmaOk = !!t && t === (await firmaRecibo(c.env.SESSION_SECRET, id));
+  const parteOk = !!user && (user.id === ev.viewerId || user.id === ev.creatorId);
+  if (!firmaOk && !parteOk) return c.text("Este recibo es privado: ábrelo desde la liga de tu correo o inicia sesión con la cuenta que lo recibió.", 403);
+  const pdf = await pdfRecibo(c.env, ev);
+  const nombre = `Recibo ${folioDe(id)} - ${ev.creator.name.replace(/[^\w\sáéíóúñÁÉÍÓÚÑ.-]/g, "").trim()}.pdf`;
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `${c.req.query("descargar") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(nombre)}`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+});
 
 // Las salas vivían en /r/:slug — ahora viven en la raíz (videoroom.live/:slug,
 // links más cortos y pegados al dominio). Los links viejos siguen sirviendo

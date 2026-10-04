@@ -55,8 +55,10 @@ function showToast(msg, ms) {
   setTimeout(() => el.classList.remove('show'), ms || 3200);
 }
 
+// "$159.20" cuando hay centavos, "$50" cuando no: nunca un redondeo en dinero.
 function pesos(cents) {
-  return '$' + Math.round(cents / 100).toLocaleString('es-MX');
+  const c = Math.round(Number(cents) || 0);
+  return '$' + (c / 100).toLocaleString('es-MX', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 });
 }
 
 const TYPE_LABELS = {
@@ -73,6 +75,14 @@ const TYPE_LABELS = {
   retiro: 'Retiro',
   retiro_fallido_reembolso: 'Reembolso de retiro',
 };
+
+// Movimientos que tienen recibo en PDF (el objeto para guardar): los que
+// pasaron entre dos personas. Recargas y retiros tienen su correo, no PDF.
+const CON_RECIBO = new Set(['entrada', 'ganancia_entrada', 'propina_enviada', 'propina_recibida', 'destacado_enviado', 'destacado_recibido', 'membresia', 'ganancia_membresia']);
+function reciboHtml(t) {
+  if (!CON_RECIBO.has(t.type) || !t.ref_id || !/^(pass|tip|mem)_/.test(t.ref_id)) return '<td></td>';
+  return `<td><a class="tx-recibo" href="/recibo/${encodeURIComponent(t.ref_id)}" target="_blank" rel="noopener" title="Abrir el recibo en PDF" data-no-veloz>PDF ↗</a></td>`;
+}
 
 const FILTERS = [
   ['all', 'Todas'],
@@ -110,6 +120,7 @@ function txRowHtml(t) {
       <td class="tx-amount ${isNeg ? 'neg' : 'pos'}">${isNeg ? '-' : '+'}${pesos(Math.abs(t.amount_cents))}</td>
       <td>${cuenta}</td>
       <td>${pesos(t.running_balance_cents)}</td>
+      ${reciboHtml(t)}
     </tr>`;
 }
 
@@ -122,7 +133,7 @@ function renderTable() {
 
   const tbody = document.getElementById('tx-tbody');
   if (!page.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="tx-empty">No hay transacciones de este tipo todavía.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="tx-empty">No hay transacciones de este tipo todavía.</td></tr>';
   } else {
     tbody.innerHTML = page.map(txRowHtml).join('');
   }
@@ -253,7 +264,7 @@ async function main() {
       <div class="tx-scroll">
         <table class="tx-table">
           <thead>
-            <tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Cuenta</th><th>Saldo después</th></tr>
+            <tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Cuenta</th><th>Saldo después</th><th>Recibo</th></tr>
           </thead>
           <tbody id="tx-tbody"></tbody>
         </table>

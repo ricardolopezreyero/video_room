@@ -1015,3 +1015,6 @@ body.llamada #audio-only-badge, body.llamada .room-status, body.llamada #btn-mem
 body.llamada .viewer-presence { font-size: 11px; opacity: .8; }
 body.llamada .overlay h1 { font-size: 1.2rem; }
 body.llamada #player { object-fit: contain; }
+
+.tx-recibo { color: var(--green, #56EF9F); font-weight: 800; text-decoration: none; font-size: 12px; }
+.tx-recibo:hover { text-decoration: underline; }
