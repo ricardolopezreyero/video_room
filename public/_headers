@@ -30,6 +30,9 @@
 /motor-video.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 
+/motor-audio.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
 /utm.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 

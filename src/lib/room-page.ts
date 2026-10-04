@@ -1,5 +1,6 @@
 // RLR
 import type { Room } from "./db";
+import { entrySplit } from "./pricing";
 
 function escapeHtml(input: string): string {
   return input
@@ -40,9 +41,12 @@ export function renderRoomPage(opts: {
   const safeAvatar = ownerAvatar ? escapeHtml(ownerAvatar) : null;
   const ogImage = safeAvatar ?? `${appUrl}/og-default.svg`;
   const title = live ? `🔴 ${safeTitle} — EN VIVO` : `${safeTitle} — abre pronto`;
-  const price = `$${Math.round((room.price_cents || 2000) / 100).toLocaleString("es-MX")}`;
+  const priceCents = room.price_cents || 2000;
+  const price = `$${Math.round(priceCents / 100).toLocaleString("es-MX")}`;
+  const pesos = (c: number) => `$${(c / 100).toLocaleString("es-MX", { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
+  const paraCreador = pesos(entrySplit(priceCents).creator);
   const desc = live
-    ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · Entra por ${price}/hora · Nada se graba`
+    ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · ${price} la hora · Nada se graba`
     : `${safeTitle} todavía no transmite. Toca para que te avisemos por correo en cuanto abra.`;
   // Copy para buscadores/redes — distinta del "desc" de arriba (ese es el
   // texto de estado dentro de la propia sala). Aquí buscamos que quien la
@@ -101,7 +105,9 @@ export function renderRoomPage(opts: {
       <button id="btn-membership" class="btn-ghost" style="display:none"></button>
       <button id="btn-notify" class="btn-ghost" style="display:${live ? "none" : "block"}">🔔 Avísame cuando abra</button>
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
-      <p class="fineprint">${live ? "Ingresas con Google en un tap. Tu hora empieza cuando cruzas la puerta." : "Te llega un correo y una notificación en el momento en que entre en vivo."}</p>
+      <p class="fineprint">${live
+        ? `Ingresas con Google en un toque. Tu hora empieza cuando cruzas la puerta y puedes salir y volver sin pagar de nuevo. De tu entrada, <strong>${paraCreador} le llegan a ${safeTitle}</strong> en ese mismo segundo; los dos reciben su recibo por correo.`
+        : "Te llega un correo y una notificación en el momento en que entre en vivo."}</p>
     </div>
     <div id="chat-panel" class="chat-panel" style="display:none">
       <div class="chat-panel-header">
@@ -145,6 +151,11 @@ export function renderRoomPage(opts: {
       <button id="btn-mic" class="ctrl-btn" style="display:none" data-label="Mic" aria-label="Silenciar micrófono">🎙️</button>
       <button id="btn-cam" class="ctrl-btn" style="display:none" data-label="Cámara" aria-label="Apagar cámara">📷</button>
       <button id="btn-flip-cam" class="ctrl-btn" style="display:none" data-label="Girar" aria-label="Cambiar cámara">🔄</button>
+      <select id="audio-mode" class="cam-select" style="display:none" aria-label="Modo de audio" title="Cómo tratar tu sonido">
+        <option value="voz">🎙️ Voz</option>
+        <option value="musica">🎵 Música</option>
+        <option value="ambiente">🌿 Ambiente</option>
+      </select>
       <select id="cam-select" class="cam-select" style="display:none" aria-label="Cámara"></select>
       <select id="quality-select" class="cam-select" style="display:none" aria-label="Calidad de video">
         <option value="auto">Auto · máxima</option>
@@ -186,6 +197,7 @@ export function renderRoomPage(opts: {
   </div>
   ${inicioJson ? `<script>window.__VR_INICIO = ${inicioJson};</script>` : ""}
   <script src="/motor-video.js${v}" defer></script>
+  <script src="/motor-audio.js${v}" defer></script>
   <script src="/room.js${v}" defer></script>
 </body>
 </html>`;

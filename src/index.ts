@@ -280,7 +280,7 @@ app.get("/:slug", async (c) => {
   c.header("Cache-Control", "private, no-cache");
   c.header(
     "Link",
-    `</style.css${v}>; rel=preload; as=style, </veloz.js${v}>; rel=preload; as=script, </motor-video.js${v}>; rel=preload; as=script, </room.js${v}>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin`
+    `</style.css${v}>; rel=preload; as=style, </veloz.js${v}>; rel=preload; as=script, </motor-video.js${v}>; rel=preload; as=script, </motor-audio.js${v}>; rel=preload; as=script, </room.js${v}>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin`
   );
   return c.html(
     renderRoomPage({ room: roomRow, ownerAvatar: owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status, inicio, assetVersion })

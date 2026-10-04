@@ -99,14 +99,18 @@ calls.post("/api/rooms/:slug/subscribe", async (c) => {
   const RID: Record<string, string> = { high: "f", medium: "h", low: "q" };
   const simulcast = info.tracks.some((t) => t.trackName === "video");
   let tracksToRequest: unknown[];
+  // Dos versiones del audio: "audio" (hasta 128 kb/s) y "audio_lo" (48 kb/s)
+  // para quien pide la capa baja de video, señal de red floja.
+  const hayLo = info.tracks.some((t) => t.trackName === "audio_lo");
+  const audioName = quality === "low" && hayLo ? "audio_lo" : "audio";
   if (simulcast) {
-    const audio = info.tracks.filter((t) => t.trackName === "audio").map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName }));
+    const audio = info.tracks.filter((t) => t.trackName === audioName).map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName }));
     const video = quality === "off"
       ? []
       : [{ location: "remote", sessionId: info.sfuSessionId, trackName: "video", simulcast: { preferredRid: RID[quality ?? "high"] ?? "f", priorityOrdering: "asciibetical", ridNotAvailable: "asciibetical" } }];
     tracksToRequest = [...audio, ...video];
   } else {
-    const wantedNames = quality === "off" ? ["audio"] : ["audio", `video_${quality ?? "high"}`];
+    const wantedNames = quality === "off" ? [audioName] : [audioName, `video_${quality ?? "high"}`];
     const filtered = info.tracks.filter((t) => wantedNames.includes(t.trackName));
     tracksToRequest = (filtered.length > 0 ? filtered : info.tracks).map((t) => ({ location: "remote", sessionId: info.sfuSessionId, trackName: t.trackName }));
   }

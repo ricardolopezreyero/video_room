@@ -20,6 +20,18 @@
   // nativo no resuelve ni rechaza la promesa) — sin esto, el botón que lo
   // disparó queda deshabilitado para siempre, ya que guarded() solo se
   // reactiva cuando la función que envuelve finalmente termina.
+  // "$37.50" cuando hay centavos, "$50" cuando no: nunca un redondeo en dinero.
+  function pesos(cents) {
+    const c = Math.round(Number(cents) || 0);
+    return `$${(c / 100).toLocaleString("es-MX", { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
+  }
+  function horaCDMX(unix) {
+    return new Date(unix * 1000).toLocaleTimeString("es-MX", { timeZone: "America/Mexico_City", hour: "numeric", minute: "2-digit" });
+  }
+  function irARecargar(faltaCents) {
+    const volver = location.pathname;
+    setTimeout(() => { location.href = `/app/monedero?volver=${encodeURIComponent(volver)}&falta=${Math.max(0, faltaCents)}`; }, 1600);
+  }
   function withTimeout(promise, ms) {
     return Promise.race([
       promise,
@@ -61,7 +73,12 @@
   // fps, bits y códec según su aparato y su internet; el espectador pide la
   // capa que su aparato y su red aguantan. Y la reconexión de los dos lados.
   let motor = null;
+  let motorAudio = null;
+  let micTrackCrudo = null;
+  let micTrackLo = null;
+  let audioModo = localStorage.getItem("vr_audio_modo") || "voz";
   let audioSender = null;
+  let audioLoSender = null;
   let codecNombre = "auto";
   let publishGen = 0;
   let republishTimer = null;
@@ -210,6 +227,9 @@
     if (ownerStreamStopped) return;
     ownerStreamStopped = true;
     if (motor) motor.detener();
+    if (motorAudio) { try { motorAudio.destruir(); } catch {} }
+    if (micTrackCrudo) { try { micTrackCrudo.stop(); } catch {} }
+    if (micTrackLo) { try { micTrackLo.stop(); } catch {} }
     clearTimeout(republishTimer);
     if (cameraTrack) { try { cameraTrack.stop(); } catch {} }
     if (micTrack) { try { micTrack.stop(); } catch {} }
@@ -306,15 +326,15 @@
       } else if (msg.type === "entrada") {
         updateGoal(msg.ticker_cents);
         if (isOwner) {
-          toast(msg.member ? `${msg.name} entró (miembro)` : `+$${Math.round((msg.creator_cents ?? 1000) / 100)} · ${msg.name} entró`);
-          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
+          toast(msg.member ? `${msg.name} entró (miembro)` : `+${pesos(msg.creator_cents ?? 1000)} · ${msg.name} entró`);
+          tickerText.textContent = pesos(msg.ticker_cents);
         }
       } else if (msg.type === "tip") {
         showTipBand(msg.from, msg.avatar_url, msg.amount_cents, msg.message);
         updateGoal(msg.ticker_cents);
         if (isOwner) {
-          toast(`+$${Math.round(msg.amount_cents * 0.9 / 100)} · ${msg.from} te mandó dinero 💵`);
-          tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`;
+          toast(`+${pesos(msg.creator_cents ?? Math.round(msg.amount_cents * 0.9))} · ${msg.from} te mandó dinero 💵`);
+          tickerText.textContent = pesos(msg.ticker_cents);
         }
       } else if (msg.type === "hearts") {
         spawnFloatingHeart();
@@ -336,7 +356,7 @@
           if (!amt) { amt = document.createElement("span"); amt.className = "pinned-paid-amt"; pinnedEl.insertBefore(amt, $("pinned-text")); }
           amt.textContent = `$${Math.round(msg.paid_cents / 100)}`;
           if (msg.until) paidPinTimer = setTimeout(() => { pinnedEl.style.display = "none"; pinnedEl.classList.remove("paid"); }, Math.max(1000, msg.until - Date.now()));
-          if (isOwner && msg.ticker_cents != null) { tickerText.textContent = `$${(msg.ticker_cents / 100).toFixed(0)}`; toast(`+$${Math.round(msg.paid_cents * 0.9 / 100)} · ${msg.name} destacó su mensaje ⭐`); }
+          if (isOwner && msg.ticker_cents != null) { tickerText.textContent = pesos(msg.ticker_cents); toast(`+${pesos(Math.round(msg.paid_cents * 0.9))} · ${msg.name} destacó su mensaje ⭐`); }
           updateGoal(msg.ticker_cents);
         } else if (amt) amt.remove();
         pinnedEl.style.display = "flex";
@@ -741,9 +761,9 @@
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints(),
-        // Estéreo y 48 kHz si la fuente lo da: el motor decide después cuántos
-        // kilobits merece el audio según el internet (nunca menos de 32).
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 2 }, sampleRate: { ideal: 48000 } },
+        // Al micrófono se le pide todo (48 kHz, estéreo) y el trato del modo
+        // elegido (Voz / Música / Ambiente); ver motor-audio.js.
+        audio: MotorAudio.capturaPara(audioModo),
       });
     } catch {
       throw new Error("sin_camara");
@@ -751,8 +771,17 @@
     player.srcObject = stream;
     player.muted = true;
     cameraTrack = stream.getVideoTracks()[0];
-    micTrack = stream.getAudioTracks()[0];
+    micTrackCrudo = stream.getAudioTracks()[0];
     try { cameraTrack.contentHint = "motion"; } catch {}
+    // La cadena de audio: lo que se publica es el micrófono ya procesado.
+    if (motorAudio) { try { motorAudio.destruir(); } catch {} }
+    motorAudio = await MotorAudio.crear({
+      micTrack: micTrackCrudo,
+      modo: audioModo,
+      onListo: (procesado) => { micTrack = procesado; if (audioSender) audioSender.replaceTrack(procesado).catch(() => {}); if (audioLoSender) { try { micTrackLo = procesado.clone(); audioLoSender.replaceTrack(micTrackLo).catch(() => {}); } catch {} } },
+    });
+    micTrack = motorAudio.track;
+    try { micTrack.contentHint = audioModo === "musica" ? "music" : "speech"; } catch {}
     await publicar("Conectando con el estudio…");
     hideOverlaySmoothly();
     showControlsWithEntrance();
@@ -760,7 +789,7 @@
     if (!opts.reanudar) startLiveTimer(Date.now());
     showCreatorToolbar();
     revealChatUI();
-    maybeSetupWaveform(stream);
+    maybeSetupWaveform(new MediaStream([micTrack]));
     toast(opts.reanudar ? "✅ Tu transmisión se reanudó. Tu público se reconecta solo." : "✨ Estás en vivo, disfruta.", 6000);
   }
 
@@ -802,6 +831,10 @@
     const codec = await MotorVideo.elegirCodecs({ w: ajustes.width || 1920, h: ajustes.height || 1080, fps: ajustes.frameRate || 30 });
     codecNombre = codec.nombre;
     const audioTx = nuevoPc.addTransceiver(micTrack, { direction: "sendonly" });
+    // Segunda versión del mismo audio, a 48 kb/s, para quien anda con red floja.
+    try { if (micTrackLo) micTrackLo.stop(); } catch {}
+    micTrackLo = micTrack.clone();
+    const audioLoTx = nuevoPc.addTransceiver(micTrackLo, { direction: "sendonly", sendEncodings: [{ maxBitrate: 48000 }] });
     const videoTx = nuevoPc.addTransceiver(cameraTrack, simulcast
       ? {
           direction: "sendonly",
@@ -820,7 +853,8 @@
     // camino viejo de /subscribe entrega a todos los espectadores.
     const tracks = [
       { mid: audioTx.mid != null ? String(audioTx.mid) : "0", trackName: "audio" },
-      { mid: videoTx.mid != null ? String(videoTx.mid) : "1", trackName: simulcast ? "video" : "video_high" },
+      { mid: audioLoTx.mid != null ? String(audioLoTx.mid) : "1", trackName: "audio_lo" },
+      { mid: videoTx.mid != null ? String(videoTx.mid) : "2", trackName: simulcast ? "video" : "video_high" },
     ];
     const res = await api(`/api/rooms/${slug}/publish`, { body: { sdp: offer.sdp, tracks } });
     if (res.error) {
@@ -838,6 +872,7 @@
     pc = nuevoPc;
     videoSender = videoTx.sender;
     audioSender = audioTx.sender;
+    audioLoSender = audioLoTx.sender;
     if (viejo && viejo !== nuevoPc) { try { viejo.close(); } catch {} }
     vigilarConexionCreador(nuevoPc);
     if (motor) {
@@ -852,7 +887,7 @@
   function pintarCalidadCreador(p, info) {
     const el = $("stream-quality");
     if (!el) return;
-    el.textContent = MotorVideo.etiqueta(p, info && info.codec !== "auto" ? info.codec : null, info && info.kbps);
+    el.textContent = MotorVideo.etiqueta(p, info && info.codec !== "auto" ? info.codec : null, info && info.kbps) + (motor ? ` · audio ${motor.audioKbps} kb/s` : "");
     if (info && info.motivo === "baja") el.title = "Bajamos un peldaño para que no se trabe (primero cuadros, luego resolución).";
     else if (info && info.motivo === "sube") el.title = "Tu internet dio para más: subimos un peldaño.";
   }
@@ -911,13 +946,32 @@
     if ("getDisplayMedia" in navigator.mediaDevices) {
       $("btn-screen").style.display = "flex";
     }
+    setupAudioModeSelector();
     setupCameraSwitcher();
     startQualityMonitor();
+  }
+
+  // Voz / Música / Ambiente: la máquina no puede adivinar qué ruido es molesto
+  // y cuál es parte de la escena; lo decide quien transmite, en un toque.
+  function setupAudioModeSelector() {
+    const select = $("audio-mode");
+    if (!select) return;
+    select.value = audioModo;
+    select.style.display = "inline-block";
+    select.onchange = () => {
+      audioModo = select.value;
+      localStorage.setItem("vr_audio_modo", audioModo);
+      if (motorAudio) motorAudio.setModo(audioModo);
+      try { if (micTrack) micTrack.contentHint = audioModo === "musica" ? "music" : "speech"; } catch {}
+      const nota = { voz: "🎙️ Modo Voz: eco y ruido fuera, tu voz al frente.", musica: "🎵 Modo Música: sin filtros de llamada, instrumentos completos.", ambiente: "🌿 Modo Ambiente: el sonido del lugar se queda, sin eco." };
+      toast(nota[audioModo] || "", 4500);
+    };
   }
 
   function toggleMic() {
     micOn = !micOn;
     if (micTrack) micTrack.enabled = micOn;
+    if (micTrackLo) micTrackLo.enabled = micOn;
     $("btn-mic").textContent = micOn ? "🎙️" : "🔇";
     $("btn-mic").classList.toggle("off", !micOn);
     if (!micOn && !shownMicToast) {
@@ -942,7 +996,7 @@
     let screenStream;
     try {
       screenStream = await withTimeout(
-        navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false }),
+        navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true }),
         15000
       );
     } catch {
@@ -957,6 +1011,10 @@
     if (motor) motor.setTrack(screenTrack);
     player.srcObject = micTrack ? new MediaStream([screenTrack, micTrack]) : screenStream;
     screenTrack.onended = () => stopScreenShare();
+    // Si la pantalla trae audio (música, un video), entra por debajo de la
+    // voz y baja solo cuando hablas: primero la voz, luego los instrumentos.
+    const screenAudio = screenStream.getAudioTracks()[0] || null;
+    if (motorAudio) motorAudio.setMusica(screenAudio);
     usingScreenShare = true;
     $("btn-screen").classList.add("active");
     $("btn-screen").title = "Dejar de compartir pantalla";
@@ -964,12 +1022,15 @@
     // y si su pantalla todavía muestra esta misma página, un "espejo infinito"
     // con menos elementos encima se ve/graba mejor. Vuelve solo al terminar.
     $("chat-panel").style.display = "none";
-    toast("🖥️ Compartiendo pantalla. Si tu pantalla muestra esta misma página, cambia a la app que quieres mostrar — la transmisión sigue aunque salgas de aquí.", 9000);
+    toast(screenAudio
+      ? "🖥️ Compartiendo pantalla con su audio, por debajo de tu voz. Si muestra esta misma página, cambia a la app que quieres enseñar."
+      : "🖥️ Compartiendo pantalla. Si tu pantalla muestra esta misma página, cambia a la app que quieres mostrar — la transmisión sigue aunque salgas de aquí.", 9000);
   }
 
   async function stopScreenShare() {
     if (!usingScreenShare) return;
     usingScreenShare = false;
+    if (motorAudio) motorAudio.setMusica(null);
     $("btn-screen").classList.remove("active");
     $("btn-screen").title = "Compartir pantalla";
     $("chat-panel").style.display = chatVisible ? "flex" : "none";
@@ -1421,11 +1482,13 @@
     sheet.className = "sheet";
     sheet.innerHTML = `
       <div class="sheet-inner">
-        <h3>${opts.farewell ? "La transmisión terminó" : "Mandar dinero"}</h3>
-        ${opts.farewell ? `<p class="sheet-sub">Nada quedó grabado, como prometimos. Si te gustó, puedes dejar una propina de despedida.</p>` : ""}
+        <h3>${opts.farewell ? "La transmisión terminó" : `Mandar dinero a ${roomTitle || "quien transmite"}`}</h3>
+        <p class="sheet-sub">${opts.farewell
+          ? `Nada quedó grabado, como prometimos. Si te gustó, puedes dejar una propina de despedida: le llega a ${roomTitle || "quien transmitió"} con tu nombre aunque ya haya cerrado.`
+          : `Le llega al instante, con tu nombre, y lo ve en pantalla. El 90 % es para ${roomTitle || "quien transmite"}; los dos reciben su recibo por correo.`}</p>
         <div class="amounts">${amounts.map((a) => `<button data-amt="${a}">$${a / 100}</button>`).join("")}</div>
         <input id="tip-msg" maxlength="${opts.farewell || !hl.length ? 60 : 140}" placeholder="${hl.length && !opts.farewell ? "Mensaje o pregunta (opcional para propina, obligatorio para destacar)" : "Mensaje (opcional)"}">
-        ${!opts.farewell && hl.length ? `<p class="sheet-sub">⭐ Destacar mi mensaje 3 minutos arriba del chat</p><div class="amounts">${hl.map((a) => `<button class="hl" data-hl="${a}">$${a / 100}</button>`).join("")}</div>` : ""}
+        ${!opts.farewell && hl.length ? `<p class="sheet-sub">⭐ Destacar mi mensaje: 3 minutos fijo arriba del chat, en dorado. ${roomTitle || "Quien transmite"} lo ve seguro.</p><div class="amounts">${hl.map((a) => `<button class="hl" data-hl="${a}">$${a / 100}</button>`).join("")}</div>` : ""}
         <button id="tip-cancel">${opts.farewell ? "Cerrar" : "Cancelar"}</button>
       </div>`;
     document.body.appendChild(sheet);
@@ -1445,10 +1508,17 @@
           ? await api(`/api/rooms/${slug}/highlight`, { body: { amount_cents, text: message } })
           : await api(`/api/rooms/${slug}/tip`, { body: { amount_cents, message } });
         finish();
-        if (res.error === "saldo_insuficiente") toast("Sin saldo suficiente. Recarga en tu monedero.");
-        else if (res.error === "sala_cerrada") toast("La sala ya cerró hace rato.");
-        else if (res.error) toast("No se pudo mandar el dinero.");
-        else { if (isHl) toast("⭐ Tu mensaje quedó destacado 3 minutos."); announceRelics(res.new_relics); }
+        if (res.error === "saldo_insuficiente") {
+          const falta = Math.max(0, amount_cents - ((me && me.balance_cents) || 0));
+          toast(`Te faltan ${pesos(falta)} para esto. Te llevamos a recargar y te regresamos aquí; la sala sigue abierta.`, 5000);
+          irARecargar(falta);
+        } else if (res.error === "sala_cerrada") toast("La sala ya cerró hace rato. No se te cobró nada.");
+        else if (res.error) toast("No se pudo mandar. No se te cobró nada; intenta de nuevo.");
+        else {
+          if (me) me.balance_cents = Math.max(0, (me.balance_cents || 0) - amount_cents);
+          toast(isHl ? `⭐ Tu mensaje quedó destacado 3 minutos. ${roomTitle || "Quien transmite"} ya lo ve. Tu recibo va en camino.` : `💵 Llegó. ${roomTitle || "Quien transmite"} ya lo vio con tu nombre. Tu recibo va en camino.`, 5000);
+          announceRelics(res.new_relics);
+        }
       };
     });
     sheet.querySelector("#tip-cancel").onclick = finish;
@@ -1505,15 +1575,31 @@
           mb.textContent = `Miembro hasta el ${new Date(offer.member_until * 1000).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
           mb.disabled = true;
         } else {
-          mb.textContent = `Membresía · $${Math.round(offer.membership_cents / 100)} al mes, entra siempre`;
+          const etiquetaMb = `Membresía · ${pesos(offer.membership_cents)} al mes, entra siempre`;
+          mb.textContent = etiquetaMb;
+          // Dos toques en el mismo botón, sin diálogo del navegador: el primero
+          // dice exactamente qué se cobra y qué se obtiene; el segundo confirma.
+          let confirmando = null;
           guarded(mb, async () => {
             if (!me) return requireLogin();
-            if (!confirm(`¿Comprar la membresía mensual por $${Math.round(offer.membership_cents / 100)}? Entras todas las veces que quieras durante 30 días, sin pagar la hora.`)) return;
+            if (!confirmando) {
+              mb.textContent = `Confirmar ${pesos(offer.membership_cents)} · 30 días, entras siempre`;
+              mb.classList.add("confirmando");
+              confirmando = setTimeout(() => { confirmando = null; mb.textContent = etiquetaMb; mb.classList.remove("confirmando"); }, 6000);
+              return;
+            }
+            clearTimeout(confirmando); confirmando = null; mb.classList.remove("confirmando");
             const res = await api(`/api/rooms/${slug}/membership`, { body: {} });
-            if (res.error === "saldo_insuficiente") return toast("Sin saldo suficiente. Recarga en tu monedero.");
-            if (res.error) return toast("No se pudo comprar la membresía.");
-            toast("✅ Ya eres miembro. Entra cuando quieras.", 5000);
-            mb.textContent = "Eres miembro"; mb.disabled = true;
+            if (res.error === "saldo_insuficiente") {
+              mb.textContent = etiquetaMb;
+              const falta = Math.max(0, offer.membership_cents - ((me && me.balance_cents) || 0));
+              toast(`Te faltan ${pesos(falta)} para la membresía. Te llevamos a recargar y te regresamos aquí.`, 5000);
+              return irARecargar(falta);
+            }
+            if (res.error) { mb.textContent = etiquetaMb; return toast("No se pudo comprar la membresía. No se te cobró nada; intenta de nuevo."); }
+            const hasta = res.expires_at ? new Date(res.expires_at * 1000).toLocaleDateString("es-MX", { day: "numeric", month: "long" }) : null;
+            toast(`🪪 Ya eres miembro${hasta ? ` hasta el ${hasta}` : ""}. Entra cuando quieras, sin pagar la hora. Tu recibo va en camino.`, 6000);
+            mb.textContent = hasta ? `Miembro hasta el ${hasta}` : "Eres miembro"; mb.disabled = true;
             $("btn-enter").textContent = "Entrar · eres miembro";
           });
         }
@@ -1546,9 +1632,17 @@
       if (!me) return requireLogin();
       beginConnecting("Verificando tu pase…");
       const res = await api(`/api/rooms/${slug}/pass`, { body: { device_id: "web" } });
-      if (res.error === "saldo_insuficiente") { endConnecting(); return toast(`Te falta saldo: esta sala cuesta $${Math.round((res.price_cents || 2000) / 100)} la hora. Recarga en tu monedero.`, 6000); }
-      if (res.error) { endConnecting(); return toast("No se pudo entrar a la sala."); }
+      if (res.error === "saldo_insuficiente") {
+        endConnecting();
+        const falta = Math.max(0, (res.price_cents || 2000) - ((me && me.balance_cents) || 0));
+        toast(`Te faltan ${pesos(falta)} para entrar. Te llevamos a recargar y te regresamos a esta sala; sigue abierta.`, 6000);
+        return irARecargar(falta);
+      }
+      if (res.error === "sala_cerrada") { endConnecting(); return toast("La sala cerró hace un momento. No se te cobró nada."); }
+      if (res.error) { endConnecting(); return toast("No se pudo entrar. No se te cobró nada; intenta de nuevo."); }
       await startSubscribing();
+      if (res.charged && res.expires_at) toast(`🎟️ Adentro. Tu hora vale hasta las ${horaCDMX(res.expires_at)}; puedes salir y volver. Tu recibo va en camino a tu correo.`, 6500);
+      else if (res.member) toast("🪪 Adentro como miembro, sin pagar la hora.", 4000);
       announceRelics(res.new_relics);
     });
     guarded($("btn-notify"), async () => {
@@ -1662,7 +1756,7 @@
   if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
     window.__vr = {
       simular: (msg) => ws && ws.onmessage({ data: JSON.stringify(msg) }),
-      estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld }),
+      estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld, audio: motorAudio && { modo: motorAudio.modo, procesado: motorAudio.procesado, nivel: motorAudio.nivel() } }),
     };
   }
 })();

@@ -179,3 +179,30 @@ Decisiones de producto (4-oct-2026): nada se graba; en vivo real con
 reconexión, no un buffer de 5 minutos (eso sería un retraso de 5 minutos); 8K
 no existe hoy en navegadores ni cámaras de teléfono, el motor apunta al máximo
 real del aparato.
+
+## Audio: captar todo, limpiar poquito, la voz al frente
+
+`public/motor-audio.js`. Al micrófono se le pide todo (48 kHz, estéreo, 24
+bits) y el trato depende del **modo** que elige el creador en el dock:
+**Voz** (eco y ruido fuera, aislamiento de voz donde existe), **Música** (sin
+los filtros de llamada, que aplastan instrumentos) y **Ambiente** (el sonido
+del lugar se queda, sin eco). La cadena, en el aparato del creador (~10 ms):
+corte de graves, menos "caja" en 160 Hz, presencia en 3 kHz, aire arriba de
+9 kHz, puerta suave que baja −18 dB cuando nadie habla (nunca corta a cero),
+compresor que empareja y limitador que impide distorsión. Si comparte
+pantalla con audio, ese audio entra por debajo de la voz y baja solo cuando
+habla (ducking): primero la voz, luego los instrumentos. Se publican dos
+versiones ya procesadas, `audio` (Opus hasta 128 kb/s, estéreo, FEC) y
+`audio_lo` (48 kb/s) que el SFU entrega a quien pide la capa baja de video.
+Con un solo micrófono no se puede separar voz de instrumentos; lo que sí: que
+la voz quede al frente por ecualización y compresión, y que lo que viene por
+otra fuente baje cuando la persona habla.
+
+## Textos alrededor del cobro
+
+Regla: a menor duda, mayor conexión. Portada con lo que le llega al creador y
+el aviso de los recibos; hoja de propinas que dice a quién, cuánto le llega y
+que lo ve con tu nombre; membresía con dos toques claros en vez del diálogo
+del navegador; montos siempre exactos ($37.50, no $38); si falta saldo, el
+monedero dice cuánto falta, marca el monto que alcanza y regresa solo a la
+sala al terminar de recargar (`?volver=&falta=`). El FAQ ya no dice "$20 fijos".

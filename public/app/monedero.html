@@ -53,6 +53,14 @@ function showToast(msg, ms) {
   setTimeout(() => el.classList.remove('show'), ms || 3200);
 }
 
+function pesosM(cents) {
+  const c = Math.round(Number(cents) || 0);
+  return `$${(c / 100).toLocaleString('es-MX', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
+}
+function escapeHtmlM(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function animateBalance(el, fromCents, toCents, duration) {
   duration = duration || 1000;
   const start = performance.now();
@@ -82,7 +90,12 @@ function spawnFloatingCash() {
 async function main() {
   const params = new URLSearchParams(location.search);
   const recarga = params.get('recarga');
-  if (recarga) history.replaceState(null, '', '/app/monedero');
+  // Viene de una sala sin saldo suficiente: se guarda a dónde regresar y
+  // cuánto le faltaba, para llevarlo de vuelta en cuanto recargue.
+  const volver = params.get('volver');
+  const falta = Number(params.get('falta') || 0);
+  if (volver && /^\/[a-z0-9-]+$/i.test(volver)) { sessionStorage.setItem('vr_volver', volver); if (falta > 0) sessionStorage.setItem('vr_falta', String(falta)); }
+  if (recarga || volver) history.replaceState(null, '', '/app/monedero');
 
   const res = await fetch('/api/wallet/me');
   const content = document.getElementById('content');
@@ -101,7 +114,8 @@ async function main() {
     <div class="balance-box">
       <div class="label">Tu saldo</div>
       <div class="amount" id="balance-amount">$${(me.balance_cents/100).toFixed(0)}</div>
-      <p class="muted">Entrar a una sala cuesta $20 MXN por hora.</p>
+      <p class="muted">Entrar a una sala cuesta lo que ponga cada creador, desde $20 la hora. Tu saldo no caduca.</p>
+      <div id="volver-aviso" class="volver-aviso" style="display:none"></div>
       <div class="amount-grid">
         <button data-amt="2000">$20</button>
         <button data-amt="6000">$60</button>
@@ -111,7 +125,7 @@ async function main() {
         <button data-amt="96000">$960</button>
         <button data-amt="192000" class="wide">$1,920</button>
       </div>
-      <p class="muted">Tu saldo sirve para entrar a salas y mandar dinero a creadores.</p>
+      <p class="muted">Pagas con tarjeta por Stripe y el saldo aparece al instante, con tu recibo y folio en el correo. Sirve para entrar a salas, mandar dinero y membresías; lo que no uses se queda.</p>
     </div>
     <div class="balance-box status-box" id="status-box" style="display:none">
       <div class="label">Tu estatus</div>
@@ -187,6 +201,38 @@ async function main() {
       alert('No se pudo iniciar el pago. Intenta de nuevo.');
     };
   });
+  // Regreso a la sala: si venía de una sala sin saldo, se le dice cuánto le
+  // faltaba y se le marca el monto que le alcanza; al volver de Stripe con la
+  // recarga hecha, un botón grande lo regresa (y solo, en unos segundos).
+  const volverA = sessionStorage.getItem('vr_volver');
+  const faltaba = Number(sessionStorage.getItem('vr_falta') || 0);
+  const aviso = document.getElementById('volver-aviso');
+  if (volverA && aviso) {
+    let nombreSala = volverA.slice(1);
+    // El nombre de la sala, no su slug: "la sala de Ana Creadora".
+    fetch(`/api/rooms/${encodeURIComponent(nombreSala)}/status`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (j && j.room && j.room.title) aviso.querySelectorAll('strong').forEach((el) => { if (el.textContent === nombreSala) el.textContent = j.room.title; });
+    }).catch(() => {});
+    if (recarga === 'ok') {
+      sessionStorage.removeItem('vr_volver'); sessionStorage.removeItem('vr_falta');
+      aviso.innerHTML = `<strong>Listo, ya tienes saldo.</strong> Te regresamos a la sala de <strong>${escapeHtmlM(nombreSala)}</strong> en <span id="volver-cuenta">5</span> s… <a href="${escapeHtmlM(volverA)}"><button class="btn-primary" style="margin-top:8px">Volver a la sala ahora</button></a>`;
+      aviso.style.display = 'block';
+      let n = 5;
+      const t = setInterval(() => { n--; const c = document.getElementById('volver-cuenta'); if (c) c.textContent = String(n); if (n <= 0) { clearInterval(t); location.href = volverA; } }, 1000);
+    } else if (recarga !== 'cancelada') {
+      aviso.innerHTML = `${faltaba > 0 ? `Te faltan <strong>$${(faltaba / 100).toLocaleString('es-MX', { minimumFractionDigits: faltaba % 100 ? 2 : 0 })}</strong> para entrar a la sala de <strong>${escapeHtmlM(nombreSala)}</strong>.` : `Vienes de la sala de <strong>${escapeHtmlM(nombreSala)}</strong>.`} Recarga y te regresamos solos; la sala sigue abierta.`;
+      aviso.style.display = 'block';
+      if (faltaba > 0) {
+        const botones = Array.from(content.querySelectorAll('[data-amt]'));
+        botones.forEach((b) => b.classList.remove('featured'));
+        const justo = botones.find((b) => Number(b.dataset.amt) >= faltaba) || botones[botones.length - 1];
+        if (justo) justo.classList.add('featured');
+      }
+    } else {
+      aviso.innerHTML = `No pasa nada: no se te cobró. Cuando quieras, recarga y te regresamos a la sala de <strong>${escapeHtmlM(nombreSala)}</strong>.`;
+      aviso.style.display = 'block';
+    }
+  }
   const btnRetiro = document.getElementById('btn-retiro');
   if (btnRetiro) {
     btnRetiro.onclick = async () => {
@@ -282,13 +328,13 @@ function renderRoom(room) {
       <div class="label">Cuánto cobras</div>
       <p class="muted" style="margin:4px 0 12px;">Tú decides el precio de tu hora. La plataforma se queda con el 25% (mínimo $10): subir el precio te conviene más a ti que a nosotros.</p>
       <div class="price-grid" id="price-grid">
-        ${(room.price_options_cents || [2000]).map((p) => `<button data-price="${p}" class="${p === room.price_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas $${Math.round((p - Math.max(1000, Math.round(p * 0.25))) / 100).toLocaleString('es-MX')}</span></button>`).join('')}
+        ${(room.price_options_cents || [2000]).map((p) => `<button data-price="${p}" class="${p === room.price_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas ${pesosM(p - Math.max(1000, Math.round(p * 0.25)))}</span></button>`).join('')}
       </div>
       <div class="label" style="margin-top:18px;">Membresía mensual <span class="muted" style="font-weight:400">(opcional)</span></div>
       <p class="muted" style="margin:4px 0 12px;">Quien la compre entra todas las veces que quiera durante 30 días sin pagar la hora. Te quedas con el 80%.</p>
       <div class="price-grid" id="membership-grid">
         <button data-membership="0" class="${!room.membership_cents ? 'active' : ''}"><strong>Sin membresía</strong><span>solo por hora</span></button>
-        ${(room.membership_options_cents || []).map((p) => `<button data-membership="${p}" class="${p === room.membership_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas $${Math.round(p * 0.8 / 100).toLocaleString('es-MX')}</span></button>`).join('')}
+        ${(room.membership_options_cents || []).map((p) => `<button data-membership="${p}" class="${p === room.membership_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas ${pesosM(p - Math.round(p * 0.2))}</span></button>`).join('')}
       </div>
       <div class="label" style="margin-top:18px;">Meta de propinas por transmisión <span class="muted" style="font-weight:400">(opcional)</span></div>
       <p class="muted" style="margin:4px 0 12px;">Todos ven una barra llenarse en la sala. Una meta visible sube las propinas; vacía la casilla para quitarla.</p>
@@ -363,7 +409,7 @@ function renderRoom(room) {
   });
   document.querySelectorAll('#membership-grid button').forEach((b) => b.onclick = async () => {
     const m = Number(b.dataset.membership) || null;
-    if (await saveSettings({ membership_cents: m }, m ? `✅ Membresía mensual a $${Math.round(m / 100)}. Te quedas con $${Math.round(m * 0.8 / 100)} por cada una.` : 'Membresía desactivada.')) {
+    if (await saveSettings({ membership_cents: m }, m ? `✅ Membresía mensual a ${pesosM(m)}. Te quedas con ${pesosM(m - Math.round(m * 0.2))} por cada una.` : 'Membresía desactivada.')) {
       document.querySelectorAll('#membership-grid button').forEach((x) => x.classList.toggle('active', x === b)); room.membership_cents = m;
     }
   });

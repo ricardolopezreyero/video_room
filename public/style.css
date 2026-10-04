@@ -980,3 +980,12 @@ html.vr-saliendo body {
 .reconnect-dots span:nth-child(3) { animation-delay: .3s; }
 .reconnect-banner.volvio .reconnect-dots { display: none; }
 #player.esperando { filter: brightness(.45) saturate(.6); transition: filter .4s ease; }
+
+
+/* Cobros: claridad y regreso */
+.volver-aviso {
+  background: var(--blue-soft); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: #1a1a1a;
+}
+.volver-aviso strong { color: var(--navy); }
+.btn-ghost.confirmando { border-color: var(--green, #56EF9F); color: var(--green, #56EF9F); font-weight: 800; }
