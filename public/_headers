@@ -1,31 +1,44 @@
+# RLR · Cabeceras: lo estático vive en el navegador y se renueva por detrás
+# (stale-while-revalidate), así que una segunda visita nunca espera a la red.
+# Las páginas HTML de la app no traen datos (los piden a /api), por eso pueden
+# servirse al instante y actualizarse en silencio. Link: preload = Early Hints.
+
 /*.html
   Content-Type: text/html; charset=utf-8
 
 /
   Content-Type: text/html; charset=utf-8
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400
+  Link: </style.css>; rel=preload; as=style, </veloz.js>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin
 
-/app/monedero
+/app/*
   Content-Type: text/html; charset=utf-8
+  Cache-Control: public, max-age=0, stale-while-revalidate=86400
+  Link: </style.css>; rel=preload; as=style, </veloz.js>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin
 
-/app/estadisticas
-  Content-Type: text/html; charset=utf-8
+/style.css
+  Cache-Control: public, max-age=600, stale-while-revalidate=604800
 
-/app/transacciones
-  Content-Type: text/html; charset=utf-8
+/veloz.js
+  Cache-Control: public, max-age=600, stale-while-revalidate=604800
 
-/app/manifiesto
-  Content-Type: text/html; charset=utf-8
+/room.js
+  Cache-Control: public, max-age=600, stale-while-revalidate=604800
 
-/app/faq
-  Content-Type: text/html; charset=utf-8
+/utm.js
+  Cache-Control: public, max-age=600, stale-while-revalidate=604800
 
-/app/bienvenida
-  Content-Type: text/html; charset=utf-8
+/og-default.svg
+  Cache-Control: public, max-age=600, stale-while-revalidate=604800
 
-/app/api
-  Content-Type: text/html; charset=utf-8
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/sw.js
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache
 
 /embed.js
   Content-Type: text/javascript; charset=utf-8
   Access-Control-Allow-Origin: *
-  Cache-Control: public, max-age=300
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400

@@ -17,8 +17,13 @@ export function renderRoomPage(opts: {
   viewerCount: number;
   appUrl: string;
   status?: { rank: { code: string; name: string }; hours: number; relics: { code: string; name: string; icon: string }[] } | null;
+  /** Lo que room.js pedía a /api al arrancar (estado, quién soy, oferta):
+   *  va dentro del HTML para que la sala sea usable en cuanto se pinta. */
+  inicio?: unknown;
 }): string {
-  const { room, ownerAvatar, live, viewerCount, appUrl, status } = opts;
+  const { room, ownerAvatar, live, viewerCount, appUrl, status, inicio } = opts;
+  // "<" escapado: un título con "</script>" no puede romper la página.
+  const inicioJson = inicio ? JSON.stringify(inicio).replace(/</g, "\\u003c") : null;
   // Estatus bajo el nombre: el rango (si ya pasó de "Nuevo") y hasta cinco
   // reliquias. Discreto a propósito — es una firma, no un marcador.
   const statusHtml = status && (status.rank.code !== "nuevo" || status.relics.length)
@@ -65,10 +70,10 @@ export function renderRoomPage(opts: {
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${seoDesc}">
 <meta name="twitter:image" content="${ogImage}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="/og-default.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
+<script src="/veloz.js"></script>
 </head>
 <body data-slug="${room.slug}" data-live="${live}">
   <div id="app" class="room-app">
@@ -157,6 +162,7 @@ export function renderRoomPage(opts: {
       </div>
     </div>
   </div>
+  ${inicioJson ? `<script>window.__VR_INICIO = ${inicioJson};</script>` : ""}
   <script src="/room.js" defer></script>
 </body>
 </html>`;

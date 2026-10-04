@@ -17,7 +17,8 @@ import { currentUser } from "./lib/current-user";
 import { endLiveSession } from "./lib/room-lifecycle";
 import { sendEmail } from "./lib/email";
 import { isReservedSlug } from "./lib/slugs";
-import { publicStatusFor } from "./lib/status";
+import { publicStatusRead, evaluateRelics } from "./lib/status";
+import { HIGHLIGHT_OPTIONS_CENTS } from "./lib/pricing";
 import type { Room, Session } from "./lib/db";
 
 const ADMIN_EMAIL = "Ricardo@superleads.mx";
@@ -218,28 +219,64 @@ app.get("/:slug", async (c) => {
     });
   }
 
-  const room = await c.env.DB.prepare(
-    "SELECT rooms.*, users.avatar_url as owner_avatar FROM rooms JOIN users ON users.id = rooms.owner_id WHERE rooms.slug = ?"
-  ).bind(slug).first<Room & { owner_avatar: string | null }>();
+  // Camino crítico de todo el producto: es el link que se comparte. Antes
+  // eran ~10 consultas en serie (≈1 s de espera) y luego room.js pedía tres
+  // cosas más antes de ser usable. Ahora: dos rondas en paralelo, y lo que
+  // room.js necesita al arrancar (estado, quién soy, oferta) va incrustado
+  // en el HTML. La sala es usable en cuanto se pinta.
+  const [room, user] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT rooms.*, users.avatar_url as owner_avatar FROM rooms JOIN users ON users.id = rooms.owner_id WHERE rooms.slug = ?"
+    ).bind(slug).first<Room & { owner_avatar: string | null }>(),
+    currentUser(c).catch(() => null),
+  ]);
   if (!room) return c.html(roomNotFoundPage(), 404);
-  const live = await c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'")
-    .bind(room.id)
-    .first<Session>();
 
-  let viewerCount = 0;
-  if (live) {
-    const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-    const res = await stub.fetch("https://do/sfu-session");
-    const info = await res.json<{ viewerCount?: number }>().catch(() => ({ viewerCount: 0 }));
-    viewerCount = info.viewerCount ?? 0;
-  }
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const [live, status, membership, info] = await Promise.all([
+    c.env.DB.prepare("SELECT * FROM sessions WHERE room_id = ? AND status = 'live'").bind(room.id).first<Session>(),
+    // Estatus público del creador (rango + reliquias), solo lectura. Si
+    // falla, la sala se pinta igual, sin estatus.
+    publicStatusRead(c.env, room.owner_id).catch(() => null),
+    user
+      ? c.env.DB.prepare(
+          "SELECT expires_at FROM memberships WHERE room_id = ? AND user_id = ? AND expires_at > unixepoch() ORDER BY expires_at DESC LIMIT 1"
+        ).bind(room.id, user.id).first<{ expires_at: number }>()
+      : Promise.resolve(null),
+    stub.fetch("https://do/sfu-session").then((r) => r.json<{ viewerCount?: number }>()).catch(() => ({ viewerCount: 0 })),
+  ]);
+  // Las reliquias pendientes se otorgan después de responder: lo ganado se
+  // ve en la siguiente visita, y esta no espera por ello.
+  c.executionCtx.waitUntil(evaluateRelics(c.env, room.owner_id).then(() => undefined).catch(() => undefined));
 
-  // Estatus público del creador (rango + reliquias): es lo que se enseña bajo
-  // su nombre. Si falla, la sala se pinta igual, sin estatus.
-  const status = await publicStatusFor(c.env, room.owner_id).catch(() => null);
+  const viewerCount = live ? (info.viewerCount ?? 0) : 0;
+  const { owner_avatar, ...roomRow } = room;
+  const inicio = {
+    // Misma forma que /api/rooms/:slug/status, /api/wallet/me y
+    // /api/rooms/:slug/offer: room.js no distingue de dónde vinieron.
+    status: { room: roomRow, live_session: live ?? null },
+    me: user
+      ? { id: user.id, name: user.name, avatar_url: user.avatar_url, balance_cents: user.balance_cents, creator_balance_cents: user.creator_balance_cents }
+      : null,
+    offer: {
+      price_cents: room.price_cents || 2000,
+      membership_cents: room.membership_cents,
+      tip_goal_cents: room.tip_goal_cents,
+      highlight_options_cents: HIGHLIGHT_OPTIONS_CENTS,
+      member_until: membership?.expires_at ?? null,
+    },
+  };
 
+  // El HTML lleva datos de quien lo pide: nunca compartido, nunca servido
+  // viejo. Link: lo que la página va a necesitar, anunciado desde ya
+  // (Early Hints) para que baje en paralelo con el HTML mismo.
+  c.header("Cache-Control", "private, no-cache");
+  c.header(
+    "Link",
+    "</style.css>; rel=preload; as=style, </veloz.js>; rel=preload; as=script, </room.js>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin"
+  );
   return c.html(
-    renderRoomPage({ room, ownerAvatar: room.owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status })
+    renderRoomPage({ room: roomRow, ownerAvatar: owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status, inicio })
   );
 });
 

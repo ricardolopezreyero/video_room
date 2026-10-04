@@ -73,3 +73,39 @@ npx wrangler dev --port 8787
 ## Login
 
 Este servicio entra con el login único de CapitalTorreon: **[login.capitaltorreon.com](https://login.capitaltorreon.com)**. Todo funciona sin entrar; entrar solo agrega (guardar, recuperar, ser reconocido). El botón se monta solo con dos líneas (`<div data-login-ct>` + `login.js`) y el servidor verifica el pase con `verificar.js`; nunca se agrega un origen en Google Cloud ni se pone un botón de Google propio. El porqué y las reglas, en [El camino del login](https://github.com/ricardolopezreyero/login-capitaltorreon/blob/main/docs/El_Camino_del_Login_v1_2026-10-04_1135.md).
+
+## Velocidad: del clic a la página siguiente
+
+El sistema es chico y cerrado, así que desde cada pantalla se sabe a dónde es
+probable que vaya la persona. Todo lo que sigue vive en `public/veloz.js`,
+`public/sw.js` y la ruta de la sala en `src/index.ts`:
+
+- **La página siguiente ya está aquí.** Un service worker guarda las páginas
+  de la app, estilos, scripts y fuentes en el disco del teléfono y las sirve
+  al instante (y las renueva por detrás). En Chrome, además, la pantalla más
+  probable se deja pintada por adelantado (Speculation Rules) y las demás se
+  prerenderizan al pasar el mouse o bajar el dedo.
+- **Los datos también.** Cada pantalla declara qué pide a `/api` al abrir;
+  esos datos se traen antes del clic y se guardan como copia de un solo uso.
+  Al abrir, la página pinta con la copia (0 ms) y, si la copia tenía edad,
+  la verifica por detrás: el evento `vr:fresco` repinta solo el bloque que
+  cambió.
+- **La sala, sin viajes.** El link que se comparte traía ~10 consultas en
+  serie y luego tres llamadas más antes de ser usable. Ahora son dos rondas
+  en paralelo y los datos de arranque van incrustados en el HTML
+  (`window.__VR_INICIO`); las reliquias pendientes se otorgan después de
+  responder.
+- **El clic se siente al presionar.** La navegación arranca en `pointerdown`
+  (con el mouse) o al soltar sin haber arrastrado (con el dedo); el botón se
+  hunde y la página se atenúa en el mismo cuadro, y el cambio de página es
+  una transición corta (View Transitions) en vez de un parpadeo.
+- **Aprende de cada persona.** Las rutas que toma suman a su propia tabla de
+  probabilidades (en su navegador) y las siguientes visitas precargan primero
+  lo que ella de verdad usa.
+- **Fuentes propias.** Plus Jakarta Sans se sirve desde `public/fonts/` (un
+  solo archivo variable): sin los dos dominios de Google Fonts ni el brinco
+  del texto.
+
+Para medir: `bash herramientas/velocidad.sh` (producción) o con la URL del
+servidor local. Mide el servidor; lo que el service worker y las copias
+ahorran encima se ve en el panel Network del navegador.

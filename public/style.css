@@ -1,3 +1,22 @@
+/* RLR · Tipografía local: un solo archivo variable (pesos 200–800) servido
+   desde aquí y guardado por el service worker. Antes venía de Google Fonts:
+   dos dominios más (DNS + TLS) en cada primera visita y un brinco del texto
+   cuando por fin llegaba. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/fonts/plus-jakarta-sans.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/fonts/plus-jakarta-sans-italic.woff2) format("woff2");
+}
+
 /* Paleta neutra a propósito: un solo acento (verde) en vez de dos colores de
    marca compitiendo — mismos nombres de variable que antes para no tocar
    cada punto de uso, solo se les quita el tinte azul. */
@@ -902,3 +921,29 @@ figure.chart .tip { position: absolute; top: -4px; transform: translate(-50%, -1
   color: #fff; padding: 12px; border-radius: 10px; font-family: inherit; cursor: pointer;
 }
 .viewers-empty { text-align: center; color: #6b7280; font-size: 12.5px; padding: 24px 0; }
+
+
+/* ===== Velocidad: lo que se siente entre el clic y la página siguiente =====
+   La página siguiente ya está aquí (veloz.js + sw.js); esto es solo para que
+   el ojo registre el clic en el mismo cuadro y el cambio de página se sienta
+   como un movimiento y no como un parpadeo. Todo corto a propósito: cada
+   milisegundo de animación es un milisegundo que la persona espera. */
+.vr-pressed {
+  transform: scale(.97) !important;
+  opacity: .82;
+  transition: transform 50ms ease-out, opacity 50ms ease-out !important;
+}
+a.vr-pressed { display: inline-block; }
+html.vr-saliendo body {
+  opacity: .55;
+  transition: opacity 120ms ease-out;
+}
+@view-transition { navigation: auto; }
+::view-transition-old(root) { animation: 70ms ease-out both vr-salir; }
+::view-transition-new(root) { animation: 120ms ease-out both vr-entrar; }
+@keyframes vr-salir { to { opacity: 0; } }
+@keyframes vr-entrar { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+  html.vr-saliendo body { transition: none; }
+}

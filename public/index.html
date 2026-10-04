@@ -9,10 +9,10 @@
 <meta name="author" content="Ricardo López Reyero">
 <meta name="build" content="eye">
 <meta name="rev" content="181218">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="/og-default.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
+<script src="/veloz.js"></script>
 <script src="/utm.js"></script>
 </head>
 <body>
@@ -102,7 +102,11 @@ async function loadPhrase(elId, animate) {
 function schedulePhraseRefresh(elId) {
   const delay = nextPhraseBoundaryMs(Date.now()) - Date.now() + 500;
   setTimeout(() => { loadPhrase(elId, true); schedulePhraseRefresh(elId); }, delay);
-}
+}// Datos frescos (veloz.js): la página se pintó al instante con una copia
+// precargada; si la versión real difiere, se repinta solo ese bloque. La
+// lectura sale de la copia ya verificada, sin otra petición.
+window.addEventListener('vr:fresco', (e) => { if (e.detail.url.startsWith('/api/phrase')) loadPhrase('footer-phrase', true); });
+
 loadPhrase('footer-phrase', false);
 schedulePhraseRefresh('footer-phrase');
 </script>

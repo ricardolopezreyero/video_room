@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Tu monedero — Video Room</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="/og-default.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
+<script src="/veloz.js"></script>
 </head>
 <body class="app-shell">
 <nav class="nav">
@@ -640,6 +640,28 @@ function schedulePhraseRefresh(elId) {
 
 loadNotifications();
 setInterval(loadNotifications, 30000);
+// Datos frescos (veloz.js): la página se pintó al instante con una copia
+// precargada; si la versión real difiere, se repinta solo ese bloque. La
+// lectura sale de la copia ya verificada, sin otra petición.
+window.addEventListener('vr:fresco', (e) => {
+  const u = e.detail.url;
+  if (u.startsWith('/api/wallet/me')) refrescarSaldos();
+  else if (u.startsWith('/api/rooms/mine')) loadRoom(false);
+  else if (u.startsWith('/api/status/me')) loadStatus();
+  else if (u.startsWith('/api/notifications')) loadNotifications();
+  else if (u.startsWith('/api/phrase')) loadPhrase('phrase-text', true);
+});
+async function refrescarSaldos() {
+  const r = await fetch('/api/wallet/me');
+  if (!r.ok) return;
+  const me = await r.json();
+  const b = document.getElementById('balance-amount');
+  if (b) b.textContent = '$' + (me.balance_cents / 100).toFixed(0);
+  const cb = document.getElementById('creator-balance-amount');
+  if (cb) cb.textContent = '$' + (me.creator_balance_cents / 100).toFixed(0);
+  document.getElementById('user-name').textContent = me.name || '';
+  document.getElementById('user-avatar').src = me.avatar_url || '';
+}
 
 main();
 schedulePhraseRefresh('phrase-text');

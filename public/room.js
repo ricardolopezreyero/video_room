@@ -1199,12 +1199,22 @@
   });
 
   async function init() {
-    const status = await fetch(`/api/rooms/${slug}/status`).then((r) => r.json());
+    // Los datos de arranque (estado de la sala, quién soy, oferta) vienen
+    // incrustados en el HTML (ver src/index.ts): cero viajes antes de que la
+    // sala sea usable. Si por lo que sea no vinieran, se piden los tres a la
+    // vez, no uno tras otro.
+    let status, offer;
+    const inicio = window.__VR_INICIO || null;
+    if (inicio && inicio.status) {
+      status = inicio.status; me = inicio.me || null; offer = inicio.offer || {};
+    } else {
+      [status, me, offer] = await Promise.all([
+        fetch(`/api/rooms/${slug}/status`).then((r) => r.json()),
+        fetch("/api/wallet/me").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch(`/api/rooms/${slug}/offer`).then((r) => r.json()).catch(() => ({})),
+      ]);
+    }
     if (status.error) return;
-    try {
-      const meRes = await fetch("/api/wallet/me");
-      if (meRes.ok) me = await meRes.json();
-    } catch {}
 
     connectWs();
 
@@ -1214,7 +1224,6 @@
     // Oferta de la sala: precio por hora, membresía y meta de propinas. Lo
     // que el espectador necesita saber antes de pagar, dicho claro.
     try {
-      const offer = await fetch(`/api/rooms/${slug}/offer`).then((r) => r.json());
       highlightOptions = offer.highlight_options_cents || [];
       tipGoalCents = offer.tip_goal_cents || null;
       const price = Math.round((offer.price_cents || 2000) / 100);
