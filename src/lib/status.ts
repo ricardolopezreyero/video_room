@@ -205,6 +205,9 @@ export async function statusFor(env: Env, userId: string): Promise<UserStatus> {
 
 /** Lo que se enseña en público (sala, API pública): rango de creador y reliquias ganadas. */
 export async function publicStatusFor(env: Env, userId: string): Promise<{ rank: Rank; hours: number; relics: { code: string; name: string; icon: string }[] }> {
+  // También aquí se otorga lo pendiente: lo que ya se ganó debe verse en la
+  // sala aunque el creador no haya abierto su monedero desde entonces.
+  await evaluateRelics(env, userId);
   const [c, relics] = await Promise.all([creatorHours(env, userId), earnedRelics(env, userId)]);
   return {
     rank: rankFor(CREATOR_RANKS, c.hours).current,
