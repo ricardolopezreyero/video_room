@@ -263,3 +263,17 @@ llegar el video (iPhone exigía `muted` para arrancar); la cámara del creador
 se vuelve a pedir sola si el sistema la apagó al mandar la app al fondo; si
 Android suelta el contexto WebGL, el filtro de color se apaga solo y la
 cámara sale directa; `playsinline` + `x-webkit-airplay` en el video.
+
+## Login: el de la casa
+
+Video Room entra por `login.capitaltorreon.com` (un solo Google para todos los
+servicios de CapitalTorreon). `/login` manda allá y la casa vuelve a la misma
+página con el pase; `public/puente-login.js` (va antes de `login.js`) cambia
+el pase por la sesión de Video Room en `POST /auth/ct` (verificación ES256 con
+la llave pública de la casa, `src/lib/verificar-ct.ts`), crea la cuenta y su
+sala si es la primera vez, y mantiene las dos sesiones iguales: si la casa
+cierra (`#salio=1`), aquí también (`POST /auth/salir`); `/auth/logout` cierra
+en los dos lados. La sesión son dos cookies: `vr_session` (HttpOnly) y `vr_ok`
+(visible, solo dice "hay sesión"). Quien ya entró y abre el home va directo a
+su monedero (servidor y puente); `/?ver=1` deja ver el home. El widget fijo
+de la casa es la única identidad en pantalla (la ficha propia se retiró).

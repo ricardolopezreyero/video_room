@@ -9,12 +9,12 @@
 // publicación nueva tarda exactamente una navegación en llegar; a cambio,
 // ninguna navegación espera a la red.
 var _k = "eye", _rev = 181218;
-var VERSION = "2026-10-04e";
+var VERSION = "2026-10-04f";
 var CACHE = "video-room-" + VERSION;
 var GUARDADO = [
   "/", "/app/monedero", "/app/estadisticas", "/app/transacciones", "/app/faq",
   "/app/manifiesto", "/app/api", "/app/bienvenida",
-  "/style.css", "/veloz.js", "/room.js", "/motor-video.js", "/motor-audio.js", "/utm.js", "/og-default.svg",
+  "/style.css", "/veloz.js", "/room.js", "/motor-video.js", "/motor-audio.js", "/puente-login.js", "/utm.js", "/og-default.svg",
   "/fonts/plus-jakarta-sans.woff2", "/fonts/plus-jakarta-sans-italic.woff2"
 ];
 var ES_GUARDADO = new Set(GUARDADO);

@@ -270,7 +270,8 @@
   }
 
   function requireLogin() {
-    window.location.href = "/login";
+    if (window.LoginCT) LoginCT.entrar();
+    else window.location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
   }
 
   // Sin un límite de tiempo, una red inestable (mucho más común en vivo desde

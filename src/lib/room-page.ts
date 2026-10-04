@@ -213,6 +213,10 @@ export function renderRoomPage(opts: {
   <script src="/motor-video.js${v}" defer></script>
   <script src="/motor-audio.js${v}" defer></script>
   <script src="/room.js${v}" defer></script>
+  <!-- Login de la casa, sin widget (la sala tiene su propio dock): solo el API
+       para entrar y el puente que convierte el pase en sesión de Video Room. -->
+  <script src="/puente-login.js"></script>
+  <script src="https://login.capitaltorreon.com/login.js" data-prefs="vr_audio_modo,vr_quality,vr_filtro" defer></script>
 </body>
 </html>`;
 }

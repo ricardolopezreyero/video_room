@@ -89,13 +89,12 @@
 </head>
 <body>
 <nav class="nav">
-  <a href="/" class="logo"><span>Video Room</span></a>
+  <a href="/app/monedero" class="logo"><span>Video Room</span></a>
   <div class="links">
-    <a href="/">Inicio</a>
+    <a href="/?ver=1">Inicio</a>
     <a href="/app/manifiesto">Manifiesto</a>
     <a href="/app/faq">FAQ</a>
   </div>
-  <a href="/login"><button class="btn-primary nav-cta">Ingresar</button></a>
 </nav>
 
 <section class="section-light">
@@ -221,11 +220,12 @@
 
 <footer class="site-footer">
   <div class="logo">Video Room</div>
-  <div><a href="/">Inicio</a> &nbsp;·&nbsp; <a href="/app/manifiesto">Manifiesto</a></div>
+  <div><a href="/?ver=1">Inicio</a> &nbsp;·&nbsp; <a href="/app/manifiesto">Manifiesto</a></div>
   <div style="font-size:11px; color:rgba(255,255,255,.25)">© Video Room</div>
 </footer>
 <!-- RLR · Login de CapitalTorreon: todo funciona sin entrar; entrar solo agrega -->
 <div data-login-ct style="position:fixed;top:12px;right:12px;z-index:9999"></div>
+<script src="/puente-login.js"></script>
 <script src="https://login.capitaltorreon.com/login.js" data-prefs="vr_audio_modo,vr_quality,vr_notify_minutes" defer></script>
 </body>
 </html>

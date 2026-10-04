@@ -13,7 +13,7 @@ import { phrase } from "./routes/phrase";
 import { apiV1 } from "./routes/api-v1";
 import { renderRoomPage } from "./lib/room-page";
 import { verifyUnsubscribeToken } from "./lib/unsubscribe";
-import { currentUser } from "./lib/current-user";
+import { currentUser, sessionUid } from "./lib/current-user";
 import { endLiveSession } from "./lib/room-lifecycle";
 import { sendEmail, ADMIN_EMAIL } from "./lib/email";
 import { isReservedSlug } from "./lib/slugs";
@@ -91,6 +91,18 @@ app.route("/", stats);
 app.route("/", notifications);
 app.route("/", phrase);
 app.route("/", apiV1);
+
+// Quien ya entró no necesita que le expliquen qué es Video Room: el home lo
+// manda a su monedero (con ?ver=1 se queda a verlo). El service worker puede
+// servir el home desde la caché sin pasar por aquí; para ese caso el puente
+// del login hace lo mismo del lado del navegador.
+app.get("/", async (c, next) => {
+  if (!c.req.query("ver")) {
+    const uid = await sessionUid(c).catch(() => null);
+    if (uid) return c.redirect("/app/monedero");
+  }
+  await next();
+});
 
 // El recibo como objeto: PDF con el segundo exacto en grande y las dos fotos.
 // Lo abre quien tenga la liga firmada del correo (?t=) o cualquiera de las
@@ -231,6 +243,8 @@ app.get("/ws/room/:slug", async (c) => {
 // webhook, ws, unsubscribe, /app/*, los redirects de arriba) ya hizo match
 // antes de llegar aquí, así que un segmento suelto en la raíz solo puede ser
 // el slug de una sala.
+app.get("/", (c) => c.env.ASSETS.fetch(c.req.raw));
+
 app.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
   if (isReservedSlug(slug)) return c.html(roomNotFoundPage(), 404);

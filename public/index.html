@@ -26,7 +26,6 @@
     <a href="/app/manifiesto">Manifiesto</a>
     <a href="/app/faq">FAQ</a>
   </div>
-  <a href="/login"><button class="btn-primary nav-cta">Ingresar</button></a>
 </nav>
 
 <section class="hero">
@@ -34,7 +33,7 @@
   <h1>Comparte tu link. Transmite. <em>Cobra.</em></h1>
   <p><strong>Tu sala de video en vivo donde cada persona que entra te paga.</strong></p>
   <p>Tú pones el precio de tu hora, desde $20. Propinas, membresías mensuales y mensajes destacados — todo cae a tu balance al instante. Sin seguidores mínimos, sin requisitos, sin esperar a fin de mes.</p>
-  <a href="/login"><button class="btn-primary">🔴 Crear mi sala gratis</button></a>
+  <a href="/login" onclick="if (window.VRLogin) { event.preventDefault(); VRLogin.entrar(); }"><button class="btn-primary">🔴 Crear mi sala gratis</button></a>
   <p class="fineprint">Ingresas con Google. Transmites en 30 segundos.</p>
 </section>
 
@@ -114,6 +113,7 @@ schedulePhraseRefresh('footer-phrase');
 </script>
 <!-- RLR · Login de CapitalTorreon: todo funciona sin entrar; entrar solo agrega -->
 <div data-login-ct style="position:fixed;top:12px;right:12px;z-index:9999"></div>
+<script src="/puente-login.js"></script>
 <script src="https://login.capitaltorreon.com/login.js" data-prefs="vr_audio_modo,vr_quality,vr_notify_minutes" defer></script>
 </body>
 </html>

@@ -1059,3 +1059,10 @@ body.modo-tv.en-llamada #player { object-fit: cover; }
 .tv-pasos strong { color: #fff; }
 .sheet-inner #tv-cancel, .sheet-inner #call-cancel, .sheet-inner #fx-cerrar { background: none; border: none; color: #9aa1b0; padding: 8px 0; cursor: pointer; font-family: inherit; }
 .sheet-inner .btn-primary, .sheet-inner .btn-ghost { width: 100%; margin: 6px 0; }
+
+
+/* ===== Login de la casa: el widget fijo arriba a la derecha es la identidad ===== */
+/* La barra deja sitio al widget (40px + márgenes) y la ficha propia de usuario
+   se retira: una sola foto, un solo "Salir", igual en todos los servicios. */
+.nav > :last-child { margin-right: 56px; }
+.user-chip { display: none !important; }

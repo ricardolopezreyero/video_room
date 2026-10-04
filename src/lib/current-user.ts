@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { verifySession, signSession, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "./session";
 import type { User } from "./db";
 import type { Env } from "../env";
@@ -18,15 +18,22 @@ export async function currentUser(c: Context<{ Bindings: Env }>): Promise<User |
     uid: data.uid,
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
   });
-  setCookie(c, SESSION_COOKIE, freshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "Lax",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-    path: "/",
-  });
+  ponerSesion(c, freshToken);
 
   return user;
+}
+
+/** La sesión son dos cookies: `vr_session` (HttpOnly, la que vale) y `vr_ok`
+ *  (visible para JS, solo dice "aquí hay sesión") para que el puente con el
+ *  login de la casa sepa si hace falta pedirla. */
+export function ponerSesion(c: Context<{ Bindings: Env }>, token: string): void {
+  const base = { secure: true, sameSite: "Lax" as const, maxAge: SESSION_MAX_AGE_SECONDS, path: "/" };
+  setCookie(c, SESSION_COOKIE, token, { ...base, httpOnly: true });
+  setCookie(c, "vr_ok", "1", { ...base, httpOnly: false });
+}
+export function quitarSesion(c: Context<{ Bindings: Env }>): void {
+  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  deleteCookie(c, "vr_ok", { path: "/" });
 }
 
 /** Solo el uid de la cookie (firma verificada), sin tocar la base. Sirve para

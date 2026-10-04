@@ -13,7 +13,7 @@
 <body class="app-shell">
 <!-- RLR -->
 <nav class="nav">
-  <a class="logo" href="/"><span>Video Room</span></a>
+  <a class="logo" href="/app/monedero"><span>Video Room</span></a>
   <div style="display:flex; align-items:center; gap:10px;">
     <button class="icon-btn" id="btn-copy-link-nav" title="Copiar link de tu sala" aria-label="Copiar link de tu sala" style="display:none;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
@@ -36,7 +36,7 @@
   </div>
 </nav>
 <div class="app-subnav">
-  <a href="/">Inicio</a>
+  <a href="/?ver=1">Inicio</a>
   <a href="/app/monedero">Monedero</a>
   <a href="/app/estadisticas">Estadísticas</a>
   <a href="/app/faq">FAQ</a>
@@ -376,6 +376,7 @@ main();
 </script>
 <!-- RLR · Login de CapitalTorreon: todo funciona sin entrar; entrar solo agrega -->
 <div data-login-ct style="position:fixed;top:12px;right:12px;z-index:9999"></div>
+<script src="/puente-login.js"></script>
 <script src="https://login.capitaltorreon.com/login.js" data-prefs="vr_audio_modo,vr_quality,vr_notify_minutes" defer></script>
 </body>
 </html>

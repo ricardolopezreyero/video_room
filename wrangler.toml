@@ -15,7 +15,7 @@ enabled = true
 [assets]
 directory = "./public"
 binding = "ASSETS"
-run_worker_first = ["/r/*", "/api/*", "/auth/*", "/webhook/*", "/google418ea42a297ed4f5.html", "/googlec627d281a5ee7cec.html"]
+run_worker_first = ["/", "/r/*", "/api/*", "/auth/*", "/webhook/*", "/google418ea42a297ed4f5.html", "/googlec627d281a5ee7cec.html"]
 
 [[d1_databases]]
 binding = "DB"
