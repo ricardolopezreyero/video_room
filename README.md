@@ -206,3 +206,14 @@ que lo ve con tu nombre; membresía con dos toques claros en vez del diálogo
 del navegador; montos siempre exactos ($37.50, no $38); si falta saldo, el
 monedero dice cuánto falta, marca el monto que alcanza y regresa solo a la
 sala al terminar de recargar (`?volver=&falta=`). El FAQ ya no dice "$20 fijos".
+
+## Modo llamada: dos salas, dos vías
+
+Botón «📞 Llamada» en el dock del creador. Pegas el link de la sala de la otra
+persona y esa sala abre dentro de la tuya (`/<su-sala>?modo=llamada`: solo su
+video, sin chat ni dock) mientras tu cámara queda chiquita en una esquina.
+Entras a su sala como cualquier persona (pagas su hora con tu saldo) y ella
+entra a la tuya: dos salas, dos vías, con el mismo cobro de siempre. Para la
+tele: AirPlay (iPhone → Apple TV) o «Duplicar pantalla» (Android → Roku); lo
+que se refleja es exactamente esa pantalla. Roku y Apple TV no tienen
+navegador ni reciben WebRTC: por eso el camino es reflejar, no una app.

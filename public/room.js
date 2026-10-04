@@ -226,6 +226,7 @@
   function stopOwnerMediaNow() {
     if (ownerStreamStopped) return;
     ownerStreamStopped = true;
+    if (llamadaCon) terminarLlamada();
     if (motor) motor.detener();
     if (motorAudio) { try { motorAudio.destruir(); } catch {} }
     if (micTrackCrudo) { try { micTrackCrudo.stop(); } catch {} }
@@ -949,6 +950,10 @@
     setupAudioModeSelector();
     setupCameraSwitcher();
     startQualityMonitor();
+    $("btn-call").style.display = "flex";
+    // Si ya hubo una llamada con alguien, se ofrece retomarla con un toque.
+    const par = localStorage.getItem(`vr_llamada_${slug}`);
+    if (par) setTimeout(() => toast(`📞 ¿Volver a la llamada con ${par}? Toca "Llamada".`, 6000), 7000);
   }
 
   // Voz / Música / Ambiente: la máquina no puede adivinar qué ruido es molesto
@@ -966,6 +971,64 @@
       const nota = { voz: "🎙️ Modo Voz: eco y ruido fuera, tu voz al frente.", musica: "🎵 Modo Música: sin filtros de llamada, instrumentos completos.", ambiente: "🌿 Modo Ambiente: el sonido del lugar se queda, sin eco." };
       toast(nota[audioModo] || "", 4500);
     };
+  }
+
+  // ---- Modo llamada: dos salas, dos vías ----
+  // Tú transmites desde tu sala y, en la misma pantalla, ves la sala de la
+  // otra persona (entras a ella como cualquier espectador: paga su hora, y
+  // ella entra a la tuya). La otra sala abre dentro de un recuadro con
+  // ?modo=llamada (solo su video, sin chat ni dock) y tu cámara queda chica
+  // en una esquina. Para verlo en la tele: AirPlay (iPhone → Apple TV) o
+  // Duplicar pantalla (Android → Roku); lo que se refleja es esta pantalla.
+  let llamadaCon = null;
+  function slugDeLlamada(texto) {
+    const t = (texto || "").trim();
+    if (!t) return null;
+    try {
+      const u = new URL(t, location.href);
+      if (u.origin === location.origin) return (u.pathname.split("/").filter(Boolean)[0] || "").toLowerCase() || null;
+    } catch {}
+    return t.replace(/^@/, "").replace(/^\/+/, "").split(/[/?#\s]/)[0].toLowerCase() || null;
+  }
+  function iniciarLlamada(otra) {
+    if (!otra || otra === slug) return toast("Esa es tu propia sala. Pega el link de la otra persona.");
+    llamadaCon = otra;
+    localStorage.setItem(`vr_llamada_${slug}`, otra);
+    $("call-frame").src = `/${encodeURIComponent(otra)}?modo=llamada`;
+    $("call-wrap").style.display = "block";
+    document.body.classList.add("en-llamada");
+    $("btn-call").classList.add("active");
+    if (chatVisible) { chatVisible = false; $("chat-panel").style.display = "none"; $("btn-chat").classList.remove("active"); }
+    toast(`📞 Viendo la sala de ${otra}. Para la tele: AirPlay o Duplicar pantalla.`, 6000);
+  }
+  function terminarLlamada() {
+    llamadaCon = null;
+    $("call-frame").src = "about:blank";
+    $("call-wrap").style.display = "none";
+    document.body.classList.remove("en-llamada");
+    $("btn-call").classList.remove("active");
+  }
+  function abrirHojaLlamada() {
+    if (llamadaCon) return terminarLlamada();
+    const recordada = localStorage.getItem(`vr_llamada_${slug}`) || "";
+    const sheet = document.createElement("div");
+    sheet.className = "sheet";
+    sheet.innerHTML = `
+      <div class="sheet-inner">
+        <h3>📞 Llamada: ver a otra persona mientras transmites</h3>
+        <p class="sheet-sub">Pega el link de su sala. Entras a su sala como cualquier persona (pagas su hora con tu saldo) y ella entra a la tuya: dos salas, dos vías. Tu cámara queda chiquita en una esquina y la de ella en grande.</p>
+        <input id="call-slug" placeholder="video.capitaltorreon.com/su-nombre" value="${recordada.replace(/"/g, "&quot;")}" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <p class="sheet-sub">Para verlo en la tele: en iPhone, AirPlay a tu Apple TV; en Android, «Duplicar pantalla» a tu Roku. Lo que se refleja es exactamente esta pantalla.</p>
+        <button id="call-go" class="btn-primary">Ver su sala</button>
+        <button id="call-cancel">Cancelar</button>
+      </div>`;
+    document.body.appendChild(sheet);
+    const cerrar = () => sheet.remove();
+    sheet.querySelector("#call-cancel").onclick = cerrar;
+    const ir = () => { const otra = slugDeLlamada(sheet.querySelector("#call-slug").value); if (!otra) return toast("Pega el link o el nombre de su sala."); cerrar(); iniciarLlamada(otra); };
+    sheet.querySelector("#call-go").onclick = ir;
+    sheet.querySelector("#call-slug").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); ir(); } });
+    setTimeout(() => sheet.querySelector("#call-slug").focus(), 50);
   }
 
   function toggleMic() {
@@ -1695,6 +1758,8 @@
     guarded($("btn-mic"), async () => toggleMic());
     guarded($("btn-cam"), async () => toggleCam());
     guarded($("btn-screen"), async () => toggleScreenShare());
+    guarded($("btn-call"), async () => abrirHojaLlamada());
+    $("call-close").addEventListener("click", terminarLlamada);
     guarded($("btn-chat"), async () => {
       chatVisible = !chatVisible;
       $("chat-panel").style.display = chatVisible ? "flex" : "none";

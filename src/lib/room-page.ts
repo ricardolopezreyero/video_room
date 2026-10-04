@@ -24,6 +24,9 @@ export function renderRoomPage(opts: {
   /** Versión desplegada: va como ?v= en scripts y estilos, para que un deploy
    *  nunca mezcle este HTML con un room.js viejo guardado en caché. */
   assetVersion?: string;
+  /** La sala abierta dentro de otra (modo llamada): solo el video del otro,
+   *  sin chat ni dock, para que quepa en un recuadro o se refleje a la tele. */
+  modoLlamada?: boolean;
 }): string {
   const { room, ownerAvatar, live, viewerCount, appUrl, status, inicio } = opts;
   const v = opts.assetVersion ? `?v=${encodeURIComponent(opts.assetVersion)}` : "";
@@ -92,7 +95,7 @@ export function renderRoomPage(opts: {
 <link rel="stylesheet" href="/style.css${v}">
 <script src="/veloz.js${v}"></script>
 </head>
-<body data-slug="${room.slug}" data-live="${live}">
+<body data-slug="${room.slug}" data-live="${live}"${opts.modoLlamada ? ' class="llamada"' : ""}>
   <div id="app" class="room-app">
     <video id="player" playsinline autoplay muted></video>
     <div id="overlay" class="overlay">
@@ -132,6 +135,12 @@ export function renderRoomPage(opts: {
       </div>
       <p class="chat-privacy-note">🔒 Nada se graba — se borra al cerrar la sala.</p>
     </div>
+    <!-- Modo llamada: la sala de la otra persona ocupa la pantalla y tu propia
+         cámara queda chiquita en una esquina. Dos salas, dos vías. -->
+    <div id="call-wrap" class="call-wrap" style="display:none">
+      <iframe id="call-frame" class="call-frame" allow="autoplay; fullscreen" title="Sala de la otra persona"></iframe>
+      <button id="call-close" class="call-close" aria-label="Terminar llamada" title="Cerrar la sala de la otra persona">✕</button>
+    </div>
     <div id="viewer-presence" class="viewer-presence" style="display:none">🟢 <span id="presence-count">0</span> en la sala<span id="viewer-quality" class="stream-quality"></span></div>
     <!-- Cuando se corta el internet (el del creador o el propio), esto es lo
          que se ve: quién falta, cuánto llevamos esperando, y que el chat
@@ -165,6 +174,7 @@ export function renderRoomPage(opts: {
         <option value="off">Solo audio</option>
       </select>
       <button id="btn-screen" class="ctrl-btn" style="display:none" data-label="Pantalla" aria-label="Compartir pantalla">🖥️</button>
+      <button id="btn-call" class="ctrl-btn" style="display:none" data-label="Llamada" aria-label="Ver la sala de otra persona mientras transmites">📞</button>
     </div>
     <div id="studio-bar" class="studio-bar" style="display:none">
       <span class="live-dot" aria-hidden="true"></span>

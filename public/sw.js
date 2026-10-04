@@ -9,7 +9,7 @@
 // publicación nueva tarda exactamente una navegación en llegar; a cambio,
 // ninguna navegación espera a la red.
 var _k = "eye", _rev = 181218;
-var VERSION = "2026-10-04d";
+var VERSION = "2026-10-04e";
 var CACHE = "video-room-" + VERSION;
 var GUARDADO = [
   "/", "/app/monedero", "/app/estadisticas", "/app/transacciones", "/app/faq",
@@ -44,7 +44,14 @@ self.addEventListener("fetch", function (e) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   var ruta = url.pathname.replace(/\/$/, "") || "/";
-  if (ES_GUARDADO.has(ruta)) { e.respondWith(delDiscoPrimero(e, ruta)); return; }
+  if (ES_GUARDADO.has(ruta)) {
+    // Los scripts de la sala llegan con ?v=<versión del Worker>: una versión
+    // nueva es una llave nueva (se baja de la red y se guarda); la vieja se
+    // borra. Así un deploy nunca sirve room.js viejo ni una sola vez.
+    var llave = url.search ? ruta + url.search : ruta;
+    e.respondWith(delDiscoPrimero(e, ruta, llave));
+    return;
+  }
   // Lo demás (salas, api, auth…) va a la red tal cual. El preload de
   // navegación ya salió en paralelo con el arranque de este worker, así que
   // tampoco le cuesta nada pasar por aquí.
@@ -53,14 +60,23 @@ self.addEventListener("fetch", function (e) {
   }
 });
 
-function delDiscoPrimero(e, ruta) {
+function delDiscoPrimero(e, ruta, llave) {
+  llave = llave || ruta;
   return caches.open(CACHE).then(function (cache) {
-    return cache.match(ruta).then(function (guardada) {
+    return cache.match(llave).then(function (guardada) {
       // "no-cache": la renovación de fondo pregunta al servidor de verdad
       // (ETag), no a la caché HTTP del navegador — si no, una publicación
       // nueva tardaría hasta 10 minutos (max-age) además de una navegación.
-      var red = fetch(new Request(ruta, { credentials: "same-origin", cache: "no-cache" })).then(function (r) {
-        if (r && r.ok) cache.put(ruta, r.clone());
+      var red = fetch(new Request(llave, { credentials: "same-origin", cache: "no-cache" })).then(function (r) {
+        if (r && r.ok) {
+          cache.put(llave, r.clone());
+          if (llave !== ruta) {
+            // Versiones anteriores del mismo archivo: fuera.
+            cache.keys().then(function (ks) {
+              ks.forEach(function (k) { var u = new URL(k.url); if (u.pathname === ruta && u.search && (u.pathname + u.search) !== llave) cache.delete(k); });
+            });
+          }
+        }
         return r;
       }).catch(function () { return null; });
       if (guardada) { e.waitUntil(red); return guardada; }
