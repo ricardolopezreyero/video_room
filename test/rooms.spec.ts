@@ -107,3 +107,13 @@ describe("POST /api/rooms/:slug/tip", () => {
     expect((await second.json()) as { error: string }).toEqual({ error: "limite_propinas_alcanzado" });
   });
 });
+
+
+import { entradaGratis } from "../src/lib/cortesia";
+describe("cuentas de cortesía", () => {
+  it("la sala de una cuenta de cortesía es gratis, y la cuenta entra gratis a cualquier sala", async () => {
+    expect(entradaGratis("Yudiel@SuperLeads.mx", "x@test.local")).toBe(true);
+    expect(entradaGratis("x@test.local", "reyero.ricardo@gmail.com")).toBe(true);
+    expect(entradaGratis("x@test.local", "y@test.local")).toBe(false);
+  });
+});

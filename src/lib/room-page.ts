@@ -27,6 +27,8 @@ export function renderRoomPage(opts: {
   /** La sala abierta dentro de otra (modo llamada): solo el video del otro,
    *  sin chat ni dock, para que quepa en un recuadro o se refleje a la tele. */
   modoLlamada?: boolean;
+  /** Cortesía de la casa: la entrada es gratis para quien ve esta página. */
+  cortesia?: boolean;
 }): string {
   const { room, ownerAvatar, live, viewerCount, appUrl, status, inicio } = opts;
   const v = opts.assetVersion ? `?v=${encodeURIComponent(opts.assetVersion)}` : "";
@@ -44,19 +46,19 @@ export function renderRoomPage(opts: {
   const safeAvatar = ownerAvatar ? escapeHtml(ownerAvatar) : null;
   const ogImage = safeAvatar ?? `${appUrl}/og-default.svg`;
   const title = live ? `🔴 ${safeTitle} — EN VIVO` : `${safeTitle} — abre pronto`;
-  const priceCents = room.price_cents || 2000;
-  const price = `$${Math.round(priceCents / 100).toLocaleString("es-MX")}`;
+  const priceCents = opts.cortesia ? 0 : room.price_cents || 2000;
+  const price = priceCents ? `$${Math.round(priceCents / 100).toLocaleString("es-MX")}` : "gratis";
   const pesos = (c: number) => `$${(c / 100).toLocaleString("es-MX", { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
   const paraCreador = pesos(entrySplit(priceCents).creator);
   const desc = live
-    ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · ${price} la hora · Nada se graba`
+    ? `${viewerCount} persona${viewerCount === 1 ? "" : "s"} adentro · ${priceCents ? `${price} la hora` : "Entrada gratis"} · Nada se graba`
     : `${safeTitle} todavía no transmite. Toca para que te avisemos por correo en cuanto abra.`;
   // Copy para buscadores/redes — distinta del "desc" de arriba (ese es el
   // texto de estado dentro de la propia sala). Aquí buscamos que quien la
   // encuentre en Google entienda de un vistazo que es la sala privada de esta
   // persona y que puede entrar, esté en vivo o no en este momento.
   const seoDesc = live
-    ? `${safeTitle} está en vivo ahora mismo en su sala privada de Video Room. Entra por ${price} la hora — nada se graba.`
+    ? `${safeTitle} está en vivo ahora mismo en su sala privada de Video Room. ${priceCents ? `Entra por ${price} la hora` : "Entra gratis"} — nada se graba.`
     : `Esta es la sala privada de ${safeTitle} en Video Room. Te avisamos por correo en cuanto empiece a transmitir — entra cuando quieras.`;
   const canonicalUrl = `${appUrl}/${encodeURIComponent(room.slug)}`;
   // El avatar es lo más grande que se pinta al abrir: va con prioridad alta y
@@ -110,12 +112,14 @@ export function renderRoomPage(opts: {
       ${statusHtml}
       <p id="sub">${desc}</p>
       <div id="connect-spinner" class="connect-spinner" style="display:none"><span></span><span></span><span></span></div>
-      <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">Entrar · ${price} la hora</button>
+      <button id="btn-enter" class="btn-primary" style="display:${live ? "block" : "none"}">${priceCents ? `Entrar · ${price} la hora` : "Entrar · gratis"}</button>
       <button id="btn-membership" class="btn-ghost" style="display:none"></button>
       <button id="btn-notify" class="btn-ghost" style="display:${live ? "none" : "block"}">🔔 Avísame cuando abra</button>
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
       <p class="fineprint">${live
-        ? `Ingresas con Google en un toque. Tu hora empieza cuando cruzas la puerta y puedes salir y volver sin pagar de nuevo. De tu entrada, <strong>${paraCreador} le llegan a ${safeTitle}</strong> en ese mismo segundo; los dos reciben su recibo por correo.`
+        ? priceCents
+          ? `Ingresas con Google en un toque. Tu hora empieza cuando cruzas la puerta y puedes salir y volver sin pagar de nuevo. De tu entrada, <strong>${paraCreador} le llegan a ${safeTitle}</strong> en ese mismo segundo; los dos reciben su recibo por correo.`
+          : `Ingresas con Google en un toque y entras sin pagar: esta sala es cortesía de la casa. Puedes salir y volver cuando quieras. Nada se graba.`
         : "Te llega un correo y una notificación en el momento en que entre en vivo."}</p>
     </div>
     <div id="chat-panel" class="chat-panel" style="display:none">

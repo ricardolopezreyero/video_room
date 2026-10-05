@@ -277,3 +277,13 @@ en los dos lados. La sesión son dos cookies: `vr_session` (HttpOnly) y `vr_ok`
 (visible, solo dice "hay sesión"). Quien ya entró y abre el home va directo a
 su monedero (servidor y puente); `/?ver=1` deja ver el home. El widget fijo
 de la casa es la única identidad en pantalla (la ficha propia se retiró).
+
+## Cuentas de cortesía
+
+`src/lib/cortesia.ts`: la casa, la familia y los socios que ayudan a arrancar.
+Sus salas son gratis para quien entre y ellas entran gratis a cualquier sala
+(pase de $0, sin recibo porque no se mueve dinero; el creador ve «entró
+(cortesía)»). Pueden ganar propinas y membresías de otros. Todo lo demás, para
+todas las demás cuentas, sigue igual. Agregar una cuenta: una línea y deploy.
+Además, quien toca «Entrar» sin sesión y vuelve del login entra solo si la
+entrada no cuesta (cortesía o miembro).

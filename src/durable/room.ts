@@ -268,10 +268,10 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/entrada" && request.method === "POST") {
-      const { name, creator_cents, member } = await request.json<{ name: string; creator_cents?: number; member?: boolean }>();
+      const { name, creator_cents, member, cortesia } = await request.json<{ name: string; creator_cents?: number; member?: boolean; cortesia?: boolean }>();
       this.totalCents += creator_cents ?? 1000;
       await this.persist();
-      this.broadcast({ type: "entrada", name, member: !!member, creator_cents: creator_cents ?? 1000, ticker_cents: this.totalCents });
+      this.broadcast({ type: "entrada", name, member: !!member, cortesia: !!cortesia, creator_cents: creator_cents ?? 1000, ticker_cents: this.totalCents });
       return Response.json({ ok: true });
     }
 

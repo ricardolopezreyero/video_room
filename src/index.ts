@@ -19,6 +19,7 @@ import { sendEmail, ADMIN_EMAIL } from "./lib/email";
 import { isReservedSlug } from "./lib/slugs";
 import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { HIGHLIGHT_OPTIONS_CENTS } from "./lib/pricing";
+import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
 import { cargarEvento, pdfRecibo, firmaRecibo } from "./lib/recibo-pdf";
@@ -268,8 +269,8 @@ app.get("/:slug", async (c) => {
   // en el HTML. La sala es usable en cuanto se pinta.
   const [room, user] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT rooms.*, users.avatar_url as owner_avatar FROM rooms JOIN users ON users.id = rooms.owner_id WHERE rooms.slug = ?"
-    ).bind(slug).first<Room & { owner_avatar: string | null }>(),
+      "SELECT rooms.*, users.avatar_url as owner_avatar, users.email as owner_email FROM rooms JOIN users ON users.id = rooms.owner_id WHERE rooms.slug = ?"
+    ).bind(slug).first<Room & { owner_avatar: string | null; owner_email: string }>(),
     currentUser(c).catch(() => null),
   ]);
   if (!room) return c.html(roomNotFoundPage(), 404);
@@ -292,7 +293,8 @@ app.get("/:slug", async (c) => {
   afterResponse(c, evaluateRelics(c.env, room.owner_id));
 
   const viewerCount = live ? (info.viewerCount ?? 0) : 0;
-  const { owner_avatar, ...roomRow } = room;
+  const { owner_avatar, owner_email, ...roomRow } = room;
+  const cortesia = entradaGratis(owner_email, user?.email);
   const inicio = {
     // Misma forma que /api/rooms/:slug/status, /api/wallet/me y
     // /api/rooms/:slug/offer: room.js no distingue de dónde vinieron.
@@ -301,8 +303,9 @@ app.get("/:slug", async (c) => {
       ? { id: user.id, name: user.name, avatar_url: user.avatar_url, balance_cents: user.balance_cents, creator_balance_cents: user.creator_balance_cents }
       : null,
     offer: {
-      price_cents: room.price_cents || 2000,
-      membership_cents: room.membership_cents,
+      price_cents: cortesia ? 0 : room.price_cents || 2000,
+      cortesia,
+      membership_cents: cortesia ? null : room.membership_cents,
       tip_goal_cents: room.tip_goal_cents,
       highlight_options_cents: HIGHLIGHT_OPTIONS_CENTS,
       member_until: membership?.expires_at ?? null,
@@ -322,7 +325,7 @@ app.get("/:slug", async (c) => {
     `</style.css${v}>; rel=preload; as=style, </veloz.js${v}>; rel=preload; as=script, </motor-video.js${v}>; rel=preload; as=script, </motor-audio.js${v}>; rel=preload; as=script, </room.js${v}>; rel=preload; as=script, </fonts/plus-jakarta-sans.woff2>; rel=preload; as=font; type=font/woff2; crossorigin`
   );
   return c.html(
-    renderRoomPage({ room: roomRow, ownerAvatar: owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status, inicio, assetVersion, modoLlamada: c.req.query("modo") === "llamada" })
+    renderRoomPage({ room: roomRow, ownerAvatar: owner_avatar, live: !!live, viewerCount, appUrl: c.env.APP_URL, status, inicio, assetVersion, modoLlamada: c.req.query("modo") === "llamada", cortesia })
   );
 });
 

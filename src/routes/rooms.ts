@@ -7,6 +7,7 @@ import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
 import { sendEmail, newFollowerEmail } from "../lib/email";
 import { enviarRecibos } from "../lib/recibos";
+import { entradaGratis } from "../lib/cortesia";
 import { emitEvent } from "../lib/webhooks";
 import { evaluateRelics, viewerMarkFor } from "../lib/status";
 import {
@@ -187,8 +188,9 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const esOwner = user.id === room.owner_id;
 
-  // Sesión en vivo + pase vigente (misma fila), bloqueo y membresía: una ronda.
-  const [session, blocked, membership] = await Promise.all([
+  // Sesión en vivo + pase vigente (misma fila), bloqueo, membresía y el
+  // correo del creador (para la cortesía): una ronda.
+  const [session, blocked, membership, owner] = await Promise.all([
     c.env.DB.prepare(
       `SELECT s.*, p.expires_at as pass_expires FROM sessions s
        LEFT JOIN passes p ON p.session_id = s.id AND p.user_id = ? AND p.expires_at > ?
@@ -200,6 +202,7 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
       : c.env.DB.prepare(
           "SELECT id, expires_at FROM memberships WHERE room_id = ? AND user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1"
         ).bind(room.id, user.id, now).first<{ id: string; expires_at: number }>(),
+    c.env.DB.prepare("SELECT email FROM users WHERE id = ?").bind(room.owner_id).first<{ email: string }>(),
   ]);
   if (!session) return c.json({ error: "sala_cerrada" }, 400);
   if (blocked) return c.json({ error: "bloqueado" }, 403);
@@ -217,16 +220,19 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
     return c.json({ ok: true, expires_at: expiresAt, charged: false });
   }
 
-  // Miembro vigente: entra sin pagar la hora (ya pagó el mes). Se registra el
-  // pase igual (cuenta como entrada en estadísticas, con $0).
-  if (membership) {
+  // Miembro vigente (ya pagó el mes) o cortesía de la casa (sala de una cuenta
+  // de cortesía, o quien entra lo es): entra sin pagar la hora. Se registra el
+  // pase igual (cuenta como entrada en estadísticas, con $0); no se mueve
+  // dinero, así que no hay recibo.
+  const cortesia = !membership && entradaGratis(owner?.email, user.email);
+  if (membership || cortesia) {
     await Promise.all([
       c.env.DB.prepare(
         "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
       ).bind(passId, session.id, user.id, expiresAt, device_id).run(),
-      stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: 0, member: true }) }),
+      stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: 0, member: !!membership, cortesia }) }),
     ]);
-    return c.json({ ok: true, expires_at: expiresAt, charged: false, member: true });
+    return c.json({ ok: true, expires_at: expiresAt, charged: false, member: !!membership, cortesia });
   }
 
   const price = room.price_cents || 2000;
@@ -469,7 +475,10 @@ rooms.get("/api/rooms/:slug/offer", async (c) => {
   const slug = c.req.param("slug");
   const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
   if (!room) return c.json({ error: "not_found" }, 404);
-  const user = await currentUser(c);
+  const [user, owner] = await Promise.all([
+    currentUser(c),
+    c.env.DB.prepare("SELECT email FROM users WHERE id = ?").bind(room.owner_id).first<{ email: string }>(),
+  ]);
   let memberUntil: number | null = null;
   if (user) {
     const m = await c.env.DB.prepare(
@@ -477,9 +486,11 @@ rooms.get("/api/rooms/:slug/offer", async (c) => {
     ).bind(room.id, user.id).first<{ expires_at: number }>();
     memberUntil = m?.expires_at ?? null;
   }
+  const cortesia = entradaGratis(owner?.email, user?.email);
   return c.json({
-    price_cents: room.price_cents || 2000,
-    membership_cents: room.membership_cents,
+    price_cents: cortesia ? 0 : room.price_cents || 2000,
+    cortesia,
+    membership_cents: cortesia ? null : room.membership_cents,
     tip_goal_cents: room.tip_goal_cents,
     highlight_options_cents: HIGHLIGHT_OPTIONS_CENTS,
     member_until: memberUntil,

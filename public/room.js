@@ -332,7 +332,7 @@
       } else if (msg.type === "entrada") {
         updateGoal(msg.ticker_cents);
         if (isOwner) {
-          toast(msg.member ? `${msg.name} entró (miembro)` : `+${pesos(msg.creator_cents ?? 1000)} · ${msg.name} entró`);
+          toast(msg.cortesia ? `${msg.name} entró (cortesía)` : msg.member ? `${msg.name} entró (miembro)` : `+${pesos(msg.creator_cents ?? 1000)} · ${msg.name} entró`);
           tickerText.textContent = pesos(msg.ticker_cents);
         }
       } else if (msg.type === "tip") {
@@ -1847,8 +1847,14 @@
       highlightOptions = offer.highlight_options_cents || [];
       tipGoalCents = offer.tip_goal_cents || null;
       const price = Math.round((offer.price_cents || 2000) / 100);
-      $("btn-enter").textContent = offer.member_until ? "Entrar · eres miembro" : `Entrar · $${price} la hora`;
+      $("btn-enter").textContent = offer.member_until ? "Entrar · eres miembro" : offer.cortesia || !offer.price_cents ? "Entrar · gratis" : `Entrar · $${price} la hora`;
       enterLabel = $("btn-enter").textContent;
+      // Volvió del login con la intención de entrar: si la entrada no cuesta
+      // (cortesía o miembro), entra sola; si cuesta, se queda a un toque.
+      if (me && isLive && !isOwner && sessionStorage.getItem("vr_intencion") === "entrar") {
+        sessionStorage.removeItem("vr_intencion");
+        if (offer.cortesia || !offer.price_cents || offer.member_until) setTimeout(() => $("btn-enter").click(), 300);
+      }
       if (!isOwner && offer.membership_cents) {
         const mb = $("btn-membership");
         if (offer.member_until) {
@@ -1909,7 +1915,7 @@
     }
 
     guarded($("btn-enter"), async () => {
-      if (!me) return requireLogin();
+      if (!me) { try { sessionStorage.setItem("vr_intencion", "entrar"); } catch {} return requireLogin(); }
       beginConnecting("Verificando tu pase…");
       const res = await api(`/api/rooms/${slug}/pass`, { body: { device_id: "web" } });
       if (res.error === "saldo_insuficiente") {
@@ -1922,6 +1928,7 @@
       if (res.error) { endConnecting(); return toast("No se pudo entrar. No se te cobró nada; intenta de nuevo."); }
       await startSubscribing();
       if (res.charged && res.expires_at) toast(`🎟️ Adentro. Tu hora vale hasta las ${horaCDMX(res.expires_at)}; puedes salir y volver. Tu recibo va en camino a tu correo.`, 6500);
+      else if (res.cortesia) toast("🎟️ Adentro, cortesía de la casa. Nada se graba.", 4000);
       else if (res.member) toast("🪪 Adentro como miembro, sin pagar la hora.", 4000);
       announceRelics(res.new_relics);
     });
