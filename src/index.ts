@@ -1,7 +1,7 @@
 // RLR
 import { Hono, type Context } from "hono";
 import { setCookie } from "hono/cookie";
-import { UTM_COOKIE } from "./lib/utm";
+import { utmDeQuery, guardarUtm } from "./lib/utm";
 import type { Env } from "./env";
 import { auth } from "./routes/auth";
 import { wallet } from "./routes/wallet";
@@ -16,7 +16,7 @@ import { verifyUnsubscribeToken } from "./lib/unsubscribe";
 import { currentUser, sessionUid } from "./lib/current-user";
 import { endLiveSession } from "./lib/room-lifecycle";
 import { sendEmail, ADMIN_EMAIL } from "./lib/email";
-import { isReservedSlug } from "./lib/slugs";
+import { isReservedSlug, canonicalizarSlug } from "./lib/slugs";
 import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { HIGHLIGHT_OPTIONS_CENTS } from "./lib/pricing";
 import { entradaGratis } from "./lib/cortesia";
@@ -247,20 +247,18 @@ app.get("/ws/room/:slug", async (c) => {
 app.get("/", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 app.get("/:slug", async (c) => {
-  const slug = c.req.param("slug");
+  const raw = c.req.param("slug");
+  const search = new URL(c.req.url).search;
+  // El link es sagrado: mayúsculas, acentos, un punto o paréntesis pegado al
+  // final por un mensajero, codificación rara… todo lleva a la misma sala.
+  const slug = canonicalizarSlug(raw);
+  if (!slug) return c.html(roomNotFoundPage(), 404);
+  if (slug !== raw) return c.redirect(`/${slug}${search}`, 301);
   if (isReservedSlug(slug)) return c.html(roomNotFoundPage(), 404);
 
-  const utmSource = c.req.query("utm_source");
-  const utmMedium = c.req.query("utm_medium");
-  const utmCampaign = c.req.query("utm_campaign");
-  if (utmSource || utmMedium || utmCampaign) {
-    const data = JSON.stringify({ utm_source: utmSource, utm_medium: utmMedium, utm_campaign: utmCampaign });
-    setCookie(c, UTM_COOKIE, data, {
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-      sameSite: "Lax",
-    });
-  }
+  // UTM atados a esta sala (ver lib/utm.ts): los lee /pass al entrar.
+  const utm = utmDeQuery(c);
+  if (utm) guardarUtm(c, utm, slug);
 
   // Camino crítico de todo el producto: es el link que se comparte. Antes
   // eran ~10 consultas en serie (≈1 s de espera) y luego room.js pedía tres
@@ -273,7 +271,14 @@ app.get("/:slug", async (c) => {
     ).bind(slug).first<Room & { owner_avatar: string | null; owner_email: string }>(),
     currentUser(c).catch(() => null),
   ]);
-  if (!room) return c.html(roomNotFoundPage(), 404);
+  if (!room) {
+    // Una URL que esta sala tuvo antes sigue llevando a ella, para siempre.
+    const alias = await c.env.DB.prepare(
+      "SELECT rooms.slug FROM slug_aliases JOIN rooms ON rooms.id = slug_aliases.room_id WHERE slug_aliases.slug = ?"
+    ).bind(slug).first<{ slug: string }>();
+    if (alias) return c.redirect(`/${alias.slug}${search}`, 301);
+    return c.html(roomNotFoundPage(), 404);
+  }
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   const [live, status, membership, info] = await Promise.all([

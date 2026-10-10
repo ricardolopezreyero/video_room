@@ -34,7 +34,7 @@ export interface CreatorStats {
     propinas_cents: number;
   };
   top_donors: { user_id: string; name: string; avatar_url: string | null; total_cents: number; entradas: number; propinas: number }[];
-  campaigns: { utm_source: string; utm_campaign: string; entradas: number; ganado_cents: number }[];
+  campaigns: { utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; entradas: number; ganado_cents: number }[];
 }
 
 export async function computeCreatorStats(env: Env, user: User, room: Room, rangeParam: string): Promise<CreatorStats> {
@@ -63,15 +63,17 @@ export async function computeCreatorStats(env: Env, user: User, room: Room, rang
   const campaignsRes = await env.DB.prepare(
     `SELECT
        COALESCE(p.utm_source, '(directo)') as utm_source,
+       COALESCE(p.utm_medium, '') as utm_medium,
        COALESCE(p.utm_campaign, '') as utm_campaign,
+       COALESCE(p.utm_content, '') as utm_content,
        COUNT(*) as entradas,
        COALESCE(SUM(p.creator_cents), 0) as ganado_cents
      FROM passes p JOIN sessions s ON s.id = p.session_id
      WHERE s.room_id = ? AND p.purchased_at >= ? AND p.user_id != ?
-     GROUP BY utm_source, utm_campaign
+     GROUP BY utm_source, utm_medium, utm_campaign, utm_content
      ORDER BY entradas DESC
-     LIMIT 10`
-  ).bind(room.id, cutoff, user.id).all<{ utm_source: string; utm_campaign: string; entradas: number; ganado_cents: number }>();
+     LIMIT 20`
+  ).bind(room.id, cutoff, user.id).all<{ utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; entradas: number; ganado_cents: number }>();
 
   const [entradasByUser, tipsByUser] = await Promise.all([
     env.DB.prepare(
@@ -204,12 +206,13 @@ export async function computeDeepStats(env: Env, user: User, room: Room, fromTs:
     ).bind(room.id, toTs).all<{ day: string; n: number }>(),
     computeTopDonors(env, user, room, fromTs),
     env.DB.prepare(
-      `SELECT COALESCE(p.utm_source, '(directo)') as utm_source, COALESCE(p.utm_campaign, '') as utm_campaign,
+      `SELECT COALESCE(p.utm_source, '(directo)') as utm_source, COALESCE(p.utm_medium, '') as utm_medium,
+              COALESCE(p.utm_campaign, '') as utm_campaign, COALESCE(p.utm_content, '') as utm_content,
               COUNT(*) as entradas, COALESCE(SUM(p.creator_cents), 0) as ganado_cents
        FROM passes p JOIN sessions s ON s.id = p.session_id
        WHERE s.room_id = ? AND p.purchased_at >= ? AND p.purchased_at <= ? AND p.user_id != ?
-       GROUP BY utm_source, utm_campaign ORDER BY entradas DESC LIMIT 10`
-    ).bind(room.id, fromTs, toTs, user.id).all<{ utm_source: string; utm_campaign: string; entradas: number; ganado_cents: number }>(),
+       GROUP BY utm_source, utm_medium, utm_campaign, utm_content ORDER BY entradas DESC LIMIT 20`
+    ).bind(room.id, fromTs, toTs, user.id).all<{ utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; entradas: number; ganado_cents: number }>(),
   ]);
 
   const now = Math.floor(Date.now() / 1000);

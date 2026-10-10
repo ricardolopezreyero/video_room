@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { currentUser, sessionUid } from "../lib/current-user";
 import { creditLedger, newId, isBlocked, isMuted, type Room, type Session, type User } from "../lib/db";
-import { slugify, isNumericSlug, isReservedSlug, nextAvailableSlug } from "../lib/slugs";
+import { slugify, isNumericSlug, isReservedSlug, nextAvailableSlug, duenoDelSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
 import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
 import { sendEmail, newFollowerEmail } from "../lib/email";
@@ -96,19 +96,25 @@ rooms.post("/api/rooms/:slug/rename", async (c) => {
   if (isNumericSlug(newSlug)) return c.json({ error: "slug_numerico_reservado" }, 400);
   if (isReservedSlug(newSlug)) return c.json({ error: "slug_reservado" }, 400);
 
-  const taken = await c.env.DB.prepare("SELECT id FROM rooms WHERE slug = ?").bind(newSlug).first();
-  if (taken) return c.json({ error: "slug_ocupado" }, 400);
+  // Ocupado si es la sala de otro o una URL que otro tuvo (sus QR siguen en
+  // la calle). Una URL que ESTA sala tuvo antes sí se puede recuperar.
+  const dueno = await duenoDelSlug(c.env.DB, newSlug);
+  if (dueno && dueno !== room.id) return c.json({ error: "slug_ocupado" }, 400);
+  // Freno contra el acaparamiento de nombres: 5 cambios por día bastan para
+  // corregir un error de dedo; nadie necesita más.
+  const cambiosHoy = await c.env.DB.prepare("SELECT COUNT(*) as n FROM slug_aliases WHERE room_id = ? AND since > unixepoch() - 86400").bind(room.id).first<{ n: number }>();
+  if ((cambiosHoy?.n ?? 0) >= 5) return c.json({ error: "demasiados_cambios" }, 429);
 
-  const oldSlugWasNumeric = isNumericSlug(slug);
-  const statements = [
+  // La URL anterior no se libera: queda como alias de esta sala para siempre
+  // (301). Un link impreso, un QR pegado en una puerta, un marcador viejo:
+  // todos siguen llegando.
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM slug_aliases WHERE slug = ?").bind(newSlug),
     c.env.DB.prepare("UPDATE rooms SET slug = ?, slug_assigned_at = unixepoch() WHERE id = ?").bind(newSlug, room.id),
-  ];
-  if (oldSlugWasNumeric) {
-    statements.push(c.env.DB.prepare("INSERT INTO released_slugs (slug) VALUES (?)").bind(slug));
-  }
-  await c.env.DB.batch(statements);
+    c.env.DB.prepare("INSERT OR REPLACE INTO slug_aliases (slug, room_id) VALUES (?, ?)").bind(slug, room.id),
+  ]);
 
-  return c.json({ ok: true, slug: newSlug });
+  return c.json({ ok: true, slug: newSlug, anterior: slug });
 });
 
 rooms.post("/api/rooms/:slug/start", async (c) => {
@@ -211,12 +217,16 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   const passId = newId("pass");
   const expiresAt = now + 3600;
+  // De dónde vino (UTM atados a ESTA sala): va en toda entrada, pagada o no,
+  // para que las analíticas del creador cuenten a todos los que llegaron.
+  const utm = readUtmCookie(c, slug);
+  const utmCols = [utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null, utm.utm_content ?? null, utm.utm_term ?? null];
 
   if (esOwner) {
     // el creador entra gratis a su propia sala
     await c.env.DB.prepare(
-      "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
-    ).bind(passId, session.id, user.id, expiresAt, device_id).run();
+      "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents, utm_source, utm_medium, utm_campaign, utm_content, utm_term) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)"
+    ).bind(passId, session.id, user.id, expiresAt, device_id, ...utmCols).run();
     return c.json({ ok: true, expires_at: expiresAt, charged: false });
   }
 
@@ -228,8 +238,8 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   if (membership || cortesia) {
     await Promise.all([
       c.env.DB.prepare(
-        "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, ?, ?, 0, 0)"
-      ).bind(passId, session.id, user.id, expiresAt, device_id).run(),
+        "INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents, utm_source, utm_medium, utm_campaign, utm_content, utm_term) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)"
+      ).bind(passId, session.id, user.id, expiresAt, device_id, ...utmCols).run(),
       stub.fetch("https://do/entrada", { method: "POST", body: JSON.stringify({ name: user.name, creator_cents: 0, member: !!membership, cortesia }) }),
     ]);
     return c.json({ ok: true, expires_at: expiresAt, charged: false, member: !!membership, cortesia });
@@ -239,7 +249,6 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   const split = entrySplit(price);
   if (user.balance_cents < price) return c.json({ error: "saldo_insuficiente", price_cents: price }, 402);
 
-  const utm = readUtmCookie(c);
   // Idem key atada a sesión+usuario+segundo: dos clics dobles en el mismo segundo
   // (el caso real de doble-tap) chocan en esta llave y solo uno se cobra.
   const debited = await creditLedger(c.env.DB, user.id, -price, "entrada", passId, `entrada:${session.id}:${user.id}:${now}`, "balance_cents");
@@ -253,9 +262,9 @@ rooms.post("/api/rooms/:slug/pass", async (c) => {
   await Promise.all([
     creditLedger(c.env.DB, room.owner_id, split.creator, "ganancia_entrada", passId, `ganancia_entrada:${passId}`, "creator_balance_cents"),
     c.env.DB.prepare(
-      `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, utm_source, utm_medium, utm_campaign, amount_cents, creator_cents)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(passId, session.id, user.id, expiresAt, device_id, utm.utm_source ?? null, utm.utm_medium ?? null, utm.utm_campaign ?? null, price, split.creator).run(),
+      `INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents, utm_source, utm_medium, utm_campaign, utm_content, utm_term)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(passId, session.id, user.id, expiresAt, device_id, price, split.creator, ...utmCols).run(),
   ]);
 
   // Aviso a la sala (el creador ve caer el dinero) y hitos que esta entrada

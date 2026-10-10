@@ -333,3 +333,38 @@ borra todo. Está hecho para eso (`public/chat.js` + el Durable Object):
 Probar en local: `window.__vr.chat()` y `__vr.estado().chat` (filas en
 memoria, ventana pintada, `pegado`, `sinLeer`); `__vr.simular({type:"comment",
 seq, ...})` mete filas sin servidor. Pruebas: `test/chat.spec.ts`.
+
+## El link de la sala: estable para siempre
+
+`video.capitaltorreon.com/<slug>`, pegado a la raíz, sin subdominios. Es el
+activo del creador: lo imprime en un QR, lo pone en su puerta, monta un
+negocio encima. Reglas (auditoría 10-oct-2026):
+
+- **Una sala es su `room.id`, no su slug.** El slug es una etiqueta que
+  apunta a la sala; cambiar de dueño (heredar, traspasar, vender) es cambiar
+  `owner_id` y el link no se entera. Varios links por sala serán, el día que
+  se cobren, más filas apuntando al mismo `room.id`.
+- **Forma canónica.** `/Ricardo`, `/ricardo.`, `/ricardo)`, `/Ric%C3%A1rdo` y
+  `/ricardo/` llegan con 301 a `/ricardo` conservando la query (los UTM).
+  `canonicalizarSlug` en `src/lib/slugs.ts`.
+- **Nada se recicla.** Al cambiar la URL, la anterior queda en `slug_aliases`
+  y redirige (301) a la sala para siempre; nadie más puede tomarla (ni los
+  números viejos: `nextAvailableSlug` avanza el contador y salta lo que
+  alguien ya tuvo). La misma sala sí puede regresar a una URL suya. Máximo 5
+  cambios por día.
+- **Reservados** (`RESERVED_SLUGS`): toda ruta real, toda página que vivió en
+  la raíz, todo archivo de `public/` con y sin extensión, y palabras que un
+  día pueden ser rutas. Si se agrega una ruta o un archivo en la raíz,
+  **se agrega aquí** o el link de alguien deja de servir su sala.
+- **`/r/<slug>`** sigue redirigiendo (links de la primera época).
+
+### UTM: de qué link vino cada entrada
+
+Se capturan en el servidor al abrir el link (sin depender de JS; `utm.js` es
+respaldo), los cinco: `utm_source`, `utm_medium`, `utm_campaign`,
+`utm_content` (dónde estaba el QR), `utm_term`. Viven 30 días en la cookie
+`vr_utm` **junto con el slug de la sala**: la atribución es por sala (llegar a
+`/ana` por un QR y luego entrar a `/juan` no le cuelga a Juan el QR de Ana).
+Toda entrada los guarda en `passes` (pagada, de miembro, de cortesía, del
+dueño) y Estadísticas los muestra como fuente · medio · campaña · contenido.
+Ejemplo para imprimir: `video.capitaltorreon.com/ricardo?utm_source=qr&utm_medium=impreso&utm_campaign=consultoria&utm_content=puerta-oficina`.

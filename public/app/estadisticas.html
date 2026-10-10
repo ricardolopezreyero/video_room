@@ -233,8 +233,8 @@ function render() {
       </li>`).join('')}</ul>`));
   }
   if (d.campaigns.length) {
-    html.push(section('De dónde vino la gente', 'Por campaña (UTM) en el link que compartiste.', `<ul class="donor-list">${d.campaigns.map((cmp) => `
-      <li class="donor-row"><div class="donor-info"><div class="donor-name">${esc(cmp.utm_source)}${cmp.utm_campaign ? ' · ' + esc(cmp.utm_campaign) : ''}</div><div class="donor-meta">${cmp.entradas} entrada${cmp.entradas === 1 ? '' : 's'}</div></div><div class="donor-total">${fmt(cmp.ganado_cents)}</div></li>`).join('')}</ul>`));
+    html.push(section('De dónde vino la gente', 'Por los UTM del link que compartiste: fuente · medio · campaña · contenido (por ejemplo, en qué lugar estaba el QR). Cuenta todas las entradas, también las gratis.', `<ul class="donor-list">${d.campaigns.map((cmp) => `
+      <li class="donor-row"><div class="donor-info"><div class="donor-name">${[cmp.utm_source, cmp.utm_medium, cmp.utm_campaign, cmp.utm_content].filter(Boolean).map(esc).join(' · ')}</div><div class="donor-meta">${cmp.entradas} entrada${cmp.entradas === 1 ? '' : 's'}</div></div><div class="donor-total">${fmt(cmp.ganado_cents)}</div></li>`).join('')}</ul>`));
   }
 
   c.innerHTML = html.join('');

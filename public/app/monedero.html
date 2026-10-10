@@ -374,9 +374,7 @@ function renderRoom(room) {
     if (btnSaveSlug.disabled) return;
     const newSlug = document.getElementById('new-slug-input').value.trim();
     if (!newSlug) return;
-    const warning = room.is_numeric
-      ? `Vas a cambiar tu URL numérica "${room.slug}" (la tienes desde hace ${room.age_days} día${room.age_days === 1 ? '' : 's'}) por una personalizada. El número "${room.slug}" quedará libre para que lo tome otro usuario nuevo. ¿Continuar?`
-      : `Vas a cambiar tu URL actual "${room.slug}" por "${newSlug}". ¿Continuar?`;
+    const warning = `Vas a cambiar tu URL "${room.slug}" por "${newSlug}". Tu link anterior (video.capitaltorreon.com/${room.slug}) seguirá llevando a tu sala para siempre: lo que ya imprimiste o compartiste no se rompe. ¿Continuar?`;
     if (!confirm(warning)) return;
     btnSaveSlug.disabled = true;
     const r = await fetch(`/api/rooms/${room.slug}/rename`, {
@@ -389,6 +387,7 @@ function renderRoom(room) {
     if (j.error === 'slug_numerico_reservado') return alert('Las URLs numéricas las asigna el sistema, elige un nombre con letras.');
     if (j.error === 'slug_reservado') return alert('Ese nombre está reservado, prueba con otro.');
     if (j.error === 'slug_invalido') return alert('Ese nombre no es válido.');
+    if (j.error === 'demasiados_cambios') return alert('Ya cambiaste tu URL 5 veces hoy. Mañana puedes volver a cambiarla.');
     if (j.error) return alert('No se pudo cambiar la URL.');
     loadRoom(false);
   };
