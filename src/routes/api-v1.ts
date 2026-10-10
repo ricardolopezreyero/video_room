@@ -209,8 +209,8 @@ apiV1.get("/api/v1/sessions", async (c) => {
     sessions: results.map((s) => ({
       ...s,
       duration_seconds: (s.ended_at ?? Math.floor(Date.now() / 1000)) - s.started_at,
-      // Lo que se quedó el creador: su parte de cada entrada + 90% de las propinas.
-      earned_cents: s.entradas_creator_cents + Math.round(s.tips_cents * 0.9),
+      // Lo que se quedó el creador: su parte de cada entrada + todo lo que le mandaron.
+      earned_cents: s.entradas_creator_cents + s.tips_cents,
     })),
   });
 });

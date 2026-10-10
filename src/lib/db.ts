@@ -52,6 +52,47 @@ export async function isMuted(db: D1Database, roomId: string, userId: string): P
   return !!row;
 }
 
+/** Lo que una persona puede gastar adentro: lo que recargó más lo que ganó.
+ *  Lo ganado se puede gastar o retirar; lo recargado solo se gasta. */
+export function gastable(u: { balance_cents: number; creator_balance_cents: number }): number {
+  return (u.balance_cents || 0) + (u.creator_balance_cents || 0);
+}
+
+/**
+ * Cobra `amountCents` del dinero gastable de la persona: primero de lo
+ * recargado, el resto de lo ganado. Atómico contra el estado leído: si otro
+ * cobro se metió en medio, vuelve a leer y reintenta una vez. Devuelve false
+ * si no alcanza o si la llave de idempotencia ya existía.
+ */
+export async function debitarGastable(
+  db: D1Database,
+  userId: string,
+  amountCents: number,
+  type: string,
+  refId: string | null,
+  idemKey: string
+): Promise<boolean> {
+  if (amountCents <= 0) return false;
+  const existing = await db.prepare("SELECT id FROM ledger WHERE idem_key = ?").bind(idemKey).first();
+  if (existing) return false;
+  for (let intento = 0; intento < 2; intento++) {
+    const u = await db.prepare("SELECT balance_cents, creator_balance_cents FROM users WHERE id = ?").bind(userId).first<{ balance_cents: number; creator_balance_cents: number }>();
+    if (!u || gastable(u) < amountCents) return false;
+    const deRecarga = Math.min(u.balance_cents, amountCents);
+    const deGanado = amountCents - deRecarga;
+    const r = await db.prepare(
+      "UPDATE users SET balance_cents = balance_cents - ?, creator_balance_cents = creator_balance_cents - ? WHERE id = ? AND balance_cents = ? AND creator_balance_cents = ?"
+    ).bind(deRecarga, deGanado, userId, u.balance_cents, u.creator_balance_cents).run();
+    if (r.meta.changes === 1) {
+      await db.prepare(
+        "INSERT INTO ledger (id, user_id, amount_cents, type, ref_id, idem_key) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(newId("ldg"), userId, -amountCents, type, refId, idemKey).run();
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function creditLedger(
   db: D1Database,
   userId: string,

@@ -527,7 +527,7 @@ export function welcomeEmail(opts: {
     details: [
       { label: "Tu link", value: roomUrl.replace(/^https?:\/\//, ""), strong: true },
       { label: "Cada persona paga", value: "$20 MXN por hora" },
-      { label: "Tú te quedas con", value: "$10 de cada entrada + 90% de las propinas" },
+      { label: "Tú te quedas con", value: "$16 de cada entrada de $20, y el 100% de lo que te manden adentro" },
       { label: "Grabación", value: "Ninguna, nunca" },
     ],
     ctaLabel: "Abrir mi sala",
@@ -541,7 +541,7 @@ export function welcomeEmail(opts: {
     details: [
       { label: "Tu link", value: roomUrl },
       { label: "Cada persona paga", value: "$20 MXN por hora" },
-      { label: "Tú te quedas con", value: "$10 de cada entrada + 90% de las propinas" },
+      { label: "Tú te quedas con", value: "$16 de cada entrada de $20, y el 100% de lo que te manden adentro" },
     ],
     ctaLabel: "Abrir mi sala",
     linkUrl: roomUrl,

@@ -214,11 +214,11 @@ function connectLiveFeed(slug) {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'entrada') {
-      // Ganancia real del creador por cada entrada pagada: $10 fijos (ver rooms.ts /pass).
-      appendSyntheticGain('ganancia_entrada', 1000);
+      // Ganancia del creador por la entrada: lo manda el servidor (4 de cada 5 pesos).
+      appendSyntheticGain('ganancia_entrada', msg.creator_cents ?? 1600);
     } else if (msg.type === 'tip') {
-      // El creador se queda con el 90% de la propina (ver rooms.ts /tip).
-      appendSyntheticGain('propina_recibida', Math.round(msg.amount_cents * 0.9));
+      // Lo que mandan adentro llega completo (ver pricing.ts).
+      appendSyntheticGain('propina_recibida', msg.amount_cents);
     }
   };
   ws.onclose = () => { setTimeout(() => connectLiveFeed(slug), 3000); };

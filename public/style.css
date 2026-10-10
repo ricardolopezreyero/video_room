@@ -1180,3 +1180,18 @@ kbd { font-family: inherit; font-size: 10.5px; font-weight: 800; color: #fff; ba
 .qr-utm input:focus { outline: none; border-color: rgba(86,239,159,.5); }
 .qr-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: .5px solid rgba(255,255,255,.08); }
 #btn-qr.active { border-color: rgba(86,239,159,.5); color: #fff; }
+
+/* ═══════════ Dinero, suave (revisión 10-oct-2026) ═══════════ */
+.sheet-inner.dinero .amounts button.ultimo { background: var(--green, #56EF9F); color: var(--navy, #0d1117); border-color: transparent; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.sheet-inner.dinero .amounts button.ultimo small { font-size: 10px; font-weight: 700; opacity: .8; }
+.sheet-inner.dinero .amounts button.otro { border-style: dashed; color: #cdd3de; }
+.otro-fila { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.otro-fila[hidden] { display: none; }
+.otro-fila span { color: #9aa1b0; font-weight: 800; }
+.otro-fila input { flex: 1; min-width: 0; background: rgba(255,255,255,.08); border: .5px solid rgba(86,239,159,.3); border-radius: 10px; padding: 10px 12px; color: #fff; font-size: 16px; font-family: inherit; }
+.otro-fila .btn-primary { padding: 10px 16px; }
+/* Fin de la transmisión: una franja abajo, nunca un modal encima. */
+.despedida { position: fixed; left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 60; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: rgba(13,17,23,.94); border: .5px solid rgba(86,239,159,.3); border-radius: 16px; padding: 12px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: chat-vivo-entra .25s ease-out; }
+.despedida-txt { flex: 1 1 100%; font-size: 13.5px; color: #e8edf8; }
+.despedida .btn-ghost { font-size: 13px; }
+@media (min-width: 900px) { .despedida { left: auto; right: 24px; width: 420px; } }

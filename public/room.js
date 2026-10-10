@@ -49,7 +49,7 @@
   let ws = null;
   let sessionEnded = false;
   let ownerStreamStopped = false;
-  let highlightOptions = [];
+  let tipOptions = [2000, 5000, 10000, 20000];
   let chatVisible = true;
   let waveformStarted = false;
   let connectingTimer = null;
@@ -330,7 +330,6 @@
       } else if (msg.type === "kicked") {
         handleKicked(msg.reason);
       } else if (msg.type === "entrada") {
-        updateGoal(msg.ticker_cents);
         if (isOwner) {
           toast(msg.cortesia ? `${msg.name} entró (cortesía)` : msg.member ? `${msg.name} entró (miembro)` : `+${pesos(msg.creator_cents ?? 1000)} · ${msg.name} entró`);
           tickerText.textContent = pesos(msg.ticker_cents);
@@ -338,9 +337,8 @@
       } else if (msg.type === "tip") {
         showTipBand(msg.from, msg.avatar_url, msg.amount_cents, msg.message);
         if (msg.fila) crearChat().recibir(msg.fila);
-        updateGoal(msg.ticker_cents);
         if (isOwner) {
-          toast(`+${pesos(msg.creator_cents ?? Math.round(msg.amount_cents * 0.9))} · ${msg.from} te mandó dinero 💵`);
+          toast(`+${pesos(msg.creator_cents ?? msg.amount_cents)} · ${msg.from} te mandó dinero 💵`);
           tickerText.textContent = pesos(msg.ticker_cents);
         }
       } else if (msg.type === "hearts") {
@@ -366,8 +364,6 @@
           if (!amt) { amt = document.createElement("span"); amt.className = "pinned-paid-amt"; pinnedEl.insertBefore(amt, $("pinned-text")); }
           amt.textContent = `$${Math.round(msg.paid_cents / 100)}`;
           if (msg.until) paidPinTimer = setTimeout(() => { pinnedEl.style.display = "none"; pinnedEl.classList.remove("paid"); }, Math.max(1000, msg.until - Date.now()));
-          if (isOwner && msg.ticker_cents != null) { tickerText.textContent = pesos(msg.ticker_cents); toast(`+${pesos(Math.round(msg.paid_cents * 0.9))} · ${msg.name} destacó su mensaje ⭐`); }
-          updateGoal(msg.ticker_cents);
         } else if (amt) amt.remove();
         pinnedEl.style.display = "flex";
       } else if (msg.type === "unpinned") {
@@ -395,7 +391,7 @@
           // que la página se reinicie. Vale 10 minutos después del cierre.
           if (pc) { try { pc.close(); } catch {} pc = null; }
           player.srcObject = null;
-          openTipSheet({ farewell: true });
+          despedidaSuave();
         } else {
           toast("La transmisión terminó. Como prometimos, nada quedó grabado.", 6000);
           setTimeout(() => location.reload(), 6000);
@@ -631,6 +627,13 @@
     const input = $("chat-input");
     const text = input.value.trim();
     if (!text) return;
+    // «$50 gracias» o «$100»: es dinero, no un comentario. Se abre la hoja
+    // con el monto y el mensaje puestos; un toque lo manda.
+    const dinero = !isOwner && text.match(/^\$\s?(\d{1,4})(?:\s+(.*))?$/);
+    if (dinero) {
+      const monto = Number(dinero[1]) * 100;
+      if (monto >= 1000 && monto <= 500000) { input.value = ""; openTipSheet({ monto, mensaje: (dinero[2] || "").trim() }); return; }
+    }
     input.value = "";
     const res = await api(`/api/rooms/${slug}/comment`, { body: { text } });
     if (res.error === "sin_pase") toast("Necesitas un pase vigente para comentar.");
@@ -1717,67 +1720,86 @@
   }
 
   // --- Meta de propinas: la barra que todos ven llenarse ---
-  let tipGoalCents = null;
-  let paidPinTimer = null;
-  function updateGoal(tickerCents) {
-    if (!tipGoalCents || tickerCents == null) return;
-    const bar = $("goal-bar");
-    const pct = Math.min(100, Math.round((tickerCents / tipGoalCents) * 100));
-    $("goal-fill").style.width = pct + "%";
-    $("goal-text").textContent = pct >= 100 ? `🎯 Meta lograda · $${Math.round(tickerCents / 100)}` : `$${Math.round(tickerCents / 100)} de $${Math.round(tipGoalCents / 100)}`;
-    bar.classList.toggle("done", pct >= 100);
-    bar.style.display = "flex";
-  }
-
-  // Hoja de dinero: propina normal, mensaje destacado (fijado 3 min arriba del
-  // chat) o propina de despedida al terminar la transmisión.
+  // Hoja de dinero. Un toque en el monto y ya se fue: sin confirmación, sin
+  // porcentajes, sin "destacar". Si la persona ya mandó algo, su último monto
+  // va primero y en grande. «Otro» abre un campo para la cantidad que sea.
+  // El mensaje es opcional y, si lo hay, queda arriba del chat un minuto
+  // para todos, gratis. Lo que mandas llega completo.
+  let ultimoMonto = Number(localStorage.getItem("vr_ultimo_monto") || 0) || 0;
   function openTipSheet(opts = {}) {
-    const amounts = [2000, 5000, 10000, 20000, 50000];
-    const hl = highlightOptions || [];
+    const quien = roomTitle || "quien transmite";
+    const amounts = [...tipOptions];
+    if (ultimoMonto && !amounts.includes(ultimoMonto)) amounts.unshift(ultimoMonto);
     const sheet = document.createElement("div");
     sheet.className = "sheet";
     sheet.innerHTML = `
-      <div class="sheet-inner">
-        <h3>${opts.farewell ? "La transmisión terminó" : `Mandar dinero a ${roomTitle || "quien transmite"}`}</h3>
-        <p class="sheet-sub">${opts.farewell
-          ? `Nada quedó grabado, como prometimos. Si te gustó, puedes dejar una propina de despedida: le llega a ${roomTitle || "quien transmitió"} con tu nombre aunque ya haya cerrado.`
-          : `Le llega al instante, con tu nombre, y lo ve en pantalla. El 90 % es para ${roomTitle || "quien transmite"}; los dos reciben su recibo por correo.`}</p>
-        <div class="amounts">${amounts.map((a) => `<button data-amt="${a}">$${a / 100}</button>`).join("")}</div>
-        <input id="tip-msg" maxlength="${opts.farewell || !hl.length ? 60 : 140}" placeholder="${hl.length && !opts.farewell ? "Mensaje o pregunta (opcional para propina, obligatorio para destacar)" : "Mensaje (opcional)"}">
-        ${!opts.farewell && hl.length ? `<p class="sheet-sub">⭐ Destacar mi mensaje: 3 minutos fijo arriba del chat, en dorado. ${roomTitle || "Quien transmite"} lo ve seguro.</p><div class="amounts">${hl.map((a) => `<button class="hl" data-hl="${a}">$${a / 100}</button>`).join("")}</div>` : ""}
+      <div class="sheet-inner dinero">
+        <h3>${opts.farewell ? `Gracias por acompañar a ${quien}` : `Mandar dinero a ${quien}`}</h3>
+        <p class="sheet-sub">${opts.farewell ? "La transmisión terminó y nada quedó grabado. Si te gustó, puedes dejarle algo: le llega con tu nombre." : "Llega completo y al instante, con tu nombre. Los dos reciben su recibo."}</p>
+        <div class="amounts">${amounts.map((a) => `<button data-amt="${a}" class="${a === ultimoMonto ? "ultimo" : ""}">${pesos(a)}${a === ultimoMonto ? "<small>otra vez</small>" : ""}</button>`).join("")}<button data-otro="1" class="otro">Otro</button></div>
+        <div class="otro-fila" id="tip-otro" hidden><span>$</span><input id="tip-otro-monto" type="number" inputmode="numeric" min="10" max="5000" step="10" placeholder="cantidad"><button id="tip-otro-ok" class="btn-primary">Mandar</button></div>
+        <input id="tip-msg" maxlength="140" placeholder="Mensaje (opcional) · se ve arriba del chat un minuto" value="${opts.mensaje ? String(opts.mensaje).replace(/"/g, "&quot;") : ""}">
         <button id="tip-cancel">${opts.farewell ? "Cerrar" : "Cancelar"}</button>
       </div>`;
     document.body.appendChild(sheet);
     let sent = false;
     const finish = () => { sheet.remove(); if (opts.farewell) setTimeout(() => location.reload(), 600); };
-    sheet.querySelectorAll("[data-amt],[data-hl]").forEach((btn) => {
-      btn.onclick = async () => {
-        if (sent) return;
-        const isHl = btn.dataset.hl != null;
-        const messageInput = sheet.querySelector("#tip-msg");
-        const message = messageInput ? messageInput.value.trim() : "";
-        if (isHl && !message) { toast("Escribe el mensaje que quieres destacar."); messageInput.focus(); return; }
-        sent = true;
-        sheet.querySelectorAll("[data-amt],[data-hl]").forEach((b) => (b.disabled = true));
-        const amount_cents = Number(isHl ? btn.dataset.hl : btn.dataset.amt);
-        const res = isHl
-          ? await api(`/api/rooms/${slug}/highlight`, { body: { amount_cents, text: message } })
-          : await api(`/api/rooms/${slug}/tip`, { body: { amount_cents, message } });
-        finish();
-        if (res.error === "saldo_insuficiente") {
-          const falta = Math.max(0, amount_cents - ((me && me.balance_cents) || 0));
-          toast(`Te faltan ${pesos(falta)} para esto. Te llevamos a recargar y te regresamos aquí; la sala sigue abierta.`, 5000);
-          irARecargar(falta);
-        } else if (res.error === "sala_cerrada") toast("La sala ya cerró hace rato. No se te cobró nada.");
-        else if (res.error) toast("No se pudo mandar. No se te cobró nada; intenta de nuevo.");
-        else {
-          if (me) me.balance_cents = Math.max(0, (me.balance_cents || 0) - amount_cents);
-          toast(isHl ? `⭐ Tu mensaje quedó destacado 3 minutos. ${roomTitle || "Quien transmite"} ya lo ve. Tu recibo va en camino.` : `💵 Llegó. ${roomTitle || "Quien transmite"} ya lo vio con tu nombre. Tu recibo va en camino.`, 5000);
-          announceRelics(res.new_relics);
-        }
-      };
-    });
+    async function mandar(amount_cents) {
+      if (sent) return;
+      if (!(amount_cents >= 1000 && amount_cents <= 500000)) return toast("Entre $10 y $5,000.");
+      sent = true;
+      sheet.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      const message = (sheet.querySelector("#tip-msg").value || "").trim();
+      const res = await api(`/api/rooms/${slug}/tip`, { body: { amount_cents, message } });
+      finish();
+      if (res.error === "saldo_insuficiente") {
+        const falta = Math.max(0, amount_cents - gastableDe(me, res));
+        toast(`Te faltan ${pesos(falta)}. Te llevamos a recargar y te regresamos aquí; la sala sigue abierta.`, 5000);
+        irARecargar(falta);
+      } else if (res.error === "sala_cerrada") toast("La sala ya cerró hace rato. No se te cobró nada.");
+      else if (res.error === "limite_propinas_alcanzado") toast("Ya mandaste el máximo de esta transmisión ($2,000). Gracias de verdad.");
+      else if (res.error) toast("No se pudo mandar. No se te cobró nada; intenta de nuevo.");
+      else {
+        ultimoMonto = amount_cents; try { localStorage.setItem("vr_ultimo_monto", String(amount_cents)); } catch {}
+        restarGastable(amount_cents);
+        toast(`💵 Llegó completo. ${quien} ya lo vio con tu nombre.`, 4500);
+        announceRelics(res.new_relics);
+      }
+    }
+    if (opts.monto) { // vino del chat ("$50 gracias"): un solo toque para confirmar
+      const b = sheet.querySelector(`[data-amt="${opts.monto}"]`);
+      if (b) { b.classList.add("ultimo"); b.innerHTML = `${pesos(opts.monto)}<small>mandar</small>`; }
+      else { sheet.querySelector("#tip-otro").hidden = false; sheet.querySelector("#tip-otro-monto").value = String(Math.round(opts.monto / 100)); }
+    }
+    sheet.querySelectorAll("[data-amt]").forEach((btn) => (btn.onclick = () => mandar(Number(btn.dataset.amt))));
+    sheet.querySelector("[data-otro]").onclick = () => { const f = sheet.querySelector("#tip-otro"); f.hidden = false; sheet.querySelector("#tip-otro-monto").focus(); };
+    sheet.querySelector("#tip-otro-ok").onclick = () => mandar(Math.round(Number(sheet.querySelector("#tip-otro-monto").value || 0)) * 100);
+    sheet.querySelector("#tip-otro-monto").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sheet.querySelector("#tip-otro-ok").click(); } });
     sheet.querySelector("#tip-cancel").onclick = finish;
+  }
+  // Cuánto puede gastar la persona: lo recargado + lo ganado. El servidor
+  // manda la cifra exacta cuando no alcanza; si no, la estimamos de /me.
+  function gastableDe(yo, res) {
+    if (res && typeof res.gastable_cents === "number") return res.gastable_cents;
+    if (!yo) return 0;
+    if (typeof yo.gastable_cents === "number") return yo.gastable_cents;
+    return (yo.balance_cents || 0) + (yo.creator_balance_cents || 0);
+  }
+  function restarGastable(cents) {
+    if (!me) return;
+    if (typeof me.gastable_cents === "number") me.gastable_cents = Math.max(0, me.gastable_cents - cents);
+    me.balance_cents = Math.max(0, (me.balance_cents || 0) - cents);
+  }
+  // Al terminar la transmisión no hay modal: una línea abajo, con un botón.
+  // Quien quiera dejar algo lo toca; quien no, lee que nada quedó grabado y ya.
+  function despedidaSuave() {
+    const fin = document.createElement("div");
+    fin.className = "despedida";
+    fin.innerHTML = `<div class="despedida-txt"><b>La transmisión terminó.</b> Nada quedó grabado, como prometimos.</div><button class="btn-ghost" id="desp-gracias">💵 Dejarle algo a ${roomTitle || "quien transmitió"}</button><button class="btn-ghost" id="desp-cerrar">Cerrar</button>`;
+    document.body.appendChild(fin);
+    fin.querySelector("#desp-gracias").onclick = () => { fin.remove(); openTipSheet({ farewell: true }); };
+    fin.querySelector("#desp-cerrar").onclick = () => location.reload();
+    setTimeout(() => { if (document.body.contains(fin)) location.reload(); }, 90000);
   }
 
   let lastTap = 0;
@@ -1820,8 +1842,7 @@
     // Oferta de la sala: precio por hora, membresía y meta de propinas. Lo
     // que el espectador necesita saber antes de pagar, dicho claro.
     try {
-      highlightOptions = offer.highlight_options_cents || [];
-      tipGoalCents = offer.tip_goal_cents || null;
+      tipOptions = offer.tip_options_cents || tipOptions;
       const price = Math.round((offer.price_cents || 2000) / 100);
       $("btn-enter").textContent = offer.member_until ? "Entrar · eres miembro" : offer.cortesia || !offer.price_cents ? "Entrar · gratis" : `Entrar · $${price} la hora`;
       enterLabel = $("btn-enter").textContent;
@@ -1854,7 +1875,7 @@
             const res = await api(`/api/rooms/${slug}/membership`, { body: {} });
             if (res.error === "saldo_insuficiente") {
               mb.textContent = etiquetaMb;
-              const falta = Math.max(0, offer.membership_cents - ((me && me.balance_cents) || 0));
+              const falta = Math.max(0, offer.membership_cents - gastableDe(me, res));
               toast(`Te faltan ${pesos(falta)} para la membresía. Te llevamos a recargar y te regresamos aquí.`, 5000);
               return irARecargar(falta);
             }
@@ -1896,7 +1917,7 @@
       const res = await api(`/api/rooms/${slug}/pass`, { body: { device_id: "web" } });
       if (res.error === "saldo_insuficiente") {
         endConnecting();
-        const falta = Math.max(0, (res.price_cents || 2000) - ((me && me.balance_cents) || 0));
+        const falta = Math.max(0, (res.price_cents || 2000) - gastableDe(me, res));
         toast(`Te faltan ${pesos(falta)} para entrar. Te llevamos a recargar y te regresamos a esta sala; sigue abierta.`, 6000);
         return irARecargar(falta);
       }
@@ -2079,6 +2100,8 @@
       simular: (msg) => ws && ws.onmessage({ data: JSON.stringify(msg) }),
       estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld, audio: motorAudio && { modo: motorAudio.modo, elegido: motorAudio.elegido, procesado: motorAudio.procesado, nivel: motorAudio.nivel() }, filtro: filtro && { nombre: filtro.nombre, activo: filtro.activo }, chat: chat && chat.estado() }),
       chat: () => chat,
+      hojaDinero: (o) => openTipSheet(o || {}),
+      despedida: () => despedidaSuave(),
     };
   }
 })();

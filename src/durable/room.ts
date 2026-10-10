@@ -394,25 +394,6 @@ export class RoomDurableObject implements DurableObject {
       return Response.json({ ok: true });
     }
 
-    // Mensaje destacado pagado: se fija para todos hasta `until` (el cliente lo
-    // baja solo al llegar la hora) y suma al ticker del creador.
-    if (url.pathname === "/highlight" && request.method === "POST") {
-      const h = await request.json<{ name: string; avatar_url?: string | null; body: string; amount_cents: number; creator_cents: number; until: number }>();
-      this.totalCents += h.creator_cents;
-      const fila = await this.anotarChat({ kind: "dinero", id: null, user_id: null, name: h.name.slice(0, 60), avatar_url: h.avatar_url ?? null, mark: "⭐", body: h.body.slice(0, 140), is_owner: false, amount_cents: h.amount_cents });
-      this.broadcast({
-        type: "pinned",
-        fila,
-        name: h.name.slice(0, 60),
-        body: h.body.slice(0, 140),
-        avatar_url: h.avatar_url ?? null,
-        paid_cents: h.amount_cents,
-        until: h.until,
-        ticker_cents: this.totalCents,
-      });
-      return Response.json({ ok: true });
-    }
-
     if (url.pathname === "/set-sfu-session" && request.method === "POST") {
       const body = await request.json<{ sfuSessionId: string; tracks: { mid: string; trackName: string }[] }>();
       const republicada = !!this.sfuSessionId && this.sfuSessionId !== body.sfuSessionId && !!this.sessionId;
@@ -517,8 +498,8 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (url.pathname === "/tip" && request.method === "POST") {
-      const tip = await request.json<TipEvent & { creator_cents?: number }>();
-      const creatorCut = tip.creator_cents ?? Math.round(tip.amount_cents * 0.9);
+      const tip = await request.json<TipEvent & { creator_cents?: number; pin_until?: number | null }>();
+      const creatorCut = tip.creator_cents ?? tip.amount_cents;
       this.totalCents += creatorCut;
       const fila = await this.anotarChat({ kind: "dinero", id: null, user_id: null, name: tip.from, avatar_url: tip.avatar_url ?? null, mark: null, body: tip.message ?? "", is_owner: false, amount_cents: tip.amount_cents });
       this.broadcast({
@@ -530,6 +511,10 @@ export class RoomDurableObject implements DurableObject {
         ticker_cents: this.totalCents,
         fila,
       });
+      // Con mensaje, queda fijado arriba del chat un rato para todos (gratis).
+      if (tip.pin_until && tip.message) {
+        this.broadcast({ type: "pinned", name: tip.from.slice(0, 60), body: tip.message.slice(0, 140), avatar_url: tip.avatar_url ?? null, paid_cents: tip.amount_cents, until: tip.pin_until });
+      }
       return Response.json({ ok: true });
     }
 

@@ -113,20 +113,14 @@ async function main() {
 
   content.innerHTML = `
     <div class="balance-box">
-      <div class="label">Tu saldo</div>
+      <div class="label">Tu dinero para gastar</div>
       <div class="amount" id="balance-amount">$${(me.balance_cents/100).toFixed(0)}</div>
-      <p class="muted">Entrar a una sala cuesta lo que ponga cada creador, desde $20 la hora. Tu saldo no caduca.</p>
+      <p class="muted">${me.creator_balance_cents > 0 ? `Más lo que has ganado ($${Math.round(me.creator_balance_cents/100).toLocaleString('es-MX')}), que también puedes gastar adentro sin retirarlo: en total <strong>$${Math.round((me.gastable_cents ?? (me.balance_cents + me.creator_balance_cents))/100).toLocaleString('es-MX')}</strong>. ` : ''}Sirve para entrar a salas, mandar dinero y membresías. No caduca.</p>
       <div id="volver-aviso" class="volver-aviso" style="display:none"></div>
       <div class="amount-grid">
-        <button data-amt="2000">$20</button>
-        <button data-amt="6000">$60</button>
-        <button data-amt="12000" class="featured">$120</button>
-        <button data-amt="24000">$240</button>
-        <button data-amt="48000">$480</button>
-        <button data-amt="96000">$960</button>
-        <button data-amt="192000" class="wide">$1,920</button>
+        ${(me.recarga_options_cents || [5000, 10000, 20000, 50000, 100000]).map((a, i) => `<button data-amt="${a}" class="${i === 1 ? 'featured' : ''}">$${(a / 100).toLocaleString('es-MX')}</button>`).join('')}
       </div>
-      <p class="muted">Pagas con tarjeta por Stripe y el saldo aparece al instante, con tu recibo y folio en el correo. Sirve para entrar a salas, mandar dinero y membresías; lo que no uses se queda.</p>
+      <p class="muted">Recargas con tarjeta (Stripe); el saldo aparece al instante con su recibo en el correo. Lo que mandes a alguien le llega completo.</p>
     </div>
     <div class="balance-box status-box" id="status-box" style="display:none">
       <div class="label">Tu estatus</div>
@@ -137,7 +131,7 @@ async function main() {
       <div class="phrase-text" id="phrase-text">…</div>
     </div>
     <div class="balance-box">
-      <div class="label">Balance de creador (separado — esto es lo que has ganado)</div>
+      <div class="label">Lo que has ganado</div>
       <div class="amount green" id="creator-balance-amount">$${(me.creator_balance_cents/100).toFixed(0)}</div>
       ${me.total_retirado_cents > 0 ? `<p class="muted" id="total-retirado" style="margin-top:2px;">💸 Ya has retirado $${Math.round(me.total_retirado_cents/100).toLocaleString('es-MX')} en total</p>` : ''}
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
@@ -149,8 +143,8 @@ async function main() {
       </div>
       <p class="muted" style="margin-top:12px;">
         ${me.stripe_connect_payouts_enabled
-          ? `Desde $${Math.round(me.min_retiro_cents/100)} MXN — pruébalo con lo que tengas ahorita, llega directo a tu banco vía Stripe. Cada recarga, entrada, propina y retiro queda guardado para siempre — nada se borra.`
-          : 'Conecta tu cuenta bancaria una sola vez (lo hace Stripe, nunca vemos tus datos) para poder retirar lo que ganes — desde $' + Math.round(me.min_retiro_cents/100) + ' MXN.'}
+          ? `Retíralo a tu banco desde $${Math.round(me.min_retiro_cents/100)} (Stripe, sin comisión nuestra) o gástalo adentro: entra a otras salas o manda dinero sin retirar. Cada movimiento queda guardado con su recibo.`
+          : 'También lo puedes gastar adentro sin retirar. Para mandarlo a tu banco, conecta tu cuenta una sola vez (lo hace Stripe, nunca vemos tus datos); desde $' + Math.round(me.min_retiro_cents/100) + ' MXN, sin comisión nuestra.'}
       </p>
     </div>
     <div class="balance-box">
@@ -332,23 +326,15 @@ function renderRoom(room) {
     </div>
     <div style="margin-top:22px; padding-top:20px; border-top:.5px solid rgba(255,255,255,.08);">
       <div class="label">Cuánto cobras</div>
-      <p class="muted" style="margin:4px 0 12px;">Tú decides el precio de tu hora. La plataforma se queda con el 25% (mínimo $10): subir el precio te conviene más a ti que a nosotros.</p>
+      <p class="muted" style="margin:4px 0 12px;">Tú decides el precio de tu hora. De cada entrada, 1 de cada 5 pesos sostiene Video Room; lo demás es tuyo al instante. Lo que te manden adentro te llega completo.</p>
       <div class="price-grid" id="price-grid">
-        ${(room.price_options_cents || [2000]).map((p) => `<button data-price="${p}" class="${p === room.price_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas ${pesosM(p - Math.max(1000, Math.round(p * 0.25)))}</span></button>`).join('')}
+        ${(room.price_options_cents || [2000]).map((p) => `<button data-price="${p}" class="${p === room.price_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas ${pesosM(p - Math.round(p * 0.2))}</span></button>`).join('')}
       </div>
       <div class="label" style="margin-top:18px;">Membresía mensual <span class="muted" style="font-weight:400">(opcional)</span></div>
-      <p class="muted" style="margin:4px 0 12px;">Quien la compre entra todas las veces que quiera durante 30 días sin pagar la hora. Te quedas con el 80%.</p>
+      <p class="muted" style="margin:4px 0 12px;">Quien la compre entra todas las veces que quiera durante 30 días sin pagar la hora. Misma regla que la puerta: 1 de cada 5 pesos para la casa.</p>
       <div class="price-grid" id="membership-grid">
         <button data-membership="0" class="${!room.membership_cents ? 'active' : ''}"><strong>Sin membresía</strong><span>solo por hora</span></button>
         ${(room.membership_options_cents || []).map((p) => `<button data-membership="${p}" class="${p === room.membership_cents ? 'active' : ''}"><strong>$${Math.round(p / 100).toLocaleString('es-MX')}</strong><span>te quedas ${pesosM(p - Math.round(p * 0.2))}</span></button>`).join('')}
-      </div>
-      <div class="label" style="margin-top:18px;">Meta de propinas por transmisión <span class="muted" style="font-weight:400">(opcional)</span></div>
-      <p class="muted" style="margin:4px 0 12px;">Todos ven una barra llenarse en la sala. Una meta visible sube las propinas; vacía la casilla para quitarla.</p>
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <span class="muted">$</span>
-        <input id="tip-goal" type="number" min="100" max="100000" step="50" inputmode="numeric" value="${room.tip_goal_cents ? Math.round(room.tip_goal_cents / 100) : ''}" placeholder="ej. 500"
-          style="width:110px; padding:12px; border-radius:10px; border:.5px solid rgba(255,255,255,.15); background:rgba(255,255,255,.04); color:#fff; box-sizing:border-box;">
-        <button class="btn-navy" id="btn-save-goal">Guardar meta</button>
       </div>
     </div>
     <div style="margin-top:22px; padding-top:20px; border-top:.5px solid rgba(255,255,255,.08);">
@@ -430,13 +416,6 @@ function renderRoom(room) {
       document.querySelectorAll('#membership-grid button').forEach((x) => x.classList.toggle('active', x === b)); room.membership_cents = m;
     }
   });
-  document.getElementById('btn-save-goal').onclick = async () => {
-    const v = document.getElementById('tip-goal').value.trim();
-    const goal = v === '' ? null : Math.round(Number(v)) * 100;
-    if (goal !== null && (!(goal >= 10000) || goal > 10000000)) return alert('La meta va entre $100 y $100,000.');
-    await saveSettings({ tip_goal_cents: goal }, goal ? `🎯 Meta de $${Math.round(goal / 100)} por transmisión.` : 'Meta quitada.');
-  };
-
   const btnNotifyStarting = document.getElementById('btn-notify-starting');
   btnNotifyStarting.onclick = async () => {
     if (btnNotifyStarting.disabled) return;

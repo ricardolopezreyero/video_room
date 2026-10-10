@@ -118,7 +118,7 @@ export function renderRoomPage(opts: {
       <button id="btn-start" class="btn-primary" style="display:none">🔴 Transmitir en esta sala</button>
       <p class="fineprint">${live
         ? priceCents
-          ? `Ingresas con Google en un toque. Tu hora empieza cuando cruzas la puerta y puedes salir y volver sin pagar de nuevo. De tu entrada, <strong>${paraCreador} le llegan a ${safeTitle}</strong> en ese mismo segundo; los dos reciben su recibo por correo.`
+          ? `Ingresas con Google en un toque. Tu hora empieza cuando cruzas la puerta y puedes salir y volver sin pagar de nuevo. De tu entrada, <strong>${paraCreador} le llegan a ${safeTitle}</strong> en ese mismo segundo; lo que le mandes adentro le llega completo. Los dos reciben su recibo por correo.`
           : `Ingresas con Google en un toque y entras sin pagar: esta sala es cortesía de la casa. Puedes salir y volver cuando quieras. Nada se graba.`
         : "Te llega un correo y una notificación en el momento en que entre en vivo."}</p>
     </div>
@@ -126,11 +126,6 @@ export function renderRoomPage(opts: {
       <div class="chat-panel-header">
         <canvas id="chat-wave" width="360" height="32" title="Audio en vivo"></canvas>
         <input id="dim-slider" type="range" min="30" max="100" value="100" title="Atenuar el video">
-      </div>
-      <!-- Meta de propinas de la transmisión: todos ven la barra llenarse. -->
-      <div id="goal-bar" class="goal-bar" style="display:none">
-        <div class="goal-track"><div id="goal-fill"></div></div>
-        <span id="goal-text"></span>
       </div>
       <div id="pinned-msg" class="pinned-msg" style="display:none">
         <span class="pin-icon" aria-hidden="true">📌</span>

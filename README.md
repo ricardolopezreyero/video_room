@@ -381,3 +381,34 @@ canvas no quede «sucio» y se incrusta como data URL en el SVG). Baja PNG/JPG
 (1024 px, fondo blanco), SVG, copia el link, la imagen (donde el navegador
 deja) o el código SVG. Validado con jsQR: el QR con el centro tapado se
 decodifica íntegro.
+
+## Monetización: tres capas, una regla por capa
+
+Revisión del 10-oct-2026 (`src/lib/pricing.ts` es la única fuente):
+
+1. **La puerta** (entrada por hora y membresía mensual): la casa se queda
+   **1 de cada 5 pesos**, sin mínimos escondidos. Es lo único que monetizamos.
+   A $20, $16 son del creador (antes $10: el «mínimo $10» hacía que a $20 la
+   casa se quedara la mitad).
+2. **El gesto** (dinero que la gente manda adentro): **llega completo, 0 %**.
+   Que el dinero circule adentro casi no cuesta y vale muchísimo en confianza.
+   Montos rápidos $20 · $50 · $100 · $200 + «Otro» (de $10 a $5,000, tope
+   $2,000 por transmisión y persona). El último monto que mandaste va primero
+   y en grande («$50 · otra vez»). Un mensaje con el envío queda arriba del
+   chat un minuto para todos, gratis. Escribir `$50 gracias` en el chat abre
+   la hoja con todo puesto: un toque y se fue.
+3. **La salida** (retiro al banco): sin comisión nuestra; mínimo $10 porque es
+   el piso de Stripe. **Lo ganado también se gasta adentro** sin retirar
+   (`gastable = recargado + ganado`; `debitarGastable` cobra primero de lo
+   recargado y luego de lo ganado; lo recargado nunca se retira).
+
+Lo que se quitó (~20 %): el **mensaje destacado de pago** (ahora cualquier
+envío con mensaje se fija gratis), la **meta de propinas** (la barra que todos
+veían llenarse: pedir no es nuestro estilo), el **modal de despedida** al
+terminar (ahora una franja abajo con un botón; quien no quiera, lee que nada
+quedó grabado y ya), tres montos de recarga (7 → 5: $50 · $100 · $200 · $500
+· $1,000) y los porcentajes en las pantallas de la gente (solo quedan en el
+monedero del creador y el FAQ, dichos como «1 de cada 5 pesos»).
+
+Siguiente capa, no construida: mandar dinero a cualquier persona (no solo a
+quien transmite) y pagar entre cuentas sin sala de por medio.

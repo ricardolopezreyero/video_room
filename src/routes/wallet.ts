@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { currentUser, sessionUid } from "../lib/current-user";
-import { creditLedger, newId } from "../lib/db";
+import { creditLedger, newId, gastable } from "../lib/db";
+import { RECHARGE_OPTIONS_CENTS } from "../lib/pricing";
 import {
   stripeCreateCheckoutSession,
   verifyStripeSignature,
@@ -18,7 +19,7 @@ import type { Env } from "../env";
 export const wallet = new Hono<{ Bindings: Env }>();
 
 // Centavos, en múltiplos de $20 (el costo de una hora de sala): $20,$60,$120,$240,$480,$960,$1920
-const AMOUNTS = [2000, 6000, 12000, 24000, 48000, 96000, 192000];
+const AMOUNTS: readonly number[] = RECHARGE_OPTIONS_CENTS;
 // $10 MXN es el piso real de Stripe para pesos mexicanos — el mismo número
 // que exige tanto un Transfer como un payout a banco ("el importe más bajo
 // que podemos soportar con nuestros socios bancarios" en México). Bajar de
@@ -63,6 +64,9 @@ wallet.get("/api/wallet/me", async (c) => {
     creator_balance_cents: user.creator_balance_cents,
     name: user.name,
     avatar_url: user.avatar_url,
+    // Lo que puede gastar adentro: lo recargado + lo ganado (lo ganado también se retira).
+    gastable_cents: gastable(user),
+    recarga_options_cents: RECHARGE_OPTIONS_CENTS,
     stripe_connect_payouts_enabled: !!user.stripe_connect_payouts_enabled,
     total_retirado_cents: totalRetirado?.total ?? 0,
     min_retiro_cents: MIN_RETIRO_CENTS,

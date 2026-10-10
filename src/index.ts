@@ -18,7 +18,7 @@ import { endLiveSession } from "./lib/room-lifecycle";
 import { sendEmail, ADMIN_EMAIL } from "./lib/email";
 import { isReservedSlug, canonicalizarSlug } from "./lib/slugs";
 import { publicStatusRead, evaluateRelics } from "./lib/status";
-import { HIGHLIGHT_OPTIONS_CENTS } from "./lib/pricing";
+import { TIP_OPTIONS_CENTS } from "./lib/pricing";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
@@ -311,8 +311,7 @@ app.get("/:slug", async (c) => {
       price_cents: cortesia ? 0 : room.price_cents || 2000,
       cortesia,
       membership_cents: cortesia ? null : room.membership_cents,
-      tip_goal_cents: room.tip_goal_cents,
-      highlight_options_cents: HIGHLIGHT_OPTIONS_CENTS,
+      tip_options_cents: TIP_OPTIONS_CENTS,
       member_until: membership?.expires_at ?? null,
     },
   };
