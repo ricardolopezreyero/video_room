@@ -22,6 +22,7 @@ import { TIP_OPTIONS_CENTS } from "./lib/pricing";
 import { enviarCortesSemanales } from "./lib/corte-semanal";
 import { rescatar, esRuido } from "./lib/rescate";
 import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm } from "./lib/gtm";
+import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candidatos";
 import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
@@ -190,6 +191,33 @@ app.post("/api/gtm/equipo", async (c) => {
   if (quitar) await c.env.DB.prepare("DELETE FROM gtm_equipo WHERE email = ?").bind(limpio).run();
   else await c.env.DB.prepare("INSERT OR IGNORE INTO gtm_equipo (email, agregado_por) VALUES (?, ?)").bind(limpio, a.user.email.toLowerCase()).run();
   return c.json({ ok: true, equipo: (await estadoGtm(c.env)).equipo });
+});
+
+// ── Candidatos: las fichas de quien salimos a buscar (pestaña de /gtm) ────
+// Las fichas viven en la base y solo viajan a quien está en la lista del
+// equipo. Estado y notas se guardan con quién y cuándo.
+app.get("/candidatos", (c) => c.redirect("/gtm#candidatos", 302));
+
+app.get("/api/gtm/candidatos", async (c) => {
+  const a = await accesoGtm(c);
+  if (!a.ok) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
+  return c.json(await listarCandidatos(c.env, c.req.query("vacante") || "ceo"), 200, { "Cache-Control": "private, no-store" });
+});
+
+app.post("/api/gtm/candidatos", async (c) => {
+  const a = await accesoGtm(c);
+  if (!a.ok || !a.user) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
+  const cuerpo = await c.req.json<Record<string, unknown>>().catch(() => ({}));
+  const r = await agregarCandidato(c.env, cuerpo, a.user.email.toLowerCase());
+  return "error" in r ? c.json(r, 400) : c.json(r);
+});
+
+app.post("/api/gtm/candidatos/:id", async (c) => {
+  const a = await accesoGtm(c);
+  if (!a.ok || !a.user) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
+  const cuerpo = await c.req.json<Record<string, unknown>>().catch(() => ({}));
+  const r = await moverCandidato(c.env, c.req.param("id"), cuerpo, a.user.email.toLowerCase());
+  return "error" in r ? c.json(r, r.error === "no_existe" ? 404 : 400) : c.json(r);
 });
 
 // Bitácora de links rotos (solo la cuenta de la casa): qué se sigue

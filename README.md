@@ -606,3 +606,56 @@ Página pública pero sin listar en buscadores (se manda por liga). Está en
   escrito); y las pruebas recibidas, que solo ve el equipo.
 - `/direccion`, `/vacante`, `/empleo`… redirigen a `/ceo`. Migración 0017.
   Pruebas: `test/ceo.spec.ts`.
+
+## Candidatos: las fichas de quien salimos a buscar (`/gtm` → Candidatos)
+
+La vacante de `/ceo` espera a que alguien llegue. Esta pestaña es lo contrario:
+salimos a buscar con el perfil en la mano y guardamos una ficha por persona.
+`/candidatos` lleva directo a la pestaña.
+
+- **Qué trae cada ficha:** quién es y su liga, por qué el puesto le estaba
+  destinado, trayectoria, los nueve rasgos uno por uno (se ve, probable, por
+  comprobar o bandera, cada uno con su evidencia), qué revisar, quién puede
+  hacer la presentación, la nota de invitación (cabe en 200 caracteres), el
+  mensaje completo y tres preguntas para la primera llamada.
+- **Seguimiento:** estado (por contactar, contactado, en plática, mandó la
+  prueba, descartado) y notas. Se guardan solos, con quién y cuándo, y los ve
+  todo el equipo. Cualquiera del equipo puede agregar a alguien: entra a la
+  banca.
+- **Todo se copia:** la liga, la nota, el mensaje, una ficha completa como
+  texto, o todas las fichas de un jalón.
+- **Privacidad (importante):** este repositorio es público. Las fichas viven
+  solo en la tabla `candidatos` de la base y viajan solo a quien está en la
+  lista del equipo. Ningún nombre va en el código. El archivo con las fichas
+  se guarda en `privado/`, que está en `.gitignore`.
+- **Sembrar o actualizar fichas:**
+
+  ```bash
+  node scripts/sembrar-candidatos.mjs privado/candidatos-ceo.json --local
+  ```
+
+  ```bash
+  node scripts/sembrar-candidatos.mjs privado/candidatos-ceo.json --remote
+  ```
+
+  Volver a sembrar actualiza el contenido y respeta el estado y las notas.
+  `--podar` quita las fichas sembradas que ya no vengan en el archivo.
+- **Nadie contacta por nosotros:** de la búsqueda no sale ningún mensaje. Los
+  textos están listos para que quien firma los mande.
+
+### Llevar esta pantalla a otra app
+
+Es un módulo suelto. Se copian cuatro cosas:
+
+1. `public/candidatos.js` y `public/candidatos.css` (no dependen de nada más).
+   Los colores son variables `--cand-*`; con la clase `cand-claro` queda sobre
+   fondo blanco.
+2. `migrations/0018_candidatos.sql` (una tabla).
+3. `src/lib/candidatos.ts` y las tres rutas de `src/index.ts`
+   (`GET` y `POST /api/gtm/candidatos`, `POST /api/gtm/candidatos/:id`),
+   detrás del control de acceso de esa app.
+4. `scripts/sembrar-candidatos.mjs`, cambiando el nombre de la base.
+
+Y en la página: `Candidatos.montar(elemento, { api: "/ruta", vacante: "ceo" })`.
+La columna `vacante` deja tener varias búsquedas en la misma tabla.
+Pruebas: `test/candidatos.spec.ts`.

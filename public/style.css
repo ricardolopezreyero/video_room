@@ -1617,3 +1617,6 @@ body.gtm-cuerpo { background: #070a0f; }
 body.mat-grabando .visor-flecha, body.mat-grabando #visor-cerrar, body.mat-grabando .visor-modo, body.mat-grabando .mat-musicas { opacity: .35; pointer-events: none; }
 body.mat-grabando .visor-lienzo canvas { box-shadow: 0 0 0 3px #E5484D, 0 20px 60px rgba(0,0,0,.6); }
 @media (max-width: 860px) { .visor-lado #visor-video-zona .label { display: block; } }
+
+/* ── GTM: liga dentro de un párrafo que cambia de pestaña ─────────────── */
+.gtm-liga { background: none; border: none; padding: 0; font: inherit; color: var(--green, #56EF9F); font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }

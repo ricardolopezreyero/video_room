@@ -28,8 +28,9 @@
   function verTab(nombre, mover) {
     if (!$("tab-" + nombre)) nombre = "resumen";
     document.querySelectorAll(".gtm-tab").forEach((el) => (el.hidden = el.id !== "tab-" + nombre));
-    $("gtm-tabs").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tab === nombre));
+    $("gtm-tabs").querySelectorAll("button").forEach((b) => { const on = b.dataset.tab === nombre; b.classList.toggle("on", on); if (on && b.scrollIntoView) b.scrollIntoView({ inline: "center", block: "nearest" }); });
     if (mover) { history.replaceState(null, "", nombre === "resumen" ? location.pathname : "#" + nombre); window.scrollTo({ top: 0 }); }
+    if (nombre === "candidatos" && typeof montarCandidatos === "function") montarCandidatos();
   }
   $("gtm-tabs").querySelectorAll("button").forEach((b) => (b.onclick = () => verTab(b.dataset.tab, true)));
 
@@ -170,6 +171,17 @@
           <h4>Algo que construyó</h4><p>${liga(p.enlace)}</p>
         </div></details>`).join("");
   }
+
+  /* ── candidatos: las fichas de quien salimos a buscar ───────────────── */
+  // La pantalla es un módulo aparte (candidatos.js). Se monta la primera vez
+  // que se abre la pestaña; las fichas llegan del servidor en ese momento.
+  let candMontado = false;
+  function montarCandidatos() {
+    if (candMontado || !window.Candidatos || !$("gtm-candidatos")) return;
+    candMontado = true;
+    window.Candidatos.montar($("gtm-candidatos"), { api: "/api/gtm/candidatos", vacante: "ceo", toast, alCargar: (d) => { const n = (d.fichas || []).filter((f) => f.estado !== "descartado").length; $("gtm-cand-tab").textContent = n ? String(n) : ""; } });
+  }
+  document.querySelectorAll("[data-ir-tab]").forEach((b) => (b.onclick = () => verTab(b.dataset.irTab, true)));
 
   pintarChecklist(); armarCalc(); pintarEquipo(); pintarPostulaciones();
   verTab((location.hash || "").replace("#", "") || "resumen", false);

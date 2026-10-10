@@ -300,6 +300,7 @@ const EQUIPO = `
     <li><b>El acuerdo por escrito.</b> Base, bonos atados al marcador, participación que se gana con el tiempo y con los números, y qué pasa si alguna de las partes se va.</li>
   </ol>
   <p class="gtm-alerta"><b>Antes de mandar la liga:</b> el perfil dice «base sobria, bonos por resultado y una parte de lo que construyas». Es una propuesta de redacción. Confirma que eso quieres ofrecer.</p>
+  <p class="gtm-nota">Aquí llegan quienes se postulan solos. A quienes salimos a buscar nosotros los tienes en <button type="button" class="gtm-liga" data-ir-tab="candidatos">la pestaña Candidatos</button>.</p>
   <h3>Pruebas recibidas</h3>
   <div id="gtm-postulaciones"></div>
 </section>
@@ -368,7 +369,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
 <meta name="robots" content="noindex, nofollow">
 <title>Go-to-market — Video Room</title>
 <link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="icon" href="/og-default.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css${v}"></head>
+<link rel="icon" href="/og-default.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css${v}"><link rel="stylesheet" href="/candidatos.css${v}"></head>
 <body class="app-shell gtm-cuerpo">
 <div class="gtm-hoja">
   <header class="gtm-cab">
@@ -382,6 +383,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
     <button type="button" data-tab="checklist">Checklist <i id="gtm-cuenta-tab"></i></button>
     <button type="button" data-tab="ritmo">Ritmo</button>
     <button type="button" data-tab="equipo">Equipo</button>
+    <button type="button" data-tab="candidatos">Candidatos <i id="gtm-cand-tab"></i></button>
   </nav>
   <main>
     <div class="gtm-tab" id="tab-resumen">${RESUMEN}</div>
@@ -398,11 +400,13 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
     </div>
     <div class="gtm-tab" id="tab-ritmo" hidden>${RITMO}</div>
     <div class="gtm-tab" id="tab-equipo" hidden>${EQUIPO}</div>
+    <div class="gtm-tab" id="tab-candidatos" hidden><div id="gtm-candidatos"></div></div>
   </main>
   <p class="muted gtm-pie">Plan interno. Sesión de ${escapeHtml(o.user.name)} · ${escapeHtml(o.user.email)}</p>
 </div>
 <div class="app-toast" id="gtm-toast"></div>
 <script>window.__GTM = ${datos};</script>
+<script src="/candidatos.js${v}" defer></script>
 <script src="/gtm.js${v}" defer></script>
 </body></html>`;
 }

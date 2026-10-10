@@ -9,7 +9,7 @@
 // publicación nueva tarda exactamente una navegación en llegar; a cambio,
 // ninguna navegación espera a la red.
 var _k = "eye", _rev = 181218;
-var VERSION = "2026-10-10e";
+var VERSION = "2026-10-10f";
 var CACHE = "video-room-" + VERSION;
 var GUARDADO = [
   "/", "/app/monedero", "/app/estadisticas", "/app/transacciones", "/app/faq", "/app/materiales",
