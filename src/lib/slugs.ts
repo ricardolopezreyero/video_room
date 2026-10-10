@@ -21,7 +21,7 @@ const RESERVED_SLUGS = new Set([
   "app", "api", "auth", "webhook", "webhooks", "ws", "r", "recibo", "login", "logout", "salir", "admin",
   "unsubscribe", "embed", "well-known", "cdn-cgi",
   // páginas que vivieron en la raíz y hoy redirigen a /app/*
-  "manifiesto", "faq", "monedero", "estadisticas", "transacciones", "bienvenida", "api-docs", "materiales", "material", "kit",
+  "manifiesto", "faq", "monedero", "estadisticas", "transacciones", "bienvenida", "api-docs", "materiales", "material", "kit", "gtm", "gtm.js",
   // archivos servidos desde public/ (con y sin extensión, por si acaso)
   "sitemap.xml", "robots.txt", "favicon.ico", "index.html", "sitemap", "robots", "favicon", "index",
   "style.css", "room.js", "utm.js", "veloz.js", "sw.js", "chat.js", "embed.js", "motor-video.js", "motor-audio.js", "puente-login.js", "og-default.svg",

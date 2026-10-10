@@ -21,6 +21,7 @@ import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { TIP_OPTIONS_CENTS } from "./lib/pricing";
 import { enviarCortesSemanales } from "./lib/corte-semanal";
 import { rescatar, esRuido } from "./lib/rescate";
+import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm } from "./lib/gtm";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
@@ -133,6 +134,47 @@ app.get("/recibo/:id", async (c) => {
       "Cache-Control": "private, no-store",
     },
   });
+});
+
+// ── Go-to-market: plan interno del equipo (/gtm) ─────────────────────────
+// La estrategia y el checklist solo se le mandan a quien está en la lista.
+app.get("/gtm", async (c) => {
+  const v = (c.env.CF_VERSION_METADATA?.id ?? "").slice(0, 8) || String(Math.floor(Date.now() / 10000));
+  const a = await accesoGtm(c);
+  const cab = { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" };
+  if (!a.ok || !a.user) return c.html(paginaGtmCerrada({ conSesion: !!a.user, email: a.user?.email, v }), a.user ? 403 : 401, cab);
+  const [estado, real] = await Promise.all([estadoGtm(c.env), numerosReales(c.env)]);
+  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, v }), 200, cab);
+});
+
+app.get("/api/gtm", async (c) => {
+  const a = await accesoGtm(c);
+  if (!a.ok) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
+  const [estado, real] = await Promise.all([estadoGtm(c.env), numerosReales(c.env)]);
+  return c.json({ ...estado, real }, 200, { "Cache-Control": "no-store" });
+});
+
+// Palomear o despalomear una tarea: queda quién y cuándo.
+app.post("/api/gtm/tarea", async (c) => {
+  const a = await accesoGtm(c);
+  if (!a.ok || !a.user) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
+  const { id, hecha } = await c.req.json<{ id: string; hecha: boolean }>().catch(() => ({ id: "", hecha: false }));
+  if (!esTareaGtm(id)) return c.json({ error: "tarea_desconocida" }, 400);
+  if (hecha) await c.env.DB.prepare("INSERT OR REPLACE INTO gtm_tareas (id, hecha_por, hecha_nombre) VALUES (?, ?, ?)").bind(id, a.user.email.toLowerCase(), a.user.name).run();
+  else await c.env.DB.prepare("DELETE FROM gtm_tareas WHERE id = ?").bind(id).run();
+  return c.json({ ok: true, id, hecha: !!hecha, por: a.user.email.toLowerCase(), nombre: a.user.name, at: Math.floor(Date.now() / 1000) });
+});
+
+// Dar o quitar acceso a una persona (solo quien administra).
+app.post("/api/gtm/equipo", async (c) => {
+  const a = await accesoGtm(c);
+  if (!a.ok || !a.admin || !a.user) return c.json({ error: "forbidden" }, 403);
+  const { email, quitar } = await c.req.json<{ email: string; quitar?: boolean }>().catch(() => ({ email: "", quitar: false }));
+  const limpio = String(email || "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(limpio)) return c.json({ error: "correo_invalido" }, 400);
+  if (quitar) await c.env.DB.prepare("DELETE FROM gtm_equipo WHERE email = ?").bind(limpio).run();
+  else await c.env.DB.prepare("INSERT OR IGNORE INTO gtm_equipo (email, agregado_por) VALUES (?, ?)").bind(limpio, a.user.email.toLowerCase()).run();
+  return c.json({ ok: true, equipo: (await estadoGtm(c.env)).equipo });
 });
 
 // Bitácora de links rotos (solo la cuenta de la casa): qué se sigue

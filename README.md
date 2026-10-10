@@ -541,3 +541,32 @@ necesita para publicar su sala o recomendar Video Room: **63 diseños** y
 - **Para agregar una pieza:** una línea en `PIEZAS` (id, formato, arquetipo,
   paleta, redes, contenido, texto sugerido). Para probar en consola:
   `__mat.ponerFoto(url)`, `MaterialesMotor.aBlob(pieza, __mat.datos())`.
+
+## Go-to-market (`/gtm`): plan interno del equipo
+
+Página privada con la estrategia para llegar a $1,000,000 al mes y un
+checklist compartido de 214 tareas.
+
+- **Acceso:** solo el equipo. La lista de base está en `src/lib/gtm.ts`
+  (`EQUIPO_BASE`); quien administra (`ADMINS`) agrega o quita personas desde la
+  pestaña Equipo (tabla `gtm_equipo`). Sin sesión responde 401 y con cuenta
+  ajena 403, y en ningún caso se manda el contenido: la estrategia y las
+  tareas viajan dentro del HTML solo para quien tiene acceso. `public/gtm.js`
+  es la interacción y no lleva contenido.
+- **Pestañas:** Resumen (tesis, la jugada «el after», cinco caminos
+  evaluados, cinco pasos con condición para pasar, motores, riesgos y
+  presupuesto), Números (calculadora hacia el millón, pirámide de creadores y
+  de dónde salen las salas), Checklist, Ritmo (cuánto publicar por día, semana
+  y mes) y Equipo (a quién contratar y la vacante).
+- **Checklist:** `src/lib/gtm-tareas.ts`. Cada tarea lleva id (no cambiarlo:
+  es la llave de lo palomeado), paso 1–5, área (ventas, contenido, marketing,
+  alianzas, producto, datos, administración), quién (persona, IA o ambas),
+  esfuerzo y ritmo, con título y detalle que dice cuándo se da por hecha. Las
+  palomitas se guardan en `gtm_tareas` con quién y cuándo, y las ve todo el
+  equipo (se refresca cada 45 s). La «carga» suma horas pendientes por quién
+  y por área; cada renglón filtra.
+- **Dónde vamos hoy:** la franja de arriba usa datos reales
+  (`numerosReales`): creadores que cobraron en 7 días, puerta del mes
+  (entradas + membresías), lo que deja a la casa, salas y sesiones.
+- API: `GET /api/gtm`, `POST /api/gtm/tarea`, `POST /api/gtm/equipo`.
+  Migración 0016. Pruebas: `test/gtm.spec.ts`.

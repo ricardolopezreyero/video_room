@@ -39,6 +39,9 @@
 /qr.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 
+/gtm.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
 /materiales.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 
