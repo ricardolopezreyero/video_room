@@ -19,7 +19,8 @@ describe("los links de sala", () => {
     }
     expect((await get(`/${room.slug}`)).status).toBe(200);
     expect((await get(`/no-existe-esta-sala`)).status).toBe(404);
-    expect((await get(`/recibo`)).status).toBe(404);
+    // una palabra reservada ya no da 404: va a la página que le corresponde
+    expect((await get(`/recibo`)).headers.get("location")).toBe("/app/transacciones");
   });
 
   it("al cambiar de URL, la anterior sigue llevando a la sala para siempre y nadie más puede tomarla", async () => {
@@ -30,7 +31,8 @@ describe("los links de sala", () => {
     const viejo = await get(`/numero-viejo?utm_source=qr`);
     expect(viejo.status).toBe(301);
     expect(viejo.headers.get("location")).toBe("/mi-consultorio?utm_source=qr");
-    expect((await get(`/Numero-Viejo.`)).headers.get("location")).toBe("/numero-viejo");
+    // mal escrita Y vieja: llega en un solo salto a la dirección actual
+    expect((await get(`/Numero-Viejo.`)).headers.get("location")).toBe("/mi-consultorio");
     // otro no puede quedarse con la URL vieja…
     const otro = await createUser();
     const otra = await createRoom(otro, "otra-sala");

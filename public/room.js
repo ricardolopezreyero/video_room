@@ -2093,6 +2093,18 @@
 
   init();
 
+  // Llegó aquí por un link que no existía tal cual y lo adivinamos (ver
+  // lib/rescate.ts): se le dice de frente a qué sala lo trajimos, para que
+  // nadie le pague a quien no buscaba.
+  try {
+    const m = document.cookie.match(/(?:^|; )vr_trajo=([^;]*)/);
+    if (m) {
+      document.cookie = "vr_trajo=; path=/; max-age=0";
+      const decia = decodeURIComponent(decodeURIComponent(m[1])).slice(0, 60);
+      if (decia) setTimeout(() => toast(`El link decía «${decia}». Te trajimos a la sala de ${roomTitle || "esta persona"}; si no es la que buscabas, revisa el link.`, 9000), 900);
+    }
+  } catch {}
+
   // Solo en local: simular mensajes del socket y leer el estado del motor
   // desde la consola, para probar cortes sin cortar nada.
   if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {

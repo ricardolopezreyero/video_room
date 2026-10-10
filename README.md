@@ -441,3 +441,42 @@ previa de la propia persona: monedero → «Ver cómo se vería mi corte semanal
 Revisión del 10-oct-2026: todos los textos de dinero dicen «4 de cada 5
 pesos» en la puerta, «te llegó completo» en los envíos y «lo ganado también se
 gasta adentro» en vez de «balance de creador».
+
+## Links rotos: el rescatador (`src/lib/rescate.ts`)
+
+Todo lo que no se encuentra pasa por `rescatar(c)` antes de rendirse (la ruta
+de sala cuando no hay sala, y `app.notFound` para todo lo demás). El orden va
+de lo seguro a lo adivinado:
+
+| Qué llega | Ejemplo | Qué pasa |
+|---|---|---|
+| Ruido de bots y archivos | `/wp-login.php`, `/.env`, `/x.png` | 404 de texto, sin tocar la base |
+| API | `/api/no-existe` | 404 JSON |
+| Query pegada a la ruta | `/ana&utm_source=qr`, `/ana%3Futm_source=qr` | 301 a `/ana?utm_source=qr` |
+| URL completa pegada | `/https://video…/ana` | 301 a `/ana` |
+| Extensión o segmentos de sobra | `/ana.html`, `/ana/chat` | 301 a `/ana` |
+| Prefijos | `/sala/ana`, `/live/ana`, `/@ana` | 301 a `/ana` |
+| Ceros a la izquierda | `/007` | 301 a `/7` |
+| Dirección anterior de la sala | `/numero-viejo` | 301 a la actual (un salto) |
+| Página por nombre o sinónimo | `/wallet`, `/app/stats`, `/ayuda`, `/recibos`, `/app` | 302 a la página |
+| Recibo con la liga cortada | `/recibo/roto` | 302 a Transacciones |
+| Texto pegado al link | `/ana-te-espero` | 302 + aviso |
+| Sin guiones | `/anacreadora` | 302 + aviso |
+| El nombre de la persona | `/Ana Creadora` | 302 + aviso |
+| Un dedazo o letras volteadas | `/ana-cradora` | 302 + aviso |
+| Link cortado | `/ana-crea` | 302 + aviso |
+| Dos salas posibles, o ninguna | `/pasteleria-sul` | página con las parecidas y una caja para escribir el nombre |
+
+Reglas que no se rompen: **solo se adivina si hay UNA sala posible**; los
+**números nunca se adivinan** (`/12` y `/13` son personas distintas); una sala
+real siempre gana sobre un sinónimo; lo adivinado es 302 (nunca se graba para
+siempre en el navegador) y la sala avisa «El link decía “…”. Te trajimos a la
+sala de X» (cookie `vr_trajo`, 30 s): es dinero y nadie debe pagarle a quien
+no buscaba. La forma canónica solo redirige si existe (antes `/ana.html`
+mandaba para siempre a `/ana-html`).
+
+Bitácora: lo adivinado y lo no resuelto queda en `enlaces_rotos` (path, veces,
+a dónde se mandó). La casa la ve en `GET /api/admin/enlaces-rotos` y recibe un
+correo los viernes si hubo links sin resolver esa semana; con eso se agrega un
+sinónimo a `PAGINAS`/`RAIZ` o se corrige un QR impreso. Pruebas:
+`test/rescate.spec.ts`.

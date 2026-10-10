@@ -20,6 +20,7 @@ import { isReservedSlug, canonicalizarSlug } from "./lib/slugs";
 import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { TIP_OPTIONS_CENTS } from "./lib/pricing";
 import { enviarCortesSemanales } from "./lib/corte-semanal";
+import { rescatar, esRuido } from "./lib/rescate";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
@@ -62,6 +63,10 @@ app.use(async (c, next) => {
   }
   await next();
 });
+
+// Todo lo que ninguna ruta atiende (rutas de varios segmentos, /app/lo-que-sea,
+// archivos que no existen) pasa por el rescatador antes de rendirse.
+app.notFound((c) => rescatar(c));
 
 app.onError((err, c) => {
   console.error(err);
@@ -111,9 +116,10 @@ app.get("/", async (c, next) => {
 // dos partes con su sesión. ?descargar=1 lo baja como archivo.
 app.get("/recibo/:id", async (c) => {
   const id = c.req.param("id");
-  if (!/^(pass|tip|mem)_[a-f0-9]{32}$/.test(id)) return c.text("Recibo no encontrado.", 404);
+  // Un recibo con la liga cortada o que ya no existe: a donde viven todos los recibos.
+  if (!/^(pass|tip|mem)_[a-f0-9]{32}$/.test(id)) return c.redirect("/app/transacciones", 302);
   const [ev, user] = await Promise.all([cargarEvento(c.env, id), currentUser(c).catch(() => null)]);
-  if (!ev) return c.text("Recibo no encontrado.", 404);
+  if (!ev) return c.redirect("/app/transacciones", 302);
   const t = c.req.query("t");
   const firmaOk = !!t && t === (await firmaRecibo(c.env.SESSION_SECRET, id));
   const parteOk = !!user && (user.id === ev.viewerId || user.id === ev.creatorId);
@@ -127,6 +133,17 @@ app.get("/recibo/:id", async (c) => {
       "Cache-Control": "private, no-store",
     },
   });
+});
+
+// Bitácora de links rotos (solo la cuenta de la casa): qué se sigue
+// rompiendo y a dónde mandamos lo que adivinamos.
+app.get("/api/admin/enlaces-rotos", async (c) => {
+  const user = await currentUser(c);
+  if (!user || user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) return c.json({ error: "forbidden" }, 403);
+  const r = await c.env.DB.prepare(
+    "SELECT path, veces, resuelto, datetime(ultimo, 'unixepoch') as ultimo FROM enlaces_rotos ORDER BY (resuelto IS NULL) DESC, veces DESC, ultimo DESC LIMIT 200"
+  ).all();
+  return c.json({ sin_resolver: r.results.filter((x) => !x.resuelto), adivinados: r.results.filter((x) => x.resuelto) });
 });
 
 // Las salas vivían en /r/:slug — ahora viven en la raíz (videoroom.live/:slug,
@@ -177,21 +194,6 @@ app.get("/sitemap.xml", async (c) => {
     { "Content-Type": "application/xml; charset=utf-8" }
   );
 });
-
-function roomNotFoundPage(): string {
-  return `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sala no encontrada — Video Room</title>
-<link rel="icon" href="/og-default.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"></head>
-<body class="app-shell">
-  <div class="onboarding-wrap"><div class="onboarding-card">
-    <div class="onboarding-emoji">🔍</div>
-    <h2>No encontramos esta sala</h2>
-    <p class="muted">El link puede estar mal escrito o la sala ya cambió de URL.</p>
-    <p><a href="/" style="color:var(--green)">Volver a Video Room</a></p>
-  </div></div>
-</body></html>`;
-}
 
 async function handleUnsubscribe(c: Context<{ Bindings: Env }>) {
   let token = c.req.query("token");
@@ -250,16 +252,12 @@ app.get("/", (c) => c.env.ASSETS.fetch(c.req.raw));
 app.get("/:slug", async (c) => {
   const raw = c.req.param("slug");
   const search = new URL(c.req.url).search;
+  // Bots buscando wp-login.php o archivos que no existen: fuera, sin tocar la base.
+  if (esRuido(`/${raw}`)) return rescatar(c);
   // El link es sagrado: mayúsculas, acentos, un punto o paréntesis pegado al
   // final por un mensajero, codificación rara… todo lleva a la misma sala.
   const slug = canonicalizarSlug(raw);
-  if (!slug) return c.html(roomNotFoundPage(), 404);
-  if (slug !== raw) return c.redirect(`/${slug}${search}`, 301);
-  if (isReservedSlug(slug)) return c.html(roomNotFoundPage(), 404);
-
-  // UTM atados a esta sala (ver lib/utm.ts): los lee /pass al entrar.
-  const utm = utmDeQuery(c);
-  if (utm) guardarUtm(c, utm, slug);
+  if (!slug || isReservedSlug(slug)) return rescatar(c);
 
   // Camino crítico de todo el producto: es el link que se comparte. Antes
   // eran ~10 consultas en serie (≈1 s de espera) y luego room.js pedía tres
@@ -272,14 +270,16 @@ app.get("/:slug", async (c) => {
     ).bind(slug).first<Room & { owner_avatar: string | null; owner_email: string }>(),
     currentUser(c).catch(() => null),
   ]);
-  if (!room) {
-    // Una URL que esta sala tuvo antes sigue llevando a ella, para siempre.
-    const alias = await c.env.DB.prepare(
-      "SELECT rooms.slug FROM slug_aliases JOIN rooms ON rooms.id = slug_aliases.room_id WHERE slug_aliases.slug = ?"
-    ).bind(slug).first<{ slug: string }>();
-    if (alias) return c.redirect(`/${alias.slug}${search}`, 301);
-    return c.html(roomNotFoundPage(), 404);
-  }
+  // No existe con ese nombre: el rescatador busca a dónde quería ir (una
+  // dirección anterior de la sala, texto pegado al link, un dedazo…). Solo se
+  // redirige a la forma limpia cuando de verdad existe: antes «/ana.html»
+  // mandaba para siempre a «/ana-html», que no era nada.
+  if (!room) return rescatar(c);
+  if (slug !== raw) return c.redirect(`/${slug}${search}`, 301);
+
+  // UTM atados a esta sala (ver lib/utm.ts): los lee /pass al entrar.
+  const utm = utmDeQuery(c);
+  if (utm) guardarUtm(c, utm, slug);
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
   const [live, status, membership, info] = await Promise.all([
@@ -373,12 +373,37 @@ async function cleanupStaleLiveSessions(env: Env): Promise<void> {
 }
 
 const CRON_CORTE = "33 21 * * 5";
+
+// Una vez por semana: si hubo links que nadie pudo resolver, la casa se
+// entera (para agregar un sinónimo, un alias o corregir un QR impreso), y se
+// limpia lo viejo.
+async function resumenEnlacesRotos(env: Env): Promise<void> {
+  const desde = Math.floor(Date.now() / 1000) - 7 * 86400;
+  const r = await env.DB.prepare(
+    "SELECT path, veces, resuelto FROM enlaces_rotos WHERE ultimo >= ? ORDER BY (resuelto IS NULL) DESC, veces DESC LIMIT 40"
+  ).bind(desde).all<{ path: string; veces: number; resuelto: string | null }>();
+  await env.DB.prepare("DELETE FROM enlaces_rotos WHERE ultimo < ?").bind(desde - 83 * 86400).run();
+  const rotos = r.results.filter((x) => !x.resuelto);
+  if (!rotos.length) return;
+  const fila = (x: { path: string; veces: number; resuelto: string | null }) => `${x.veces}× /${x.path}${x.resuelto ? ` → ${x.resuelto}` : ""}`;
+  const adivinados = r.results.filter((x) => x.resuelto);
+  const texto = `Links que nadie pudo resolver esta semana:\n${rotos.map(fila).join("\n")}${adivinados.length ? `\n\nAdivinados (revisa que vayan a donde deben):\n${adivinados.map(fila).join("\n")}` : ""}`;
+  await sendEmail(env.RESEND_API_KEY, {
+    to: ADMIN_EMAIL,
+    subject: `🔍 Video Room: ${rotos.length} ${rotos.length === 1 ? "link roto" : "links rotos"} esta semana`,
+    html: `<pre style="white-space:pre-wrap; font-family:monospace; font-size:13px;">${texto.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch] as string))}</pre>`,
+    text: texto,
+  });
+}
 export { app, cleanupStaleLiveSessions };
 export default {
   fetch: app.fetch,
   scheduled: async (event: ScheduledController, env: Env, ctx: ExecutionContext) => {
     // Viernes 3:33 pm de Ciudad de México = 21:33 UTC (México ya no cambia de horario).
-    if (event.cron === CRON_CORTE) ctx.waitUntil(enviarCortesSemanales(env).then((r) => console.log("corte semanal", r)));
+    if (event.cron === CRON_CORTE) {
+      ctx.waitUntil(enviarCortesSemanales(env).then((r) => console.log("corte semanal", r)));
+      ctx.waitUntil(resumenEnlacesRotos(env).catch((err) => console.error("enlaces rotos", err)));
+    }
     else ctx.waitUntil(cleanupStaleLiveSessions(env));
   },
 };
