@@ -274,7 +274,38 @@ const RITMO = `
 
 const EQUIPO = `
 <section class="gtm-sec">
-  <p class="gtm-ceja">A quién contratar</p>
+  <p class="gtm-ceja">Dirección</p>
+  <h2>Quien dirige: cómo elegirlo</h2>
+  <p>El perfil público está en <a href="/ceo" target="_blank" rel="noopener" style="color:var(--green)">video.capitaltorreon.com/ceo</a>. Está escrito como espejo y termina en una prueba. Esta es la guía privada para evaluar a quien conteste.</p>
+  <div class="gtm-tabla-caja"><table class="gtm-tabla">
+    <thead><tr><th>Rasgo</th><th>Qué preguntar</th><th>Buena señal</th><th>Bandera roja</th></tr></thead>
+    <tbody>
+      <tr><td><b>Ambición</b></td><td>¿Cuál es la meta más grande que te has puesto y qué pasó?</td><td>Un número grande y propio, con resultado aunque sea parcial.</td><td>Habla de la empresa donde estuvo, no de lo que movió.</td></tr>
+      <tr><td><b>Método</b></td><td>Enséñame cómo llevas tu semana.</td><td>Abre un sistema real y lo explica en minutos.</td><td>«Lo traigo en la cabeza.»</td></tr>
+      <tr><td><b>Números</b></td><td>Dame tres números de tu último proyecto, de memoria.</td><td>Exactos, con de cuánto a cuánto y en cuánto tiempo.</td><td>«Bastante», «mucho», «creció muy bien».</td></tr>
+      <tr><td><b>Eficiencia</b></td><td>¿Qué lograste con menos dinero del que cualquiera hubiera pedido?</td><td>Cuenta el costo peso por peso.</td><td>Pide equipo o presupuesto antes de empezar.</td></tr>
+      <tr><td><b>Rapidez</b></td><td>¿Qué harías mañana a las 9?</td><td>Una acción concreta. Y mandó la prueba en horas.</td><td>«Primero haría un diagnóstico de un mes.»</td></tr>
+      <tr><td><b>Honradez</b></td><td>Cuéntame un error tuyo que costó dinero. ¿A quién le avisaste y cuándo?</td><td>Lo cuenta sin adornos, con cifra y con fecha.</td><td>No encuentra ninguno, o la culpa fue de otro.</td></tr>
+      <tr><td><b>Lealtad</b></td><td>¿Cuánto duraste en tus últimos tres compromisos y por qué saliste?</td><td>Años, y salidas limpias.</td><td>Brincos cada pocos meses. Habla mal de todos.</td></tr>
+      <tr><td><b>Calle</b></td><td>Véndeme la sala como si yo fuera una tarotista con 20 mil seguidores.</td><td>Pregunta antes de ofrecer y cierra con fecha.</td><td>Recita características.</td></tr>
+      <tr><td><b>Raíces</b></td><td>¿Qué lograste que un grupo adoptara y siguiera usando sin ti?</td><td>Nombra a las personas clave y la costumbre que dejó.</td><td>Habla de alcance e impresiones.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>El proceso, en cinco pasos</h3>
+  <ol class="gtm-pasos-lista">
+    <li><b>La prueba escrita.</b> Es el filtro. Quien ya abrió su sala y cobró una sesión va primero. Quien tardó semanas en mandarla, no.</li>
+    <li><b>Una llamada de 30 minutos.</b> Solo números: las nueve preguntas de la tabla.</li>
+    <li><b>Una semana pagada.</b> Misma meta que para el líder de creadores, más un reporte: tres creadores cobrando y una hoja con lo que midió, lo que aprendió y lo que cambiaría.</li>
+    <li><b>Tres referencias por teléfono.</b> Alguien que le confió dinero, alguien que trabajó para él y alguien a quien le quedó mal. La tercera es la que más dice.</li>
+    <li><b>El acuerdo por escrito.</b> Base, bonos atados al marcador, participación que se gana con el tiempo y con los números, y qué pasa si alguna de las partes se va.</li>
+  </ol>
+  <p class="gtm-alerta"><b>Antes de mandar la liga:</b> el perfil dice «base sobria, bonos por resultado y una parte de lo que construyas». Es una propuesta de redacción. Confirma que eso quieres ofrecer.</p>
+  <h3>Pruebas recibidas</h3>
+  <div id="gtm-postulaciones"></div>
+</section>
+
+<section class="gtm-sec">
+  <p class="gtm-ceja">A quién contratar después</p>
   <h2>Una persona primero. Luego dos más.</h2>
   <div class="gtm-roles">
     <article>
@@ -329,8 +360,8 @@ const EQUIPO = `
   <div id="gtm-equipo-lista"></div>
 </section>`;
 
-export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; v: string }): string {
-  const datos = JSON.stringify({ yo: { email: o.user.email, nombre: o.user.name, admin: o.admin }, tareas: TAREAS, hechas: o.hechas, equipo: o.equipo, real: o.real }).replace(/</g, "\\u003c");
+export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; v: string }): string {
+  const datos = JSON.stringify({ yo: { email: o.user.email, nombre: o.user.name, admin: o.admin }, tareas: TAREAS, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
   const v = `?v=${encodeURIComponent(o.v)}`;
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">

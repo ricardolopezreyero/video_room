@@ -17,7 +17,7 @@
   const ESFUERZO = { 1: "media hora", 2: "unas horas", 3: "un día", 4: "varios días" }, HORAS = { 1: 0.5, 2: 2, 3: 8, 4: 24 };
   const RITMO = { u: "", d: "diario", s: "semanal", m: "mensual" };
   const T = G.tareas.map((t) => ({ id: t[0], fase: t[1], area: t[2], quien: t[3], esf: t[4], ritmo: t[5], titulo: t[6], detalle: t[7] }));
-  let hechas = G.hechas || {}, real = G.real || {}, equipo = G.equipo || [];
+  let hechas = G.hechas || {}, real = G.real || {}, equipo = G.equipo || [], postulaciones = G.postulaciones || [];
   const F = Object.assign({ fase: 0, area: "", quien: "", estado: "todas", q: "" }, (() => { try { return JSON.parse(localStorage.getItem("vr_gtm_filtros") || "{}"); } catch { return {}; } })());
   const recordar = () => { try { localStorage.setItem("vr_gtm_filtros", JSON.stringify(F)); } catch {} };
   function toast(msg) { const t = $("gtm-toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2400); }
@@ -112,7 +112,7 @@
   // Lo que palomea otra persona del equipo aparece solo.
   setInterval(async () => {
     if (document.hidden) return;
-    try { const r = await fetch("/api/gtm"); if (!r.ok) return; const j = await r.json(); const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas); hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo; if (cambio) pintarChecklist(); else pintarHoy(); } catch {}
+    try { const r = await fetch("/api/gtm"); if (!r.ok) return; const j = await r.json(); const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas); hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo; if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); } if (cambio) pintarChecklist(); else pintarHoy(); } catch {}
   }, 45000);
 
   /* ── calculadora hacia el millón ────────────────────────────────────── */
@@ -153,6 +153,24 @@
     const f = $("gtm-equipo-form"); if (f) f.onsubmit = (e) => { e.preventDefault(); mandar($("gtm-equipo-correo").value, false); };
   }
 
-  pintarChecklist(); armarCalc(); pintarEquipo();
+  /* ── dirección: las pruebas que llegan desde /ceo ───────────────────── */
+  function pintarPostulaciones() {
+    const c = $("gtm-postulaciones"); if (!c) return;
+    if (!postulaciones.length) { c.innerHTML = `<p class="gtm-vacio">Todavía no llega ninguna. Manda la liga <b>video.capitaltorreon.com/ceo</b> a quien creas que encaja.</p>`; return; }
+    const abiertas = new Set([...c.querySelectorAll("details[open]")].map((d) => d.dataset.id));
+    const liga = (u) => { const t = String(u || "").trim(); if (!t) return "—"; const h = /^https?:\/\//i.test(t) ? t : "https://" + t; return `<a href="${esc(h)}" target="_blank" rel="noopener nofollow">${esc(t)}</a>`; };
+    c.innerHTML = postulaciones.map((p) => `<details class="gtm-postulacion" data-id="${esc(p.id)}"${abiertas.has(p.id) ? " open" : ""}>
+        <summary><b>${esc(p.nombre)}</b><span>${esc(p.ciudad || "")}</span>${p.sala ? `<i>ya abrió su sala</i>` : ""}<em>${fecha(p.created_at)}</em></summary>
+        <div class="gtm-post-cuerpo">
+          <p class="gtm-post-contacto"><a href="mailto:${esc(p.correo)}">${esc(p.correo)}</a>${p.whatsapp ? ` · <a href="https://wa.me/${esc(String(p.whatsapp).replace(/\D/g, ""))}" target="_blank" rel="noopener">${esc(p.whatsapp)}</a>` : ""}</p>
+          <h4>Su sala</h4><p>${liga(p.sala)}</p>
+          <h4>Su número</h4><p>${esc(p.numero)}</p>
+          <h4>Sus primeros siete días</h4><p>${esc(p.siete_dias)}</p>
+          <h4>Lo correcto sobre lo conveniente</h4><p>${esc(p.correcto)}</p>
+          <h4>Algo que construyó</h4><p>${liga(p.enlace)}</p>
+        </div></details>`).join("");
+  }
+
+  pintarChecklist(); armarCalc(); pintarEquipo(); pintarPostulaciones();
   verTab((location.hash || "").replace("#", "") || "resumen", false);
 })();

@@ -56,6 +56,9 @@ export const TAREAS: Tarea[] = [
   ["142", 1, "PRO", "IA", 2, "u", "Botón «reportar esta sala»", "Un reporte que llega al correo de la casa con la sala y el motivo. Hecho cuando un reporte de prueba llega."],
   ["143", 1, "ADM", "P", 2, "u", "Presupuesto de los primeros tres meses", "Cuánto para la persona, el editor, la garantía y las herramientas. Hecho cuando hay un tope mensual escrito."],
   ["144", 1, "DAT", "IA", 2, "u", "Definir qué es un creador activo", "Propuesta: cobró al menos una entrada en los últimos 30 días. Todo el plan se mide con esa regla. Hecho cuando el tablero la usa."],
+  ["145", 1, "ADM", "P", 1, "u", "Mandar el perfil de dirección a 20 personas", "La liga es video.capitaltorreon.com/ceo. A quien conozcas que encaje y a quien conozca a alguien. Hecho con 20 envíos personales."],
+  ["146", 1, "ADM", "P", 3, "u", "Elegir a quien dirige con la guía de la pestaña Equipo", "Prueba escrita, llamada de números, semana pagada y tres referencias. Hecho con una persona elegida o con la decisión de seguir buscando."],
+  ["147", 1, "ADM", "P", 2, "u", "Acordar por escrito la paga y la participación", "Base, bonos atados al marcador, participación que se gana con el tiempo y qué pasa si alguien se va. Hecho con el acuerdo firmado."],
 
   // ── Fase 2 · Los primeros 10, a mano ──────────────────────────────────
   ["201", 2, "VEN", "P", 3, "u", "El fundador transmite primero: tres sesiones cobradas", "Con tu propio tema y tu propia gente. No se puede vender lo que no se ha vivido. Hecho con tres sesiones y tus notas de cada una."],

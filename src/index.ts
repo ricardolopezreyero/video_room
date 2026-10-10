@@ -22,6 +22,7 @@ import { TIP_OPTIONS_CENTS } from "./lib/pricing";
 import { enviarCortesSemanales } from "./lib/corte-semanal";
 import { rescatar, esRuido } from "./lib/rescate";
 import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm } from "./lib/gtm";
+import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
@@ -136,6 +137,20 @@ app.get("/recibo/:id", async (c) => {
   });
 });
 
+// ── Dirección: el perfil de quien va a dirigir Video Room (/ceo) ─────────
+// Público pero sin listar: se manda por liga. Termina en una prueba.
+app.get("/ceo", (c) => {
+  const v = (c.env.CF_VERSION_METADATA?.id ?? "").slice(0, 8) || String(Math.floor(Date.now() / 10000));
+  return c.html(paginaCeo(v), 200, { "Cache-Control": "public, max-age=0, stale-while-revalidate=3600", "X-Robots-Tag": "noindex" });
+});
+app.post("/api/ceo/postular", async (c) => {
+  const cuerpo = await c.req.json<Record<string, unknown>>().catch(() => ({}));
+  const r = await guardarPostulacion(c.env, cuerpo);
+  if ("error" in r) return c.json({ error: r.error }, r.error === "demasiadas_hoy" ? 429 : 400);
+  afterResponse(c, avisarPostulacion(c.env, r.fila).catch((err) => console.error("aviso ceo", err)));
+  return c.json({ ok: true });
+});
+
 // ── Go-to-market: plan interno del equipo (/gtm) ─────────────────────────
 // La estrategia y el checklist solo se le mandan a quien está en la lista.
 app.get("/gtm", async (c) => {
@@ -143,15 +158,15 @@ app.get("/gtm", async (c) => {
   const a = await accesoGtm(c);
   const cab = { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" };
   if (!a.ok || !a.user) return c.html(paginaGtmCerrada({ conSesion: !!a.user, email: a.user?.email, v }), a.user ? 403 : 401, cab);
-  const [estado, real] = await Promise.all([estadoGtm(c.env), numerosReales(c.env)]);
-  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, v }), 200, cab);
+  const [estado, real, postulaciones] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env)]);
+  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, v }), 200, cab);
 });
 
 app.get("/api/gtm", async (c) => {
   const a = await accesoGtm(c);
   if (!a.ok) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
-  const [estado, real] = await Promise.all([estadoGtm(c.env), numerosReales(c.env)]);
-  return c.json({ ...estado, real }, 200, { "Cache-Control": "no-store" });
+  const [estado, real, postulaciones] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env)]);
+  return c.json({ ...estado, real, postulaciones }, 200, { "Cache-Control": "no-store" });
 });
 
 // Palomear o despalomear una tarea: queda quién y cuándo.

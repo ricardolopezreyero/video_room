@@ -75,6 +75,7 @@ const RAIZ: Record<string, string> = {
   home: "/", inicio: "/", index: "/", principal: "/", www: "/", videoroom: "/", "video-room": "/",
   entrar: "/login", ingresar: "/login", acceder: "/login", signin: "/login", "sign-in": "/login", signup: "/login", "sign-up": "/login", registro: "/login", registrarse: "/login", registrar: "/login", login: "/login",
   salir: "/auth/logout", logout: "/auth/logout",
+  direccion: "/ceo", director: "/ceo", "se-busca": "/ceo", vacante: "/ceo", vacantes: "/ceo", empleo: "/ceo", empleos: "/ceo", trabajo: "/ceo", unete: "/ceo",
 };
 const PALABRA_A_PAGINA = new Map<string, string>();
 for (const [pagina, palabras] of Object.entries(PAGINAS)) for (const w of palabras) PALABRA_A_PAGINA.set(w, pagina);
@@ -191,7 +192,7 @@ export async function rescatar(c: Ctx): Promise<Response> {
   const { segmentos, search, escrito } = limpiarRuta(path, url.search);
   const ir = (a: string, permanente: boolean) => {
     const [ruta, ancla] = a.split("#");
-    return c.redirect(`${ruta}${ruta.startsWith("/app/") || ruta === "/" || ruta.startsWith("/login") || ruta.startsWith("/auth") ? "" : search}${ancla ? "#" + ancla : ""}`, permanente ? 301 : 302);
+    return c.redirect(`${ruta}${ruta.startsWith("/app/") || ruta === "/" || ruta === "/ceo" || ruta.startsWith("/login") || ruta.startsWith("/auth") ? "" : search}${ancla ? "#" + ancla : ""}`, permanente ? 301 : 302);
   };
   // A una sala que adivinamos se llega avisando: «el link decía…».
   const irAdivinando = (slug: string) => {

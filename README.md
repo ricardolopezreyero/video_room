@@ -570,3 +570,27 @@ checklist compartido de 214 tareas.
   (entradas + membresías), lo que deja a la casa, salas y sesiones.
 - API: `GET /api/gtm`, `POST /api/gtm/tarea`, `POST /api/gtm/equipo`.
   Migración 0016. Pruebas: `test/gtm.spec.ts`.
+
+## Dirección: el perfil de quien va a dirigir (`/ceo`)
+
+Página pública pero sin listar en buscadores (se manda por liga). Está en
+`src/lib/ceo.ts`.
+
+- **Escrita como espejo:** nueve rasgos en segunda persona (ambición, método,
+  números, eficiencia, rapidez, honradez, lealtad, calle y raíces), cada uno
+  con una frase, un párrafo y «se nota en que…». Antes, la idea central: «No
+  es una marca. Es un servicio». Después: lo que va a lograr con fecha (de la
+  primera semana a los 12 meses, con las metas del GTM), de dónde viene
+  probablemente, para quién no es, y lo que tiene desde el primer día.
+- **Termina en una prueba, no en un currículum:** abrir su sala y hacer una
+  sesión, su número, sus primeros siete días, una vez que eligió lo correcto
+  sobre lo conveniente y algo que construyó. Lo escrito se guarda en el
+  aparato hasta mandarlo. `POST /api/ceo/postular` exige sustancia (largos
+  mínimos), tiene casilla trampa para robots, un correo por día y tope diario.
+  Se guarda en `ceo_postulaciones` y avisa por correo a la casa.
+- **La guía privada para elegir** vive en `/gtm` → Equipo: por cada rasgo, qué
+  preguntar, la buena señal y la bandera roja; el proceso en cinco pasos
+  (prueba, llamada de números, semana pagada, tres referencias, acuerdo por
+  escrito); y las pruebas recibidas, que solo ve el equipo.
+- `/direccion`, `/vacante`, `/empleo`… redirigen a `/ceo`. Migración 0017.
+  Pruebas: `test/ceo.spec.ts`.
