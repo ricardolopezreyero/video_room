@@ -61,6 +61,7 @@
       if (f.trayectoria && f.trayectoria.length) { L.push("", "TRAYECTORIA"); f.trayectoria.forEach((t) => L.push(`· ${t.puesto}${t.empresa ? " · " + t.empresa : ""}${t.fechas ? " (" + t.fechas + ")" : ""}${t.nota ? ". " + t.nota : ""}`)); }
       if (f.rasgos) { L.push("", "RASGOS"); Object.entries(f.rasgos).forEach(([k, r]) => L.push(`· ${k}: ${NIVEL[r[0]][0].toLowerCase()}. ${r[1] || ""}`)); }
       if (f.banderas && f.banderas.length) { L.push("", "QUÉ REVISAR"); f.banderas.forEach((b) => L.push("· " + b)); }
+      if (f.prensa && f.prensa.length) { L.push("", "PUBLICADO SOBRE SU TRABAJO"); f.prensa.forEach((x) => L.push(`· ${x.titulo || ""}${x.medio ? " (" + x.medio + ")" : ""}: ${x.liga}`)); }
       if (f.por_que_no) L.push("", "Por qué no quedó entre las fichas principales: " + f.por_que_no);
       if (f.preguntas && f.preguntas.length) { L.push("", "PREGUNTAS PARA LA PRIMERA LLAMADA"); f.preguntas.forEach((p, i) => L.push(`${i + 1}. ${p}`)); }
       if (f.nota_conexion) L.push("", "NOTA DE INVITACIÓN", f.nota_conexion);
@@ -117,18 +118,38 @@
       </div>`;
     }
 
+    const tieneDetalle = (f) => !!((f.trayectoria || []).length || Object.keys(f.rasgos || {}).length || (f.banderas || []).length || f.mensaje || f.nota_conexion || (f.prensa || []).length);
+
+    // El interior de una ficha: lo que se ve al abrirla. Sirve igual arriba y en la banca.
+    function dentro(f) {
+      const R = rasgosDe(), com = f.comun || {};
+      const tray = (f.trayectoria || []).map((t) => `<li><b>${esc(t.puesto)}</b>${t.empresa ? `<span>${esc(t.empresa)}</span>` : ""}${t.fechas ? `<em>${esc(t.fechas)}</em>` : ""}${t.nota ? `<p>${esc(t.nota)}</p>` : ""}</li>`).join("");
+      const hayRasgos = Object.keys(f.rasgos || {}).length > 0;
+      const rasgos = hayRasgos ? R.map((k) => { const r = (f.rasgos || {})[k] || [1, ""]; return `<li><i class="cand-punto ${NIVEL[r[0]][1]}"></i><div><b>${esc(k)} <small>${NIVEL[r[0]][0]}</small></b><p>${esc(r[1] || "")}</p></div></li>`; }).join("") : "";
+      const prensa = (f.prensa || []).filter((x) => liga(x.liga)).map((x) => `<li><a href="${esc(x.liga)}" target="_blank" rel="noopener noreferrer">${esc(x.titulo || x.liga)} ↗</a>${x.medio ? ` <small>${esc(x.medio)}</small>` : ""}</li>`).join("");
+      return `<div class="cand-dos">
+            <section>${tray ? `<h4>Trayectoria</h4><ol class="cand-tray">${tray}</ol>` : ""}${(f.senales || []).length ? `<h4>Señales</h4><ul class="cand-lista">${f.senales.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${prensa ? `<h4>Lo que se ha publicado de su trabajo</h4><ul class="cand-lista cand-prensa">${prensa}</ul>` : ""}</section>
+            <section>${rasgos ? `<h4>Los ${R.length} rasgos, uno por uno</h4><ul class="cand-rasgos">${rasgos}</ul>` : ""}</section>
+          </div>
+          ${(f.banderas || []).length ? `<section class="cand-banderas"><h4>Qué revisar antes de ilusionarse</h4><ul class="cand-lista">${f.banderas.map((b) => `<li>${esc(b)}</li>`).join("")}</ul></section>` : ""}
+          ${com.n ? `<section><h4>Quién puede hacer la presentación</h4><p class="cand-texto">${com.n === 1 ? "Un contacto" : com.n + " contactos"} en común${(com.nombres || []).length ? `: ${esc(com.nombres.join(", "))}${com.n > com.nombres.length ? ` y ${com.n - com.nombres.length} más` : ""}` : ""}.${com.nota ? " " + esc(com.nota) : ""} Pide ahí la presentación y, de paso, la referencia.</p></section>` : ""}
+          ${f.nota_conexion || f.mensaje || (f.preguntas || []).length ? `<section class="cand-contacto">
+            <h4>Primer contacto</h4>
+            ${f.nota_conexion ? `<div class="cand-msj"><div class="cand-msj-cab"><b>Nota de invitación</b><small>${f.nota_conexion.length} de ${NOTA_MAX} caracteres</small><button type="button" class="cand-btn" data-copiar="nota">Copiar</button></div><p>${esc(f.nota_conexion)}</p></div>` : ""}
+            ${f.mensaje ? `<div class="cand-msj"><div class="cand-msj-cab"><b>Mensaje cuando acepte</b><button type="button" class="cand-btn" data-copiar="mensaje">Copiar</button></div><p>${esc(f.mensaje)}</p></div>` : ""}
+            ${(f.preguntas || []).length ? `<h4>Tres preguntas para la primera llamada</h4><ol class="cand-preguntas">${f.preguntas.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>` : ""}
+          </section>` : ""}`;
+    }
+
     function fichaTop(f) {
       const R = rasgosDe(), c = cuenta(f), abierta = abiertas.has(f.id), url = liga(f.liga);
-      const tray = (f.trayectoria || []).map((t) => `<li><b>${esc(t.puesto)}</b>${t.empresa ? `<span>${esc(t.empresa)}</span>` : ""}${t.fechas ? `<em>${esc(t.fechas)}</em>` : ""}${t.nota ? `<p>${esc(t.nota)}</p>` : ""}</li>`).join("");
-      const rasgos = R.map((k) => { const r = (f.rasgos || {})[k] || [1, ""]; return `<li><i class="cand-punto ${NIVEL[r[0]][1]}"></i><div><b>${esc(k)} <small>${NIVEL[r[0]][0]}</small></b><p>${esc(r[1] || "")}</p></div></li>`; }).join("");
-      const com = f.comun || {};
       return `<article class="cand-ficha${f.estado === "descartado" ? " fuera" : ""}" id="cand-${esc(f.id)}" data-id="${esc(f.id)}">
         <div class="cand-frente">
           <span class="cand-lugar">${String(f.orden).padStart(2, "0")}</span>
           <div class="cand-quien">
             <h3>${esc(f.nombre)}</h3>
             <p class="cand-titular">${esc(f.titular || "")}</p>
-            <div class="cand-chips">${chips(f)}<span class="cand-estado e-${esc(f.estado)}">${nombreEstado(f.estado)}</span></div>
+            <div class="cand-chips">${f.nuevo ? `<span class="cand-nuevo">${esc(f.nuevo)}</span>` : ""}${chips(f)}<span class="cand-estado e-${esc(f.estado)}">${nombreEstado(f.estado)}</span></div>
           </div>
           <div class="cand-acciones">
             ${url ? `<a class="cand-btn lleno" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir LinkedIn ↗</a>` : ""}
@@ -141,18 +162,7 @@
         <div class="cand-tira">${R.map((k) => { const r = (f.rasgos || {})[k] || [1, ""]; return `<span title="${esc(r[1] || "")}"><i class="cand-punto ${NIVEL[r[0]][1]}"></i>${esc(k)}</span>`; }).join("")}</div>
         <button type="button" class="cand-abrir" data-abrir aria-expanded="${abierta}">${abierta ? "Cerrar la ficha" : `Ver la ficha completa · ${c[3]} rasgos se ven, ${c[1] + c[0]} por revisar`}</button>
         <div class="cand-dentro"${abierta ? "" : " hidden"}>
-          <div class="cand-dos">
-            <section><h4>Trayectoria</h4><ol class="cand-tray">${tray}</ol>${(f.senales || []).length ? `<h4>Señales</h4><ul class="cand-lista">${f.senales.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}</section>
-            <section><h4>Los ${R.length} rasgos, uno por uno</h4><ul class="cand-rasgos">${rasgos}</ul></section>
-          </div>
-          ${(f.banderas || []).length ? `<section class="cand-banderas"><h4>Qué revisar antes de ilusionarse</h4><ul class="cand-lista">${f.banderas.map((b) => `<li>${esc(b)}</li>`).join("")}</ul></section>` : ""}
-          ${com.n ? `<section><h4>Quién puede hacer la presentación</h4><p class="cand-texto">${com.n === 1 ? "Un contacto" : com.n + " contactos"} en común${(com.nombres || []).length ? `: ${esc(com.nombres.join(", "))}${com.n > com.nombres.length ? ` y ${com.n - com.nombres.length} más` : ""}` : ""}.${com.nota ? " " + esc(com.nota) : ""} Pide ahí la presentación y, de paso, la referencia.</p></section>` : ""}
-          <section class="cand-contacto">
-            <h4>Primer contacto</h4>
-            ${f.nota_conexion ? `<div class="cand-msj"><div class="cand-msj-cab"><b>Nota de invitación</b><small>${f.nota_conexion.length} de ${NOTA_MAX} caracteres</small><button type="button" class="cand-btn" data-copiar="nota">Copiar</button></div><p>${esc(f.nota_conexion)}</p></div>` : ""}
-            ${f.mensaje ? `<div class="cand-msj"><div class="cand-msj-cab"><b>Mensaje cuando acepte</b><button type="button" class="cand-btn" data-copiar="mensaje">Copiar</button></div><p>${esc(f.mensaje)}</p></div>` : ""}
-            ${(f.preguntas || []).length ? `<h4>Tres preguntas para la primera llamada</h4><ol class="cand-preguntas">${f.preguntas.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>` : ""}
-          </section>
+          ${abierta ? dentro(f) : ""}
         </div>
         ${seguimiento(f)}
       </article>`;
@@ -160,7 +170,7 @@
 
     function fichaBanca(f) {
       const url = liga(f.liga);
-      return `<article class="cand-ficha chica${f.estado === "descartado" ? " fuera" : ""}" id="cand-${esc(f.id)}" data-id="${esc(f.id)}">
+      return `<article class="cand-ficha chica${f.estado === "descartado" ? " fuera" : ""}${abiertas.has(f.id) && tieneDetalle(f) ? " ancha" : ""}" id="cand-${esc(f.id)}" data-id="${esc(f.id)}">
         <div class="cand-frente">
           <div class="cand-quien">
             <h3>${esc(f.nombre)}</h3>
@@ -175,6 +185,7 @@
         ${f.resumen ? `<p class="cand-resumen">${esc(f.resumen)}</p>` : ""}
         ${f.por_que_no ? `<p class="cand-porque"><b>Por qué no quedó entre las principales:</b> ${esc(f.por_que_no)}</p>` : ""}
         ${f.agregado_por ? `<p class="cand-chica">Ficha agregada por ${esc(quien(f.agregado_por))}.</p>` : ""}
+        ${tieneDetalle(f) ? `<button type="button" class="cand-abrir" data-abrir aria-expanded="${abiertas.has(f.id)}">${abiertas.has(f.id) ? "Cerrar la ficha" : "Ver la ficha completa"}</button><div class="cand-dentro"${abiertas.has(f.id) ? "" : " hidden"}>${abiertas.has(f.id) ? `${f.proposito ? `<div class="cand-proposito"><small>Por qué esto le estaba destinado</small><p>${esc(f.proposito)}</p></div>` : ""}${dentro(f)}` : ""}</div>` : ""}
         ${seguimiento(f)}
       </article>`;
     }
@@ -223,7 +234,7 @@
       el.querySelectorAll("[data-filtro]").forEach((b) => (b.onclick = () => { filtro = b.dataset.filtro; pintar(); }));
       el.querySelectorAll("[data-ir]").forEach((tr) => (tr.onclick = () => { const a = el.querySelector("#cand-" + CSS.escape(tr.dataset.ir)); if (!a) { filtro = "todos"; pintar(); return el.querySelector("#cand-" + CSS.escape(tr.dataset.ir))?.scrollIntoView({ behavior: "smooth", block: "start" }); } a.scrollIntoView({ behavior: "smooth", block: "start" }); }));
       const todas = el.querySelector("[data-todas]");
-      if (todas) todas.onclick = () => { const T = top(); if (T.every((f) => abiertas.has(f.id))) T.forEach((f) => abiertas.delete(f.id)); else T.forEach((f) => abiertas.add(f.id)); recordar(); pintar(); };
+      if (todas) todas.onclick = () => { const T = top(); if (T.every((f) => abiertas.has(f.id))) D.fichas.forEach((f) => abiertas.delete(f.id)); else T.forEach((f) => abiertas.add(f.id)); recordar(); pintar(); };
       const ct = el.querySelector("[data-copiar-todas]");
       if (ct) ct.onclick = async () => aviso((await copiar(D.fichas.filter(pasa).map(textoFicha).join("\n\n────────────\n\n"))) ? "Fichas copiadas." : "No se pudo copiar.");
       el.querySelectorAll(".cand-ficha").forEach((caja) => {

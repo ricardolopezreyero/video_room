@@ -618,6 +618,11 @@ salimos a buscar con el perfil en la mano y guardamos una ficha por persona.
   comprobar o bandera, cada uno con su evidencia), qué revisar, quién puede
   hacer la presentación, la nota de invitación (cabe en 200 caracteres), el
   mensaje completo y tres preguntas para la primera llamada.
+- **Rondas:** la búsqueda se hace por rondas. Quien baja de la lista principal
+  no se borra: pasa a la banca con su ficha completa (se abre igual) y la razón.
+  Las fichas nuevas de una ronda llevan su etiqueta (campo `nuevo`).
+- **Prensa:** cada ficha puede llevar ligas a lo publicado sobre el trabajo de
+  la persona (campo `prensa`). Solo trabajo, nada personal.
 - **Seguimiento:** estado (por contactar, contactado, en plática, mandó la
   prueba, descartado) y notas. Se guardan solos, con quién y cuándo, y los ve
   todo el equipo. Cualquiera del equipo puede agregar a alguien: entra a la

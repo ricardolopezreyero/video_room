@@ -182,3 +182,10 @@
   .cand-rejilla { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .cand * { transition: none !important; scroll-behavior: auto !important; } }
+
+/* segunda ronda: etiqueta de ficha nueva, prensa y ficha de banca abierta */
+.cand-chips .cand-nuevo { background: var(--cand-acento); color: var(--cand-sobre-acento); border-color: transparent; font-weight: 800; }
+.cand-prensa a { color: var(--cand-acento); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.cand-prensa small { color: var(--cand-tenue); font-size: 12px; }
+.cand-ficha.chica.ancha { grid-column: 1 / -1; }
+.cand-ficha.chica .cand-proposito { margin-top: 12px; }
