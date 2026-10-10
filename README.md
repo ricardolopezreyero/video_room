@@ -368,3 +368,16 @@ respaldo), los cinco: `utm_source`, `utm_medium`, `utm_campaign`,
 Toda entrada los guarda en `passes` (pagada, de miembro, de cortesía, del
 dueño) y Estadísticas los muestra como fuente · medio · campaña · contenido.
 Ejemplo para imprimir: `video.capitaltorreon.com/ricardo?utm_source=qr&utm_medium=impreso&utm_campaign=consultoria&utm_content=puerta-oficina`.
+
+### Código QR del creador (monedero → «Código QR»)
+
+`public/qr.js` sobre `qr-lib.js` (Kazuhiko Arase, MIT). Cerrado por defecto;
+se arma al abrirlo. Un toque dice dónde va (Instagram, Facebook, WhatsApp,
+TikTok, YouTube, Correo, Puerta o local, Tarjeta, Cartel) y el link ya lleva
+sus UTM; los campos UTM a mano viven bajo «UTM ▸» para no estorbar a quien no
+los usa. Foto de Google al centro opcional (nivel H de corrección, círculo
+blanco, borde verde; la foto se trae por `/api/wallet/avatar` para que el
+canvas no quede «sucio» y se incrusta como data URL en el SVG). Baja PNG/JPG
+(1024 px, fondo blanco), SVG, copia el link, la imagen (donde el navegador
+deja) o el código SVG. Validado con jsQR: el QR con el centro tapado se
+decodifica íntegro.

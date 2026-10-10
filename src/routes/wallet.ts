@@ -28,6 +28,20 @@ const AMOUNTS = [2000, 6000, 12000, 24000, 48000, 96000, 192000];
 // el retiro de verdad funciona antes de confiarle un monto grande.
 const MIN_RETIRO_CENTS = 1000;
 
+// La foto de Google de la propia persona, servida desde aquí: así el
+// generador de QR puede dibujarla en un canvas (una imagen de otro dominio
+// «ensucia» el canvas y no deja exportar PNG). Se pide un tamaño mayor que
+// el del chip (s400) para que impresa se vea bien.
+wallet.get("/api/wallet/avatar", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.text("", 401);
+  const url = user.avatar_url || "";
+  if (!/^https:\/\/[a-z0-9.-]+\.(googleusercontent|ggpht)\.com\//i.test(url)) return c.text("", 404);
+  const r = await fetch(url.replace(/=s\d+(-c)?$/, "=s400-c"), { cf: { cacheTtl: 86400, cacheEverything: true } }).catch(() => null);
+  if (!r || !r.ok) return c.text("", 404);
+  return new Response(r.body, { headers: { "Content-Type": r.headers.get("Content-Type") || "image/jpeg", "Cache-Control": "private, max-age=3600" } });
+});
+
 wallet.get("/api/wallet/me", async (c) => {
   // El usuario y su total retirado salen en paralelo (el id ya viene en la
   // cookie firmada): un viaje a la base en vez de dos.

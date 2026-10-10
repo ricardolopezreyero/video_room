@@ -36,6 +36,12 @@
 /chat.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 
+/qr.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
+/qr-lib.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
 /puente-login.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 

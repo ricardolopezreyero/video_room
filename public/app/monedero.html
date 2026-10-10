@@ -104,6 +104,7 @@ async function main() {
     return;
   }
   const me = await res.json();
+  perfilYo = me;
 
   document.getElementById('user-avatar').src = me.avatar_url || '';
   document.getElementById('user-name').textContent = me.name || '';
@@ -299,6 +300,8 @@ async function loadRoom(autoCopy) {
   }
 }
 
+let perfilYo = null;
+let qrMontado = false;
 function renderRoom(room) {
   const el = document.getElementById('room-info');
   const url = 'video.capitaltorreon.com/' + room.slug;
@@ -315,8 +318,11 @@ function renderRoom(room) {
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
       <a href="/${room.slug}"><button class="btn-primary">🔴 Transmitir en vivo</button></a>
       <button class="btn-ghost" id="btn-copy-link">Copiar link</button>
+      <button class="btn-ghost" id="btn-qr">Código QR</button>
       <button class="btn-ghost" id="btn-edit-slug">Editar URL</button>
     </div>
+    <!-- El generador de QR vive cerrado; se arma la primera vez que lo abren. -->
+    <div id="qr-tool" style="display:none; margin-top:14px;"></div>
     <div id="edit-slug-form" style="display:none; margin-top:14px;">
       <input id="new-slug-input" placeholder="mi-nombre-de-sala" style="width:100%; padding:12px; border-radius:10px; border:.5px solid rgba(255,255,255,.15); background:rgba(255,255,255,.04); color:#fff; margin-bottom:8px; box-sizing:border-box;">
       <div style="display:flex; gap:10px;">
@@ -362,6 +368,18 @@ function renderRoom(room) {
   document.getElementById('btn-copy-link').onclick = () => {
     navigator.clipboard.writeText('https://' + url);
     showToast('Link copiado.');
+  };
+  const qrBtn = document.getElementById('btn-qr'), qrTool = document.getElementById('qr-tool');
+  qrMontado = false;
+  qrBtn.onclick = () => {
+    const abrir = qrTool.style.display === 'none';
+    qrTool.style.display = abrir ? 'block' : 'none';
+    qrBtn.classList.toggle('active', abrir);
+    if (abrir && !qrMontado && window.QRSala) {
+      qrMontado = true;
+      QRSala.montar(qrTool, { slug: room.slug, nombre: perfilYo && perfilYo.name, avatar: !!(perfilYo && perfilYo.avatar_url), toast: showToast });
+      qrTool.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   };
   document.getElementById('btn-edit-slug').onclick = () => {
     document.getElementById('edit-slug-form').style.display = 'block';
@@ -714,6 +732,8 @@ schedulePhraseRefresh('phrase-text');
 </script>
 <!-- RLR · Login de CapitalTorreon: todo funciona sin entrar; entrar solo agrega -->
 <div data-login-ct style="position:fixed;top:12px;right:12px;z-index:9999"></div>
+<script src="/qr-lib.js" defer></script>
+<script src="/qr.js" defer></script>
 <script src="/puente-login.js"></script>
 <script src="https://login.capitaltorreon.com/login.js" data-prefs="vr_audio_modo,vr_quality,vr_notify_minutes" defer></script>
 </body>
