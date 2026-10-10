@@ -412,3 +412,32 @@ monedero del creador y el FAQ, dichos como «1 de cada 5 pesos»).
 
 Siguiente capa, no construida: mandar dinero a cualquier persona (no solo a
 quien transmite) y pagar entre cuentas sin sala de por medio.
+
+## Correos: cuáles hay, quién los apaga y el corte semanal
+
+Catálogo en `src/lib/correos.ts` (`CATEGORIAS`). **Fijos**, sin interruptor:
+recibos de dinero (entrada, envío, membresía, recarga, retiro: a las dos
+partes, siempre) y lo de la cuenta (bienvenida, banco conectado). **Con
+interruptor** (monedero → «Correos», todo prendido por defecto; se guarda en
+`users.correos` como JSON con solo lo apagado): corte semanal, resumen al
+terminar cada transmisión, alguien activó «Avísame», confirmación de avisos a
+tu gente, salas que sigues (quien lo apaga sigue recibiendo la notificación
+en la app; además cada aviso trae «dejar esta sala»). Cada correo que se puede
+apagar lleva al pie «Elegir qué correos recibo». API: `GET/POST
+/api/wallet/correos`. Al mandar, cada sitio consulta `quiere()` /
+`quiereDeFila()`.
+
+**Corte semanal** (`src/lib/corte-semanal.ts`): cron `33 21 * * 5` (viernes
+3:33 pm de Ciudad de México). A cada creador con ganancias en los últimos 7
+días: ganado (entradas + envíos + membresías) comparado con los 7 anteriores
+(+%), entradas y personas (nuevas), envíos completos, en vivo (transmisiones,
+horas, pico), «Avísame» nuevos, mejor día, quienes más han dejado, de dónde
+vinieron (UTM) y disponible ahora. Se anota en `cortes_semanales` antes de
+mandar (una vez por semana por persona); sin movimiento no hay correo. Vista
+previa de la propia persona: monedero → «Ver cómo se vería mi corte semanal»
+(`GET /api/wallet/corte?html=1`). Para probar el envío a mano:
+`enviarCortesSemanales(env, hasta)`.
+
+Revisión del 10-oct-2026: todos los textos de dinero dicen «4 de cada 5
+pesos» en la puerta, «te llegó completo» en los envíos y «lo ganado también se
+gasta adentro» en vez de «balance de creador».

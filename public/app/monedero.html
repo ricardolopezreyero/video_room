@@ -151,6 +151,16 @@ async function main() {
       <div class="label">Tu sala</div>
       <div id="room-info">Cargando…</div>
     </div>
+    <div class="balance-box" id="correos">
+      <div class="label">Correos · tú eliges qué te llega</div>
+      <p class="muted" style="margin:4px 0 12px;">Todo empieza prendido. Apaga lo que no quieras; los recibos de dinero y lo de tu cuenta llegan siempre.</p>
+      <div id="correos-lista" class="correos-lista">Cargando…</div>
+      <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button class="btn-ghost small" id="btn-ver-corte">Ver cómo se vería mi corte semanal</button>
+        <span class="muted" style="font-size:12px;">Los viernes a las 3:33 pm, solo si hubo movimiento.</span>
+      </div>
+      <div id="corte-vista" style="display:none; margin-top:12px;"></div>
+    </div>
     <div class="balance-box" id="integrations-box">
       <div class="label">Integraciones · conecta Video Room con tu sitio o tus herramientas</div>
       <p class="muted" style="margin:4px 0 14px;">Somos un servicio: tu sala se puede leer, escuchar y mostrar desde cualquier otra plataforma. <a class="app-nav-link" href="/app/api">Ver la documentación de la API →</a></p>
@@ -182,6 +192,7 @@ async function main() {
   }
 
   loadRoom(params.get('bienvenida') === '1');
+  cargarCorreos();
 
   content.querySelectorAll('[data-amt]').forEach((btn) => {
     btn.onclick = async () => {
@@ -296,6 +307,41 @@ async function loadRoom(autoCopy) {
 
 let perfilYo = null;
 let qrMontado = false;
+
+// ── Correos: interruptores. Cada toque guarda al instante; sin botón de guardar.
+async function cargarCorreos() {
+  const cont = document.getElementById('correos-lista');
+  const r = await fetch('/api/wallet/correos');
+  if (!r.ok) { cont.textContent = 'No se pudieron cargar tus correos.'; return; }
+  pintarCorreos((await r.json()).correos);
+  const btn = document.getElementById('btn-ver-corte'), vista = document.getElementById('corte-vista');
+  btn.onclick = () => {
+    const abrir = vista.style.display === 'none';
+    vista.style.display = abrir ? 'block' : 'none';
+    btn.textContent = abrir ? 'Ocultar el corte' : 'Ver cómo se vería mi corte semanal';
+    if (abrir && !vista.firstChild) {
+      const f = document.createElement('iframe'); f.className = 'corte-iframe'; f.title = 'Tu corte semanal'; f.src = '/api/wallet/corte?html=1'; vista.appendChild(f);
+    }
+  };
+  if (location.hash === '#correos') document.getElementById('correos').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+function pintarCorreos(lista) {
+  const cont = document.getElementById('correos-lista');
+  cont.innerHTML = lista.map((c) => `
+    <label class="correo-fila ${c.fijo ? 'fijo' : ''}">
+      <div class="correo-txt"><b>${escapeHtmlM(c.nombre)}</b><span>${escapeHtmlM(c.que)}</span></div>
+      <span class="switch ${c.prendido ? 'on' : ''} ${c.fijo ? 'fijo' : ''}" title="${c.fijo ? 'Siempre llega' : (c.prendido ? 'Prendido' : 'Apagado')}">
+        <input type="checkbox" data-clave="${c.clave}" ${c.prendido ? 'checked' : ''} ${c.fijo ? 'disabled' : ''}><i></i>
+      </span>
+    </label>`).join('');
+  cont.querySelectorAll('input[data-clave]').forEach((inp) => inp.onchange = async () => {
+    const sw = inp.closest('.switch'); sw.classList.toggle('on', inp.checked); inp.disabled = true;
+    const r = await fetch('/api/wallet/correos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clave: inp.dataset.clave, prendido: inp.checked }) });
+    inp.disabled = false;
+    if (!r.ok) { inp.checked = !inp.checked; sw.classList.toggle('on', inp.checked); showToast('No se pudo guardar.'); return; }
+    showToast(inp.checked ? 'Prendido.' : 'Apagado. Ya no te llega ese correo.', 1800);
+  });
+}
 function renderRoom(room) {
   const el = document.getElementById('room-info');
   const url = 'video.capitaltorreon.com/' + room.slug;

@@ -39,4 +39,4 @@ binding = "CF_VERSION_METADATA"
 APP_URL = "https://video.capitaltorreon.com"
 
 [triggers]
-crons = ["*/30 * * * *"]
+crons = ["*/30 * * * *", "33 21 * * 5"]

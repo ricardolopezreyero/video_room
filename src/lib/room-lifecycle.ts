@@ -1,3 +1,4 @@
+import { quiereDeFila } from "./correos";
 import type { Env } from "../env";
 import type { Room, Session } from "./db";
 import { sendEmail, streamSummaryEmail } from "./email";
@@ -48,10 +49,10 @@ export async function endLiveSession(
   // manda "en segundo plano" y nunca comprobamos que salió es un correo que
   // en la práctica no confiamos en que llegue.
   try {
-    const owner = await env.DB.prepare("SELECT email, name, avatar_url FROM users WHERE id = ?")
+    const owner = await env.DB.prepare("SELECT email, name, avatar_url, correos FROM users WHERE id = ?")
       .bind(room.owner_id)
-      .first<{ email: string; name: string; avatar_url: string | null }>();
-    if (owner) {
+      .first<{ email: string; name: string; avatar_url: string | null; correos: string | null }>();
+    if (owner && quiereDeFila(owner.correos, "resumen_transmision")) {
       const durationMinutes = Math.max(0, Math.round((endedAt - session.started_at) / 60));
       const { subject, html, text } = streamSummaryEmail({
         appUrl: env.APP_URL,

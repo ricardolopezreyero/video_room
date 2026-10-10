@@ -19,6 +19,7 @@ import { sendEmail, ADMIN_EMAIL } from "./lib/email";
 import { isReservedSlug, canonicalizarSlug } from "./lib/slugs";
 import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { TIP_OPTIONS_CENTS } from "./lib/pricing";
+import { enviarCortesSemanales } from "./lib/corte-semanal";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
 import { afterResponse } from "./lib/segundo-plano";
@@ -371,10 +372,13 @@ async function cleanupStaleLiveSessions(env: Env): Promise<void> {
   }
 }
 
+const CRON_CORTE = "33 21 * * 5";
 export { app, cleanupStaleLiveSessions };
 export default {
   fetch: app.fetch,
-  scheduled: async (_event: ScheduledController, env: Env, ctx: ExecutionContext) => {
-    ctx.waitUntil(cleanupStaleLiveSessions(env));
+  scheduled: async (event: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    // Viernes 3:33 pm de Ciudad de México = 21:33 UTC (México ya no cambia de horario).
+    if (event.cron === CRON_CORTE) ctx.waitUntil(enviarCortesSemanales(env).then((r) => console.log("corte semanal", r)));
+    else ctx.waitUntil(cleanupStaleLiveSessions(env));
   },
 };

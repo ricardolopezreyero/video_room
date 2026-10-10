@@ -8,6 +8,7 @@ import { notifyRoomLive, notifyRoomStartingSoon } from "../lib/notify";
 import { sendEmail, newFollowerEmail } from "../lib/email";
 import { enviarRecibos } from "../lib/recibos";
 import { entradaGratis } from "../lib/cortesia";
+import { quiereDeFila } from "../lib/correos";
 import { emitEvent } from "../lib/webhooks";
 import { evaluateRelics, viewerMarkFor } from "../lib/status";
 import {
@@ -611,11 +612,11 @@ rooms.post("/api/rooms/:slug/notify-me", async (c) => {
   // que alguien lo espera — la señal más temprana de demanda que tiene.
   if (ins.meta.changes > 0 && user.id !== room.owner_id) {
     const [owner, count] = await Promise.all([
-      c.env.DB.prepare("SELECT name, email, avatar_url FROM users WHERE id = ?").bind(room.owner_id).first<{ name: string; email: string; avatar_url: string | null }>(),
+      c.env.DB.prepare("SELECT name, email, avatar_url, correos FROM users WHERE id = ?").bind(room.owner_id).first<{ name: string; email: string; avatar_url: string | null; correos: string | null }>(),
       c.env.DB.prepare("SELECT COUNT(*) as n FROM notify_me WHERE room_id = ?").bind(room.id).first<{ n: number }>(),
     ]);
     const followerCount = count?.n ?? 1;
-    if (owner) {
+    if (owner && quiereDeFila(owner.correos, "nuevo_seguidor")) {
       try {
         await sendEmail(c.env.RESEND_API_KEY, {
           to: owner.email,

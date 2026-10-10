@@ -1195,3 +1195,20 @@ kbd { font-family: inherit; font-size: 10.5px; font-weight: 800; color: #fff; ba
 .despedida-txt { flex: 1 1 100%; font-size: 13.5px; color: #e8edf8; }
 .despedida .btn-ghost { font-size: 13px; }
 @media (min-width: 900px) { .despedida { left: auto; right: 24px; width: 420px; } }
+
+/* ═══════════ Correos: interruptores (monedero) ═══════════ */
+.correos-lista { display: flex; flex-direction: column; }
+.correo-fila { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: .5px solid rgba(255,255,255,.08); cursor: pointer; }
+.correo-fila:first-child { border-top: none; }
+.correo-fila.fijo { cursor: default; }
+.correo-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.correo-txt b { font-size: 14px; color: #fff; }
+.correo-txt span { font-size: 12.5px; color: #9aa1b0; line-height: 1.45; }
+.switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; border-radius: 999px; background: rgba(255,255,255,.14); transition: background .15s; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch.on { background: var(--green, #56EF9F); }
+.switch.on i { transform: translateX(20px); }
+.switch.fijo { background: rgba(86,239,159,.4); }
+.switch.fijo input { cursor: default; }
+.corte-iframe { width: 100%; height: 720px; border: .5px solid rgba(255,255,255,.1); border-radius: 12px; background: #fff; }

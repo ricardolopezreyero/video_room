@@ -16,6 +16,8 @@ export interface User {
   signup_utm_source: string | null;
   signup_utm_medium: string | null;
   signup_utm_campaign: string | null;
+  /** JSON {clave:false} con los correos apagados; NULL = todos prendidos (ver lib/correos.ts). */
+  correos?: string | null;
 }
 
 export interface Room {

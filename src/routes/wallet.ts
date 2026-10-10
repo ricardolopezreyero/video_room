@@ -2,6 +2,10 @@ import { Hono } from "hono";
 import { currentUser, sessionUid } from "../lib/current-user";
 import { creditLedger, newId, gastable } from "../lib/db";
 import { RECHARGE_OPTIONS_CENTS } from "../lib/pricing";
+import { CLAVES, estadoPara, guardarPreferencia } from "../lib/correos";
+import { calcularCorte } from "../lib/corte-semanal";
+import { corteSemanalEmail } from "../lib/email";
+import type { Room } from "../lib/db";
 import {
   stripeCreateCheckoutSession,
   verifyStripeSignature,
@@ -41,6 +45,38 @@ wallet.get("/api/wallet/avatar", async (c) => {
   const r = await fetch(url.replace(/=s\d+(-c)?$/, "=s400-c"), { cf: { cacheTtl: 86400, cacheEverything: true } }).catch(() => null);
   if (!r || !r.ok) return c.text("", 404);
   return new Response(r.body, { headers: { "Content-Type": r.headers.get("Content-Type") || "image/jpeg", "Cache-Control": "private, max-age=3600" } });
+});
+
+// ── Correos: qué quiere recibir cada quien (ver lib/correos.ts) ──────────
+wallet.get("/api/wallet/correos", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  return c.json({ correos: estadoPara(user.correos) });
+});
+
+wallet.post("/api/wallet/correos", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const { clave, prendido } = await c.req.json<{ clave: string; prendido: boolean }>().catch(() => ({ clave: "", prendido: true }));
+  if (!CLAVES.has(clave)) return c.json({ error: "clave_desconocida" }, 400);
+  await guardarPreferencia(c.env, user.id, clave, !!prendido);
+  const u = await c.env.DB.prepare("SELECT correos FROM users WHERE id = ?").bind(user.id).first<{ correos: string | null }>();
+  return c.json({ ok: true, correos: estadoPara(u?.correos) });
+});
+
+// Vista previa del corte semanal de la propia persona (los últimos 7 días,
+// como saldría el viernes). ?html=1 lo pinta; sin eso, los números.
+wallet.get("/api/wallet/corte", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE owner_id = ?").bind(user.id).first<Room>();
+  if (!room) return c.json({ error: "sin_sala" }, 404);
+  const corte = await calcularCorte(c.env, user, room, Math.floor(Date.now() / 1000));
+  if (c.req.query("html")) {
+    const mail = corteSemanalEmail({ appUrl: c.env.APP_URL, name: user.name, avatarUrl: user.avatar_url, roomTitle: room.title, corte, ajustesUrl: `${c.env.APP_URL}/app/monedero#correos` });
+    return c.html(mail.html);
+  }
+  return c.json({ corte });
 });
 
 wallet.get("/api/wallet/me", async (c) => {

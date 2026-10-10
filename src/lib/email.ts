@@ -202,6 +202,8 @@ interface ShellOpts {
   afterHtml?: string;
   fineprint?: string;
   unsubscribeUrl?: string;
+  /** Liga al panel de interruptores (correos que se pueden apagar). */
+  ajustesUrl?: string;
 }
 
 const TONES = {
@@ -247,10 +249,13 @@ export function renderShell(o: ShellOpts): string {
       </table>`
     : "";
 
+  const ligaAjustes = o.ajustesUrl ? `<a href="${escapeHtml(o.ajustesUrl)}" style="color:#7c8696; text-decoration:underline;">Elegir qué correos recibo</a>` : "";
   const footerText = o.unsubscribeUrl
     ? `Recibes este correo porque pediste que te avisáramos sobre esta sala en Video Room.
-       <a href="${escapeHtml(o.unsubscribeUrl)}" style="color:#7c8696; text-decoration:underline;">Dejar de recibir avisos de esta sala</a>.`
-    : `Este correo es un recibo de tu actividad en <a href="${escapeHtml(o.appUrl)}" style="color:#7c8696; text-decoration:underline;">Video Room</a>. Nada se graba, nada se borra de tu historial.`;
+       <a href="${escapeHtml(o.unsubscribeUrl)}" style="color:#7c8696; text-decoration:underline;">Dejar de recibir avisos de esta sala</a>${ligaAjustes ? ` · ${ligaAjustes}` : ""}.`
+    : o.ajustesUrl
+      ? `Recibes este correo porque es tu sala en <a href="${escapeHtml(o.appUrl)}" style="color:#7c8696; text-decoration:underline;">Video Room</a>. ${ligaAjustes}: todo empieza prendido y apagas lo que no quieras.`
+      : `Este correo es un recibo de tu actividad en <a href="${escapeHtml(o.appUrl)}" style="color:#7c8696; text-decoration:underline;">Video Room</a>. Nada se graba, nada se borra de tu historial.`;
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -622,6 +627,7 @@ export function streamSummaryEmail(opts: {
   rankLine?: string;
 }): Mail {
   const { appUrl, name, avatarUrl, roomTitle, durationMinutes, earnedCents, peakViewers, hearts, newRelics = [], rankLine } = opts;
+  const ajustesUrl = `${appUrl}/app/monedero#correos`;
   const details: Detail[] = [];
   if (rankLine) details.push({ label: "Tu rango", value: rankLine, strong: true });
   for (const r of newRelics) details.push({ label: `${r.icon} Nueva reliquia`, value: `${r.name} — ${r.how}`, strong: true });
@@ -646,7 +652,8 @@ export function streamSummaryEmail(opts: {
     ctaLabel: "Ver mis estadísticas",
     linkUrl: statsUrl,
     afterHtml: "Ahí está el detalle: quién entró, cuánto dejó cada quien y de qué campaña vinieron.",
-    fineprint: "Lo ganado ya está en tu balance de creador, listo para retirar desde $10 MXN.",
+    fineprint: "Lo ganado ya es tuyo: lo puedes retirar a tu banco desde $10 o gastarlo adentro sin retirar.",
+    ajustesUrl,
   });
   const text = renderText({
     headline: subject,
@@ -737,7 +744,7 @@ export function payoutFailedEmail(opts: {
     avatarUrl,
     avatarAlt: name,
     headline: "No pudimos completar tu retiro",
-    bodyHtml: `Stripe no aceptó la transferencia en este momento. <strong>Tu dinero no se movió</strong>: los ${fmtPesos(amountCents)} regresaron a tu balance de creador tal cual estaban.`,
+    bodyHtml: `Stripe no aceptó la transferencia en este momento. <strong>Tu dinero no se movió</strong>: los ${fmtPesos(amountCents)} regresaron a tu dinero ganado tal cual estaban.`,
     details: [
       { label: "Monto", value: `${fmtPesos(amountCents)} MXN` },
       { label: "Tu balance", value: "Intacto — nada se perdió" },
@@ -748,7 +755,7 @@ export function payoutFailedEmail(opts: {
   });
   const text = renderText({
     headline: subject,
-    lines: [`Stripe no aceptó la transferencia. Los ${fmtPesos(amountCents)} MXN regresaron a tu balance de creador.`],
+    lines: [`Stripe no aceptó la transferencia. Los ${fmtPesos(amountCents)} MXN regresaron a tu dinero ganado.`],
     ctaLabel: "Intentar de nuevo",
     linkUrl: monederoUrl,
   });
@@ -778,7 +785,7 @@ export function bankConnectedEmail(opts: {
     linkUrl: monederoUrl,
     afterHtml: puedeRetirar
       ? "Haz el primer retiro aunque sea chico: así compruebas con tus propios ojos que el dinero llega."
-      : "En cuanto tengas $10 o más en tu balance de creador, el botón de retirar se enciende.",
+      : "En cuanto tengas $10 o más ganados, el botón de retirar se enciende.",
     fineprint: "Nunca vemos tus datos bancarios: viven en Stripe.",
   });
   const text = renderText({
@@ -787,6 +794,82 @@ export function bankConnectedEmail(opts: {
     details: [{ label: "Disponible para retirar", value: `${fmtMXN(creatorBalanceCents)} MXN` }],
     ctaLabel: "Ir a mi monedero",
     linkUrl: monederoUrl,
+  });
+  return { subject, html, text };
+}
+
+
+// ── El corte semanal: viernes 3:33 pm, los últimos 7 días, comparados con
+// los 7 anteriores. Un solo correo con movimiento y crecimiento; si no hubo
+// movimiento, no se manda.
+export function corteSemanalEmail(opts: {
+  appUrl: string;
+  name: string;
+  avatarUrl: string | null;
+  roomTitle: string;
+  ajustesUrl?: string;
+  corte: {
+    desde: number; hasta: number;
+    ganado_cents: number; ganado_antes_cents: number;
+    entradas: number; entradas_antes: number;
+    personas: number; personas_nuevas: number;
+    envios: number; envios_cents: number; membresias_cents: number;
+    sesiones: number; horas_en_vivo: number; pico: number;
+    seguidores_nuevos: number; seguidores_total: number;
+    mejor_dia: { dia: string; cents: number } | null;
+    top: { name: string; total_cents: number }[];
+    campanas: { utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; entradas: number; ganado_cents: number }[];
+    disponible_cents: number;
+  };
+}): Mail {
+  const { appUrl, name, avatarUrl, roomTitle, corte: k } = opts;
+  const dif = k.ganado_cents - k.ganado_antes_cents;
+  const pct = k.ganado_antes_cents > 0 ? Math.round((dif / k.ganado_antes_cents) * 100) : null;
+  const crecimiento = pct === null
+    ? (k.ganado_antes_cents === 0 ? "La semana pasada no hubo movimiento: esta sí." : "")
+    : pct >= 0 ? `+${pct} % que la semana pasada (${fmtPesos(k.ganado_antes_cents)}).` : `${pct} % que la semana pasada (${fmtPesos(k.ganado_antes_cents)}).`;
+  const rango = `${fmtFechaCDMX(k.desde)} – ${fmtFechaCDMX(k.hasta)}`;
+  const details: Detail[] = [
+    { label: "Entradas", value: `${k.entradas} ${plural(k.entradas, "entrada", "entradas")} · ${k.personas} ${plural(k.personas, "persona", "personas")}${k.personas_nuevas ? ` (${k.personas_nuevas} ${plural(k.personas_nuevas, "nueva", "nuevas")})` : ""}` },
+    { label: "Te mandaron", value: k.envios ? `${fmtPesos(k.envios_cents)} en ${k.envios} ${plural(k.envios, "envío", "envíos")}, completos` : "nada esta semana" },
+  ];
+  if (k.membresias_cents > 0) details.push({ label: "Membresías", value: fmtPesos(k.membresias_cents) });
+  details.push({ label: "En vivo", value: `${k.sesiones} ${plural(k.sesiones, "transmisión", "transmisiones")} · ${k.horas_en_vivo} h · pico de ${k.pico}` });
+  if (k.seguidores_nuevos > 0) details.push({ label: "Avísame", value: `${k.seguidores_nuevos} ${plural(k.seguidores_nuevos, "persona nueva", "personas nuevas")} · ${k.seguidores_total} en total` });
+  if (k.mejor_dia) details.push({ label: "Tu mejor día", value: `${fmtFechaCDMX(Math.floor(new Date(k.mejor_dia.dia + "T12:00:00-06:00").getTime() / 1000))} · ${fmtPesos(k.mejor_dia.cents)}` });
+  if (k.top.length) details.push({ label: "Quienes más han dejado (de siempre)", value: k.top.map((t) => `${t.name} (${fmtPesos(t.total_cents)})`).join(" · ") });
+  if (k.campanas.length) details.push({ label: "De dónde vinieron", value: k.campanas.map((c) => `${[c.utm_source, c.utm_medium, c.utm_campaign, c.utm_content].filter(Boolean).join(" · ")}: ${c.entradas}`).join(" / ") });
+  details.push({ label: "Disponible ahora", value: fmtPesos(k.disponible_cents), strong: true });
+  const subject = `📅 Tu semana: ${fmtPesos(k.ganado_cents)}${pct !== null && pct !== 0 ? ` (${pct > 0 ? "+" : ""}${pct} %)` : ""}`;
+  const html = renderShell({
+    appUrl,
+    preheader: `${rango} · ${k.entradas} ${plural(k.entradas, "entrada", "entradas")}, ${k.personas} ${plural(k.personas, "persona", "personas")}. ${crecimiento}`,
+    badgeText: "📅 Corte semanal",
+    tone: dif >= 0 ? "gold" : "green",
+    avatarUrl,
+    avatarAlt: name,
+    headline: `Esta semana ganaste ${fmtPesos(k.ganado_cents)}`,
+    bodyHtml: `Del ${escapeHtml(rango)}, en <strong>${escapeHtml(roomTitle)}</strong>. ${escapeHtml(crecimiento)}`,
+    stats: [
+      { value: fmtPesos(k.ganado_cents), label: "ganados", green: true },
+      { value: String(k.personas), label: plural(k.personas, "persona", "personas") },
+      { value: `${k.horas_en_vivo} h`, label: "en vivo" },
+    ],
+    details,
+    ctaLabel: k.disponible_cents >= 1000 ? "Ver mi dinero" : "Ver mis estadísticas",
+    linkUrl: k.disponible_cents >= 1000 ? `${appUrl}/app/monedero` : `${appUrl}/app/estadisticas`,
+    afterHtml: "Lo ganado ya es tuyo: retíralo a tu banco o gástalo adentro, sin retirar. El próximo corte, el viernes a las 3:33 pm.",
+    ajustesUrl: opts.ajustesUrl,
+  });
+  const text = renderText({
+    headline: subject,
+    lines: [`${rango}, en ${roomTitle}. ${crecimiento}`],
+    details: [
+      { label: "Ganaste", value: `${fmtPesos(k.ganado_cents)} MXN` },
+      ...details.map((d) => ({ label: d.label, value: d.value })),
+    ],
+    ctaLabel: "Ver mis estadísticas",
+    linkUrl: `${appUrl}/app/estadisticas`,
   });
   return { subject, html, text };
 }

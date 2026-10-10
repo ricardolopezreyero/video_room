@@ -205,19 +205,19 @@ export function recibosDe(ev: EventoDinero): { viewer: Mail; creator: Mail } {
     case "entrada":
       cBadge = "💵 Entrada cobrada";
       cHeadline = `${ev.viewer.name} entró a tu sala: ${mas}`;
-      cBody = `Pagó su hora y cruzó la puerta. Tu parte ya está en tu balance de creador, desde el mismo segundo.`;
+      cBody = `Pagó su hora y cruzó la puerta. Tu parte ya es tuya desde el mismo segundo: 4 de cada 5 pesos.`;
       cSubject = `💵 ${ev.viewer.name} entró a tu sala — ${mas} MXN para ti · ${folio}`;
       break;
     case "propina":
       cBadge = "💵 Propina recibida";
       cHeadline = `${ev.viewer.name} te mandó ${fmtPesos(ev.amountCents)}: ${mas} para ti`;
-      cBody = `Una propina en vivo. Tu parte ya está en tu balance de creador.`;
+      cBody = `Te mandó dinero en vivo y te llegó completo, desde el mismo segundo.`;
       cSubject = `💵 ${ev.viewer.name} te mandó ${mxn(ev.amountCents)} — ${mas} para ti · ${folio}`;
       break;
     case "despedida":
       cBadge = "💵 Propina de despedida";
       cHeadline = `${ev.viewer.name} te dejó ${fmtPesos(ev.amountCents)} al despedirse: ${mas} para ti`;
-      cBody = `La transmisión ya había terminado y aun así quiso agradecer. Tu parte ya está en tu balance de creador.`;
+      cBody = `La transmisión ya había terminado y aun así quiso agradecer. Te llegó completo.`;
       cSubject = `💵 ${ev.viewer.name} te dejó una propina de despedida — ${mas} para ti · ${folio}`;
       break;
     case "destacado":
@@ -229,7 +229,7 @@ export function recibosDe(ev: EventoDinero): { viewer: Mail; creator: Mail } {
     case "membresia":
       cBadge = "🪪 Membresía vendida";
       cHeadline = `${ev.viewer.name} compró tu membresía mensual: ${mas} para ti`;
-      cBody = `Entrará a tu sala todas las veces que quiera durante 30 días. Tu parte ya está en tu balance de creador.`;
+      cBody = `Entrará a tu sala todas las veces que quiera durante 30 días. Tu parte ya es tuya: 4 de cada 5 pesos.`;
       cSubject = `🪪 ${ev.viewer.name} compró tu membresía — ${mas} para ti · ${folio}`;
       break;
   }
@@ -237,7 +237,7 @@ export function recibosDe(ev: EventoDinero): { viewer: Mail; creator: Mail } {
   if (msg) cDetails.push({ label: "Su mensaje", value: `“${msg}”` });
   if (ev.tipo === "entrada" && ev.expiresAt) cDetails.push({ label: "Su hora termina", value: `${fmtHoraCDMX(ev.expiresAt)}, hora de Ciudad de México` });
   if (ev.tipo === "membresia" && ev.expiresAt) cDetails.push({ label: "Su membresía vale hasta", value: fmtFechaCompletaCDMX(ev.expiresAt) });
-  cDetails.push({ label: "Tu balance de creador ahora", value: mxn(ev.creator.creatorBalanceAfterCents), strong: true });
+  cDetails.push({ label: "Tu dinero ganado ahora", value: mxn(ev.creator.creatorBalanceAfterCents), strong: true });
 
   const creator: Mail = {
     subject: cSubject,
@@ -258,7 +258,7 @@ export function recibosDe(ev: EventoDinero): { viewer: Mail; creator: Mail } {
       ctaLabel: "Ver mis transacciones",
       linkUrl: txUrl,
       afterHtml: sello(ev.viewer.name),
-      fineprint: "Lo tuyo ya está en tu balance de creador, listo para retirar desde $10.00 MXN. Cada movimiento queda guardado para siempre en Transacciones.",
+      fineprint: "Lo tuyo ya es tuyo: retíralo a tu banco desde $10.00 MXN o gástalo adentro sin retirar. Cada movimiento queda guardado para siempre en Transacciones.",
     }),
     text: renderText({
       headline: cSubject,
