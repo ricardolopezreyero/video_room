@@ -337,6 +337,7 @@
         }
       } else if (msg.type === "tip") {
         showTipBand(msg.from, msg.avatar_url, msg.amount_cents, msg.message);
+        if (msg.fila) crearChat().recibir(msg.fila);
         updateGoal(msg.ticker_cents);
         if (isOwner) {
           toast(`+${pesos(msg.creator_cents ?? Math.round(msg.amount_cents * 0.9))} · ${msg.from} te mandó dinero 💵`);
@@ -344,11 +345,14 @@
         }
       } else if (msg.type === "hearts") {
         spawnFloatingHeart();
+      } else if (msg.type === "chat_inicio") {
+        crearChat().inicio(msg);
       } else if (msg.type === "comment") {
-        appendChatMessage(msg.id, msg.user_id, msg.name, msg.avatar_url, msg.body, msg.is_owner, msg.mark);
+        crearChat().recibir(msg);
       } else if (msg.type === "comment_liked") {
-        updateCommentLikes(msg.comment_id, msg.likes);
+        if (chat) chat.likes(msg.comment_id, msg.likes, msg.seq);
       } else if (msg.type === "pinned") {
+        if (msg.fila) crearChat().recibir(msg.fila);
         $("pinned-text").textContent = `${msg.name}: ${msg.body}`;
         const pinnedAvatar = $("pinned-avatar");
         if (msg.avatar_url) { pinnedAvatar.src = msg.avatar_url; pinnedAvatar.style.display = "block"; }
@@ -435,70 +439,40 @@
     if (navigator.vibrate) navigator.vibrate([12, 60, 12]);
   }
 
-  function appendChatMessage(commentId, userId, name, avatarUrl, body, isOwnerMsg, mark) {
-    const feed = $("chat-feed");
-    const row = document.createElement("div");
-    row.className = isOwnerMsg ? "chat-msg owner" : "chat-msg";
-    if (commentId) row.dataset.commentId = commentId;
-    const avatarEl = document.createElement(avatarUrl ? "img" : "span");
-    avatarEl.className = "chat-msg-avatar";
-    if (avatarUrl) avatarEl.src = avatarUrl;
-    row.appendChild(avatarEl);
-    const nameEl = document.createElement("span");
-    nameEl.className = "chat-msg-name";
-    nameEl.textContent = name;
-    // Marca de rango del espectador (◆ Asiduo, ✦ Mecenas): estatus visible
-    // justo donde el creador decide a quién atender primero.
-    if (mark) {
-      const markEl = document.createElement("span");
-      markEl.className = "chat-msg-mark";
-      markEl.textContent = mark;
-      markEl.title = mark === "✦" ? "Mecenas" : "Asiduo";
-      nameEl.appendChild(markEl);
-    }
-    const bodyEl = document.createElement("span");
-    bodyEl.className = "chat-msg-body";
-    bodyEl.textContent = ` ${body}`;
-    row.appendChild(nameEl);
-    row.appendChild(bodyEl);
-    const likeEl = document.createElement("span");
-    likeEl.className = "like-count";
-    likeEl.style.display = "none";
-    row.appendChild(likeEl);
-    // Fijar un comentario es una herramienta del creador para que se note que
-    // está atendiendo algo puntual — el botón solo existe en su propia pantalla.
-    if (isOwner) {
-      const pinBtn = document.createElement("button");
-      pinBtn.className = "pin-trigger";
-      pinBtn.textContent = "📌";
-      pinBtn.title = "Destacar este comentario";
-      pinBtn.onclick = () => {
-        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pin", name, body, avatar_url: avatarUrl }));
-      };
-      row.appendChild(pinBtn);
-      // Moderación: Like/Silenciar/Expulsar/Bloquear — solo sobre comentarios
-      // de otras personas, nunca sobre los propios del creador.
-      if (commentId && userId && !isOwnerMsg) {
-        const kebabBtn = document.createElement("button");
-        kebabBtn.className = "kebab-trigger";
-        kebabBtn.textContent = "⋮";
-        kebabBtn.title = "Moderar";
-        kebabBtn.onclick = (ev) => openCommentActions(ev, commentId, userId, name);
-        row.appendChild(kebabBtn);
-      }
-    }
-    feed.appendChild(row);
-    feed.scrollTop = feed.scrollHeight;
-    while (feed.children.length > 200) feed.removeChild(feed.firstChild);
+  // ── El chat en vivo vive en chat.js (ChatVivo): ventana de filas con tope,
+  // scroll que no brinca, búsqueda, filtros, teclas. room.js solo le pasa lo
+  // que llega por el socket y le presta las acciones de la sala.
+  const TECLAS = [];
+  const teclaPor = new Map();
+  function registrarTecla(tecla, descripcion, fn, opts = {}) {
+    const reg = { tecla, descripcion, fn, ...opts };
+    TECLAS.push(reg);
+    teclaPor.set(tecla, reg);
   }
-
-  function updateCommentLikes(commentId, likes) {
-    if (!commentId) return;
-    const row = $("chat-feed").querySelector(`[data-comment-id="${CSS.escape(commentId)}"]`);
-    const likeEl = row && row.querySelector(".like-count");
-    if (!likeEl) return;
-    likeEl.textContent = likes > 0 ? `❤️ ${likes}` : "";
-    likeEl.style.display = likes > 0 ? "inline" : "none";
+  let chat = null;
+  function crearChat() {
+    if (chat || !window.ChatVivo) return chat;
+    chat = ChatVivo.crear({
+      feed: $("chat-feed"), panel: $("chat-panel"), slug, api, toast,
+      esCreador: () => isOwner, yo: () => me, nombreCreador: () => roomTitle,
+      onCitar: (f) => citar(f),
+      onFijar: (f) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pin", name: f.name, body: f.body, avatar_url: f.avatar_url })); },
+      onModerar: (ev, f) => openCommentActions(ev, f.id, f.user_id, f.name),
+      onLike: (f) => { if (f && f.id) api(`/api/rooms/${slug}/like-comment`, { body: { comment_id: f.id } }).catch(() => {}); },
+      onCorazon: () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "heart" })); },
+      registrarTecla,
+    });
+    return chat;
+  }
+  // Tocar un nombre (o la tecla r) deja «@Nombre » listo en la caja: así la
+  // persona mencionada ve su mensaje marcado y lo encuentra con el filtro @.
+  function citar(f) {
+    if (!f || !f.name) return;
+    const input = $("chat-input");
+    const etiqueta = "@" + f.name.trim().split(/\s+/)[0] + " ";
+    if (!input.value.includes(etiqueta)) input.value = etiqueta + input.value;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   }
 
   // Popover compartido de moderación: se reposiciona junto al comentario que
@@ -661,7 +635,9 @@
     const res = await api(`/api/rooms/${slug}/comment`, { body: { text } });
     if (res.error === "sin_pase") toast("Necesitas un pase vigente para comentar.");
     else if (res.error === "sala_cerrada") toast("La sala ya cerró.");
-    else if (res.error) toast("No se pudo enviar tu comentario.");
+    else if (res.error === "despacio") { input.value = text; toast("Un momento… un comentario a la vez.", 1800); }
+    else if (res.error) { input.value = text; toast("No se pudo enviar tu comentario."); }
+    else if (chat) chat.irEnVivo(); // lo que escribes, lo ves: al mandar regresas a lo vivo
   }
 
   function revealChatUI() {
@@ -2040,6 +2016,54 @@
       shownPrivacyToast = true;
       toast("🔒 Nada de esto se guarda. Habla con toda confianza.", 5000);
     });
+    // ── Teclas (solo computadora) ──────────────────────────────────────────
+    // Cada acción de la sala se registra una vez; el chat registra las suyas
+    // en chat.js. «?» abre la lista completa. Nada de esto estorba al escribir:
+    // dentro de una caja de texto las teclas son letras, y Esc suelta la caja.
+    registrarTecla("?", "Ver todas las teclas", () => abrirTeclas(), { grupo: "Sala", etiqueta: "?" });
+    registrarTecla("d", "Mandar dinero", () => { if (!isOwner) $("btn-tip").click(); }, { grupo: "Sala", publico: true });
+    registrarTecla("h", "Mandar un corazón", () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "heart" })); }, { grupo: "Sala" });
+    registrarTecla("n", "Levantar la mano", () => { if (!isOwner) $("btn-hand").click(); }, { grupo: "Sala", publico: true });
+    registrarTecla("o", "Ocultar / mostrar el chat", () => $("btn-chat").click(), { grupo: "Sala" });
+    registrarTecla("m", "Silenciar / activar el micrófono", () => toggleMic(), { grupo: "Quien transmite", creador: true });
+    registrarTecla("v", "Apagar / encender la cámara", () => toggleCam(), { grupo: "Quien transmite", creador: true });
+    let teclasUsadas = Number(localStorage.getItem("vr_teclas") || 0);
+    const pista = $("teclas-pista");
+    if (pista && window.ChatVivo && ChatVivo.ESCRITORIO && teclasUsadas < 3) pista.hidden = false;
+    document.addEventListener("keydown", (e) => {
+      if (!window.ChatVivo || !ChatVivo.ESCRITORIO) return;
+      const t = e.target;
+      const enCampo = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (e.key === "Escape" && enCampo) { t.blur(); return; }
+      if (enCampo || e.metaKey || e.ctrlKey || e.altKey) return;
+      if ($("teclas-sheet").style.display === "flex" && e.key !== "?") { if (e.key === "Escape") $("teclas-sheet").style.display = "none"; return; }
+      const reg = teclaPor.get(e.key);
+      if (!reg || (reg.creador && !isOwner) || (reg.publico && isOwner)) return;
+      e.preventDefault();
+      reg.fn();
+      if (!reg.oculta && teclasUsadas < 3) { teclasUsadas++; localStorage.setItem("vr_teclas", String(teclasUsadas)); if (teclasUsadas >= 3 && pista) pista.hidden = true; }
+    });
+    function abrirTeclas() {
+      const sheet = $("teclas-sheet");
+      if (sheet.style.display === "flex") { sheet.style.display = "none"; return; }
+      const lista = $("teclas-lista");
+      lista.textContent = "";
+      const grupos = new Map();
+      for (const r of TECLAS) {
+        if (r.oculta || !r.descripcion || (r.creador && !isOwner) || (r.publico && isOwner)) continue;
+        if (!grupos.has(r.grupo)) grupos.set(r.grupo, []);
+        grupos.get(r.grupo).push(r);
+      }
+      for (const [g, regs] of grupos) {
+        const h = document.createElement("h4"); h.textContent = g; lista.appendChild(h);
+        for (const r of regs) { const fila = document.createElement("div"); fila.className = "tecla-fila"; const k = document.createElement("kbd"); k.textContent = r.etiqueta || r.tecla; const d = document.createElement("span"); d.textContent = r.descripcion; fila.appendChild(k); fila.appendChild(d); lista.appendChild(fila); }
+      }
+      const extra = document.createElement("div"); extra.className = "tecla-fila"; const k2 = document.createElement("kbd"); k2.textContent = "Enter"; const d2 = document.createElement("span"); d2.textContent = "Enviar lo escrito · en la búsqueda: siguiente resultado"; extra.appendChild(k2); extra.appendChild(d2); lista.appendChild(extra);
+      sheet.style.display = "flex";
+    }
+    $("teclas-close").onclick = () => { $("teclas-sheet").style.display = "none"; };
+    $("teclas-sheet").addEventListener("click", (ev) => { if (ev.target.id === "teclas-sheet") $("teclas-sheet").style.display = "none"; });
+    if ($("chat-teclas")) $("chat-teclas").onclick = abrirTeclas;
     $("dim-slider").addEventListener("input", (e) => {
       const val = Number(e.target.value);
       player.style.filter = val >= 100 ? "" : `brightness(${val}%)`;
@@ -2053,7 +2077,8 @@
   if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
     window.__vr = {
       simular: (msg) => ws && ws.onmessage({ data: JSON.stringify(msg) }),
-      estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld, audio: motorAudio && { modo: motorAudio.modo, elegido: motorAudio.elegido, procesado: motorAudio.procesado, nivel: motorAudio.nivel() }, filtro: filtro && { nombre: filtro.nombre, activo: filtro.activo } }),
+      estado: () => ({ isOwner, effectiveTier, viewerCap, colchonMs, simulcastViewer, reconectando, ownerOfflineSince, codecNombre, peldano: motor && motor.actual, escalera: motor && motor.peld, audio: motorAudio && { modo: motorAudio.modo, elegido: motorAudio.elegido, procesado: motorAudio.procesado, nivel: motorAudio.nivel() }, filtro: filtro && { nombre: filtro.nombre, activo: filtro.activo }, chat: chat && chat.estado() }),
+      chat: () => chat,
     };
   }
 })();

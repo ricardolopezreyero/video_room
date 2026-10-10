@@ -287,3 +287,49 @@ Sus salas son gratis para quien entre y ellas entran gratis a cualquier sala
 todas las demás cuentas, sigue igual. Agregar una cuenta: una línea y deploy.
 Además, quien toca «Entrar» sin sesión y vuelve del login entra solo si la
 entrada no cuesta (cortesía o miembro).
+
+## El chat en vivo: una herramienta, no una cajita
+
+El chat de una transmisión mueve muchísimo texto en poco tiempo y luego se
+borra todo. Está hecho para eso (`public/chat.js` + el Durable Object):
+
+- **Historial con secuencia.** Cada fila (comentario, dinero, aviso) lleva un
+  `seq` y vive en el storage del DO (`c:<seq>`, tope 6,000) mientras dura la
+  transmisión. Quien entra tarde o se reconecta recibe lo último al conectar
+  (`chat_inicio`), puede subir por páginas (`GET /api/rooms/:slug/chat?antes=`)
+  y, si se perdió algo en medio, se rellena solo (`?desde=`). Al terminar la
+  sesión se borra todo: nada se graba.
+- **Lo nuevo no te mueve.** Si estás leyendo arriba, lo nuevo entra abajo sin
+  tocar tu scroll; aparece «↓ 12 nuevos» (dorado si te mencionaron, con halo
+  si habló quien transmite) y una raya «Nuevos» marca dónde te quedaste.
+  Pegado abajo, todo fluye en vivo. El DOM nunca pasa de ~350 filas: lo demás
+  queda en memoria y se vuelve a pintar al subir, sin brincos (se mide la fila
+  que estabas leyendo y se corrige justo eso; `overflow-anchor: none`).
+- **Buscar en todo lo dicho** (lupa o `/`): sin acentos ni mayúsculas, todas
+  las palabras, filtro por quién (todo / quien transmite / dinero / yo),
+  contador «3 de 12», flechas, la palabra subrayada. Primero lo que hay en
+  memoria (instantáneo) y luego el servidor completa lo más viejo.
+- **Filtros de un toque:** Todo · ? Preguntas (con conteo) · 💵 Dinero (con el
+  total) · 🎙 Quien transmite · @ Mí (lo tuyo y donde te mencionan).
+- **El dinero dentro del chat:** propinas y mensajes destacados entran como
+  filas doradas con el monto: la línea de tiempo del dinero, buscable.
+- **Menciones:** tocar un nombre (o `r`) deja «@Nombre » en la caja; la persona
+  mencionada ve su fila con borde dorado y la encuentra con el filtro @.
+- **Marcas de minuto** cada 5 min de transmisión; al pasar el mouse, el
+  segundo exacto de cada fila (el mismo «minuto del video» de los recibos).
+- **Ligas clicables** (solo http/https, `rel=noopener`), nunca `innerHTML`.
+- **Doble toque:** el creador da like; el público manda un corazón.
+- **Freno:** una persona, un comentario cada 700 ms (el creador sin freno);
+  el servidor responde `despacio` y el texto vuelve a la caja.
+- **Chat grande** (⤢ o `x`) para leer o moderar a gusto.
+- **Teclas en computadora** (`?` las enseña; una pista bajo la caja las
+  primeras 3 veces): `c` escribir · `/` buscar · `End` en vivo · `j`/`k` o
+  `↑`/`↓` cursor entre mensajes · `r` responder · `f` cambiar filtro · `x`
+  grande · `h` corazón · `d` dinero · `n` mano · `o` ocultar chat · `Esc`
+  cierra/suelta · creador: `p` destacar, `l` like, `m` mic, `v` cámara ·
+  `Ctrl/Cmd+C` con cursor copia «Nombre: texto». Dentro de una caja de texto
+  las teclas son letras.
+
+Probar en local: `window.__vr.chat()` y `__vr.estado().chat` (filas en
+memoria, ventana pintada, `pegado`, `sinLeer`); `__vr.simular({type:"comment",
+seq, ...})` mete filas sin servidor. Pruebas: `test/chat.spec.ts`.

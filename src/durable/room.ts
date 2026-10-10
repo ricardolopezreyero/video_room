@@ -24,9 +24,39 @@ interface PersistedState {
   sampledComments?: number;
   comments?: number;
   ownerOfflineSince?: number;
+  chatSeq?: number;
 }
 
 const SAMPLE_EVERY_MS = 60_000;
+
+// ── El chat en vivo ─────────────────────────────────────────────────────────
+// Cada fila (comentario, dinero, aviso) lleva un número de secuencia y vive en
+// el storage del DO bajo "c:<seq>" mientras dura la transmisión: así quien
+// entra tarde o se reconecta ve lo mismo que los demás, se puede subir hacia
+// atrás por páginas y buscar en todo lo dicho. Al terminar la sesión se borra
+// todo (nada se graba). Tope en memoria/storage: las últimas CHAT_MAX filas.
+export interface FilaChat {
+  seq: number;
+  kind: "msg" | "dinero" | "aviso";
+  id: string | null;
+  user_id: string | null;
+  name: string;
+  avatar_url: string | null;
+  mark: string | null;
+  body: string;
+  is_owner: boolean;
+  ts: number;
+  /** segundo de la transmisión en que ocurrió */
+  s: number;
+  likes?: number;
+  amount_cents?: number;
+}
+const CHAT_MAX = 6000;
+const CHAT_PAGINA = 80;
+const CHAT_INICIO = 60;
+const CHAT_FRENO_MS = 700;
+const llaveChat = (seq: number) => `c:${String(seq).padStart(8, "0")}`;
+const sinAcentos = (t: string) => String(t || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 // Si al creador se le va el internet, la sala espera: su público ve que se
 // cortó y que lo estamos esperando; el chat sigue vivo. Si en este tiempo no
 // vuelve, la transmisión se cierra sola con el flujo normal (resumen,
@@ -52,6 +82,10 @@ export class RoomDurableObject implements DurableObject {
   sampledComments = 0;
   comments = 0;
   ownerOfflineSince = 0;
+  chatSeq = 0;
+  // freno por persona (en memoria: si el DO hiberna, se perdona)
+  private ultimoComentario = new Map<string, number>();
+  private idASeq: Map<string, number> | null = null;
   private ready: Promise<void>;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -71,6 +105,7 @@ export class RoomDurableObject implements DurableObject {
         this.sampledComments = stored.sampledComments ?? 0;
         this.comments = stored.comments ?? 0;
         this.ownerOfflineSince = stored.ownerOfflineSince ?? 0;
+        this.chatSeq = stored.chatSeq ?? 0;
       }
     });
   }
@@ -156,6 +191,7 @@ export class RoomDurableObject implements DurableObject {
     this.sampledComments = 0;
     this.startedAtMs = 0;
     this.ownerOfflineSince = 0;
+    await this.borrarChat(); // nada se graba: el chat se va con la transmisión
     await this.persist();
     return summary;
   }
@@ -173,8 +209,81 @@ export class RoomDurableObject implements DurableObject {
       sampledComments: this.sampledComments,
       comments: this.comments,
       ownerOfflineSince: this.ownerOfflineSince,
+      chatSeq: this.chatSeq,
     };
     await this.state.storage.put("state", data);
+  }
+
+  // ── chat: anotar, leer, buscar, borrar ───────────────────────────────────
+  private segundoDeSesion(): number {
+    return this.startedAtMs ? Math.max(0, Math.round((Date.now() - this.startedAtMs) / 1000)) : 0;
+  }
+
+  private async anotarChat(parcial: Omit<FilaChat, "seq" | "ts" | "s">): Promise<FilaChat> {
+    const fila: FilaChat = { ...parcial, seq: ++this.chatSeq, ts: Date.now(), s: this.segundoDeSesion() };
+    await this.state.storage.put(llaveChat(fila.seq), fila);
+    if (fila.id) this.idASeq?.set(fila.id, fila.seq);
+    // Poda: cada 200 filas se tiran las más viejas que sobran del tope.
+    if (fila.seq > CHAT_MAX && fila.seq % 200 === 0) {
+      const viejas = await this.state.storage.list<FilaChat>({ prefix: "c:", end: llaveChat(fila.seq - CHAT_MAX), limit: 400 });
+      if (viejas.size) await this.state.storage.delete([...viejas.keys()]);
+    }
+    await this.persist();
+    return fila;
+  }
+
+  private async borrarChat(): Promise<void> {
+    this.chatSeq = 0;
+    this.idASeq = null;
+    this.ultimoComentario.clear();
+    for (;;) {
+      const lote = await this.state.storage.list({ prefix: "c:", limit: 128 });
+      if (!lote.size) break;
+      await this.state.storage.delete([...lote.keys()]);
+    }
+  }
+
+  /** Las últimas `n` filas anteriores a `antes` (sin incluirla), en orden. */
+  private async leerChat(antes: number, n: number): Promise<{ mensajes: FilaChat[]; hayMas: boolean }> {
+    const lote = await this.state.storage.list<FilaChat>({ prefix: "c:", end: llaveChat(antes), reverse: true, limit: n + 1 });
+    const filas = [...lote.values()].reverse();
+    const hayMas = filas.length > n;
+    return { mensajes: hayMas ? filas.slice(1) : filas, hayMas };
+  }
+
+  /** Todo lo que llegó después de `desde` (para rellenar un hueco tras reconectar). */
+  private async leerChatDesde(desde: number, n: number): Promise<{ mensajes: FilaChat[]; hayMas: boolean }> {
+    const lote = await this.state.storage.list<FilaChat>({ prefix: "c:", start: llaveChat(desde + 1), limit: n + 1 });
+    const filas = [...lote.values()];
+    return { mensajes: filas.slice(0, n), hayMas: filas.length > n };
+  }
+
+  private async seqDeComentario(id: string): Promise<number | null> {
+    if (!this.idASeq) {
+      this.idASeq = new Map();
+      const todo = await this.state.storage.list<FilaChat>({ prefix: "c:" });
+      for (const f of todo.values()) if (f.id) this.idASeq.set(f.id, f.seq);
+    }
+    return this.idASeq.get(id) ?? null;
+  }
+
+  /** Búsqueda sin acentos ni mayúsculas, todas las palabras, filtro por quién. */
+  private async buscarChat(q: string, de: "" | "creador" | "dinero" | string, uid: string | null): Promise<{ lista: FilaChat[]; total: number; palabras: string[] }> {
+    const palabras = sinAcentos(q).split(/\s+/).filter((w) => w.length >= 1).slice(0, 8);
+    if (!palabras.length) return { lista: [], total: 0, palabras: [] };
+    const todo = await this.state.storage.list<FilaChat>({ prefix: "c:" });
+    const lista: FilaChat[] = [];
+    let total = 0;
+    for (const f of [...todo.values()].reverse()) {
+      if (de === "creador" && !f.is_owner) continue;
+      if (de === "dinero" && f.kind !== "dinero") continue;
+      if (de === "yo" && (!uid || f.user_id !== uid)) continue;
+      const llano = sinAcentos(`${f.name} ${f.body}`);
+      if (!palabras.every((w) => llano.includes(w))) continue;
+      total++;
+      if (lista.length < 200) lista.push(f);
+    }
+    return { lista, total, palabras };
   }
 
   // No cuenta la conexión del propio creador — si no, "cuánta gente me está
@@ -224,6 +333,14 @@ export class RoomDurableObject implements DurableObject {
       }
       await this.persist();
       this.broadcast({ type: "viewers", count });
+      // Lo último del chat, de una vez, a quien acaba de conectarse: así quien
+      // entra tarde o se reconecta no ve un chat vacío.
+      try {
+        const { mensajes, hayMas } = await this.leerChat(this.chatSeq + 1, CHAT_INICIO);
+        server.send(JSON.stringify({ type: "chat_inicio", mensajes, hayMas, seq: this.chatSeq, inicio: this.startedAtMs, ahora: Date.now() }));
+      } catch {
+        // si falla, el cliente lo pide por /chat
+      }
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -258,6 +375,8 @@ export class RoomDurableObject implements DurableObject {
       this.sampledComments = 0;
       this.startedAtMs = Date.now();
       this.ownerOfflineSince = 0;
+      await this.borrarChat();
+      await this.anotarChat({ kind: "aviso", id: null, user_id: null, name: "", avatar_url: null, mark: null, body: "Aquí empezó la transmisión", is_owner: false });
       await this.persist();
       await this.state.storage.setAlarm(Date.now() + SAMPLE_EVERY_MS);
       return Response.json({ ok: true });
@@ -280,9 +399,10 @@ export class RoomDurableObject implements DurableObject {
     if (url.pathname === "/highlight" && request.method === "POST") {
       const h = await request.json<{ name: string; avatar_url?: string | null; body: string; amount_cents: number; creator_cents: number; until: number }>();
       this.totalCents += h.creator_cents;
-      await this.persist();
+      const fila = await this.anotarChat({ kind: "dinero", id: null, user_id: null, name: h.name.slice(0, 60), avatar_url: h.avatar_url ?? null, mark: "⭐", body: h.body.slice(0, 140), is_owner: false, amount_cents: h.amount_cents });
       this.broadcast({
         type: "pinned",
+        fila,
         name: h.name.slice(0, 60),
         body: h.body.slice(0, 140),
         avatar_url: h.avatar_url ?? null,
@@ -306,6 +426,27 @@ export class RoomDurableObject implements DurableObject {
       return Response.json({ ok: true });
     }
 
+    // Historial y búsqueda del chat (solo mientras hay transmisión).
+    if (url.pathname === "/chat") {
+      const desde = Number(url.searchParams.get("desde") || 0);
+      const antes = Number(url.searchParams.get("antes") || 0) || this.chatSeq + 1;
+      const n = Math.min(300, Math.max(1, Number(url.searchParams.get("n") || CHAT_PAGINA)));
+      let r: { mensajes: FilaChat[]; hayMas: boolean };
+      if (desde > 0 && url.searchParams.get("antes")) {
+        // Todo lo que hay entre dos puntos (para saltar a un mensaje viejo sin pedir página por página).
+        const lote = await this.state.storage.list<FilaChat>({ prefix: "c:", start: llaveChat(desde), end: llaveChat(antes), limit: 2500 });
+        const filas = [...lote.values()];
+        r = { mensajes: filas, hayMas: filas.length ? filas[0].seq > 1 : false };
+      } else r = desde > 0 ? await this.leerChatDesde(desde, Math.max(n, 300)) : await this.leerChat(antes, n);
+      return Response.json({ ...r, seq: this.chatSeq, inicio: this.startedAtMs, ahora: Date.now() });
+    }
+    if (url.pathname === "/chat/buscar") {
+      const q = (url.searchParams.get("q") || "").trim().slice(0, 80);
+      const de = url.searchParams.get("de") || "";
+      const uid = url.searchParams.get("uid");
+      return Response.json(await this.buscarChat(q, de, uid));
+    }
+
     if (url.pathname === "/sfu-session") {
       return Response.json({ sfuSessionId: this.sfuSessionId, tracks: this.sfuTracks, viewerCount: this.viewerCount() });
     }
@@ -320,16 +461,27 @@ export class RoomDurableObject implements DurableObject {
         body: string;
         is_owner?: boolean;
       }>();
+      // Freno: una persona no puede meter más de un comentario cada 700 ms.
+      // El creador no tiene freno.
+      const antes = this.ultimoComentario.get(user_id) ?? 0;
+      if (!is_owner && Date.now() - antes < CHAT_FRENO_MS) return Response.json({ error: "despacio" }, { status: 429 });
+      this.ultimoComentario.set(user_id, Date.now());
       this.comments++;
-      this.broadcast({ type: "comment", id, user_id, name, avatar_url: avatar_url ?? null, mark: mark ?? null, body, is_owner: !!is_owner, ts: Date.now() });
-      return Response.json({ ok: true });
+      const fila = await this.anotarChat({ kind: "msg", id, user_id, name, avatar_url: avatar_url ?? null, mark: mark ?? null, body, is_owner: !!is_owner });
+      this.broadcast({ type: "comment", ...fila });
+      return Response.json({ ok: true, seq: fila.seq });
     }
 
     // El creador acaba de darle like a un comentario (fuera de este DO, en
     // D1) — solo reenvía el conteo actualizado a todos en vivo.
     if (url.pathname === "/comment-liked" && request.method === "POST") {
       const { comment_id, likes } = await request.json<{ comment_id: string; likes: number }>();
-      this.broadcast({ type: "comment_liked", comment_id, likes });
+      const seq = await this.seqDeComentario(comment_id);
+      if (seq) {
+        const f = await this.state.storage.get<FilaChat>(llaveChat(seq));
+        if (f) await this.state.storage.put(llaveChat(seq), { ...f, likes });
+      }
+      this.broadcast({ type: "comment_liked", comment_id, likes, seq });
       return Response.json({ ok: true });
     }
 
@@ -368,7 +520,7 @@ export class RoomDurableObject implements DurableObject {
       const tip = await request.json<TipEvent & { creator_cents?: number }>();
       const creatorCut = tip.creator_cents ?? Math.round(tip.amount_cents * 0.9);
       this.totalCents += creatorCut;
-      await this.persist();
+      const fila = await this.anotarChat({ kind: "dinero", id: null, user_id: null, name: tip.from, avatar_url: tip.avatar_url ?? null, mark: null, body: tip.message ?? "", is_owner: false, amount_cents: tip.amount_cents });
       this.broadcast({
         type: "tip",
         from: tip.from,
@@ -376,6 +528,7 @@ export class RoomDurableObject implements DurableObject {
         amount_cents: tip.amount_cents,
         message: tip.message ?? "",
         ticker_cents: this.totalCents,
+        fila,
       });
       return Response.json({ ok: true });
     }

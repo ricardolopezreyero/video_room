@@ -554,7 +554,7 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
   // comentario: es estatus que se ve donde más importa, en vivo.
   const mark = user.id === room.owner_id ? null : await viewerMarkFor(c.env, user.id).catch(() => null);
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  await stub.fetch("https://do/comment", {
+  const r = await stub.fetch("https://do/comment", {
     method: "POST",
     body: JSON.stringify({
       id: commentId,
@@ -566,8 +566,42 @@ rooms.post("/api/rooms/:slug/comment", async (c) => {
       is_owner: user.id === room.owner_id,
     }),
   });
+  if (r.status === 429) {
+    // Freno del chat: el comentario no entró; se borra para no inflar nada.
+    await c.env.DB.prepare("DELETE FROM comments WHERE id = ?").bind(commentId).run().catch(() => {});
+    return c.json({ error: "despacio" }, 429);
+  }
+  const { seq } = await r.json<{ seq?: number }>().catch(() => ({ seq: undefined }));
+  return c.json({ ok: true, seq });
+});
 
-  return c.json({ ok: true });
+// Historial del chat de la transmisión en curso: páginas hacia atrás
+// (?antes=<seq>), relleno tras reconectar (?desde=<seq>) y búsqueda. Vive en
+// el Durable Object y se borra al terminar; aquí solo se comprueba quién pide.
+rooms.get("/api/rooms/:slug/chat", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT id FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<{ id: string }>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const u = new URL("https://do/chat");
+  for (const k of ["antes", "desde", "n"]) { const v = c.req.query(k); if (v) u.searchParams.set(k, v); }
+  const r = await stub.fetch(u.toString());
+  return c.json(await r.json(), 200, { "Cache-Control": "no-store" });
+});
+
+rooms.get("/api/rooms/:slug/chat/buscar", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT id FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<{ id: string }>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const u = new URL("https://do/chat/buscar");
+  u.searchParams.set("q", c.req.query("q") || "");
+  u.searchParams.set("de", c.req.query("de") || "");
+  u.searchParams.set("uid", user.id);
+  const r = await stub.fetch(u.toString());
+  return c.json(await r.json(), 200, { "Cache-Control": "no-store" });
 });
 
 rooms.post("/api/rooms/:slug/block", async (c) => {

@@ -138,12 +138,31 @@ export function renderRoomPage(opts: {
         <span id="pinned-text"></span>
         <button id="btn-unpin" style="display:none" title="Quitar">✕</button>
       </div>
-      <div id="chat-feed" class="chat-feed"></div>
+      <!-- Filtros del chat (con conteos), lupa, chat grande y teclas. chat.js
+           los enciende; sin JS no estorban. -->
+      <div id="chat-chips" class="chat-chips" role="tablist" aria-label="Filtros del chat">
+        <button type="button" data-f="todo" class="on" title="Todo el chat">Todo</button>
+        <button type="button" data-f="preguntas" title="Solo preguntas">?<i></i></button>
+        <button type="button" data-f="dinero" title="Solo dinero">💵<i></i></button>
+        <button type="button" data-f="creador" title="Solo quien transmite">🎙</button>
+        <button type="button" data-f="mi" title="Lo tuyo y donde te mencionan">@<i></i></button>
+        <span class="chip-sep"></span>
+        <button type="button" id="chat-lupa" title="Buscar en todo el chat (/)" aria-label="Buscar en el chat">🔍</button>
+        <button type="button" id="chat-alto" title="Chat grande (x)" aria-label="Chat grande">⤢</button>
+        <button type="button" id="chat-teclas" class="solo-teclado" title="Teclas (?)" aria-label="Atajos de teclado">?</button>
+      </div>
+      <div id="chat-busca" class="chat-busca" hidden></div>
+      <div class="chat-feed-wrap">
+        <div id="chat-feed" class="chat-feed" tabindex="0" aria-label="Chat en vivo"></div>
+        <!-- Aparece al subir a leer: trae la cuenta de lo que llegó y regresa a lo vivo. -->
+        <button type="button" id="chat-vivo" class="chat-vivo" hidden><b>↓</b><span id="chat-vivo-n">En vivo</span></button>
+      </div>
       <div class="chat-input-row">
-        <input id="chat-input" maxlength="240" placeholder="Escribe un comentario…">
-        <button id="btn-chat-send" title="Enviar">➤</button>
+        <input id="chat-input" maxlength="240" placeholder="Escribe un comentario…" autocomplete="off" enterkeyhint="send">
+        <button id="btn-chat-send" title="Enviar (Enter)">➤</button>
       </div>
       <p class="chat-privacy-note">🔒 Nada se graba — se borra al cerrar la sala.</p>
+      <p id="teclas-pista" class="teclas-pista" hidden><kbd>c</kbd> escribir · <kbd>/</kbd> buscar · <kbd>End</kbd> en vivo · <kbd>?</kbd> todas las teclas</p>
     </div>
     <!-- Modo llamada: la sala de la otra persona ocupa la pantalla y tu propia
          cámara queda chiquita en una esquina. Dos salas, dos vías. -->
@@ -205,6 +224,15 @@ export function renderRoomPage(opts: {
     </div>
     <!-- Espectadores conectados ahora mismo, ordenados de mayor a menor
          donador — exclusivo del creador (room.js lo abre al tocar el conteo). -->
+    <!-- Teclas: la lista se arma en room.js con lo que cada quien puede hacer. -->
+    <div id="teclas-sheet" class="sheet" style="display:none">
+      <div class="sheet-inner teclas-inner">
+        <h3>⌨️ Teclas</h3>
+        <p class="sheet-sub">Funcionan cuando no estás escribiendo. Esc suelta la caja de texto.</p>
+        <div id="teclas-lista" class="teclas-lista"></div>
+        <button id="teclas-close">Cerrar</button>
+      </div>
+    </div>
     <div id="viewers-sheet" class="sheet" style="display:none">
       <div class="sheet-inner">
         <h3>👥 Conectados ahora</h3>
@@ -216,6 +244,7 @@ export function renderRoomPage(opts: {
   ${inicioJson ? `<script>window.__VR_INICIO = ${inicioJson};</script>` : ""}
   <script src="/motor-video.js${v}" defer></script>
   <script src="/motor-audio.js${v}" defer></script>
+  <script src="/chat.js${v}" defer></script>
   <script src="/room.js${v}" defer></script>
   <!-- Login de la casa, sin widget (la sala tiene su propio dock): solo el API
        para entrar y el puente que convierte el pase en sesión de Video Room. -->

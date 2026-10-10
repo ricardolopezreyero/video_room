@@ -1066,3 +1066,93 @@ body.modo-tv.en-llamada #player { object-fit: cover; }
    se retira: una sola foto, un solo "Salir", igual en todos los servicios. */
 .nav > :last-child { margin-right: 56px; }
 .user-chip { display: none !important; }
+
+/* ═══════════ El chat en vivo (chat.js) ═══════════
+   Hecho para mucha gente: filas con tope en el DOM, lo nuevo no te mueve,
+   botón «↓ nuevos», filtros, búsqueda y teclas. */
+.chat-panel { overflow: hidden; }
+.chat-feed-wrap { position: relative; display: flex; flex-direction: column; min-height: 40px; flex: 1 1 auto; overflow: hidden; }
+.chat-feed { flex: 1 1 auto; overflow-anchor: none; overscroll-behavior: contain; outline: none; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+.chat-feed:focus-visible { box-shadow: inset 0 0 0 1px rgba(86,239,159,.35); border-radius: 8px; }
+.chat-msg { position: relative; contain: content; padding-right: 2px; border-radius: 6px; }
+.chat-msg-name { cursor: pointer; }
+.chat-msg-name:hover { text-decoration: underline; }
+.chat-msg-body a { color: #9fd9ff; text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+.chat-mencion { color: #F5C542; font-weight: 800; }
+/* Te mencionaron: borde dorado discreto, como un toque en el hombro. */
+.chat-msg.me { background: rgba(245,197,66,.1); border-left: 3px solid #F5C542; padding: 3px 8px; margin-left: -8px; }
+.chat-msg.mio .chat-msg-name { color: #cfe3ff; }
+/* Dinero dentro del chat: la línea de tiempo del dinero, en dorado. */
+.chat-msg.dinero { background: linear-gradient(90deg, rgba(245,197,66,.16), rgba(245,197,66,.04)); border-left: 3px solid #F5C542; padding: 4px 8px; margin-left: -8px; }
+.chat-msg.dinero .chat-msg-name { color: #F5C542; }
+.chat-monto { color: #F5C542; font-weight: 800; }
+/* Segundo de la transmisión: aparece al pasar el mouse (en computadora). */
+.chat-hora { display: none; font-size: 10.5px; color: rgba(255,255,255,.4); flex-shrink: 0; font-variant-numeric: tabular-nums; margin-left: auto; padding-left: 6px; }
+@media (hover:hover) and (pointer:fine) { .chat-msg:hover .chat-hora { display: inline; } }
+.chat-msg.cursor { box-shadow: inset 0 0 0 1.5px rgba(86,239,159,.7); background: rgba(86,239,159,.07); }
+.chat-msg.resaltado { animation: chat-resalta 1.8s ease-out; }
+.chat-msg.encontrado { background: rgba(86,239,159,.12); box-shadow: inset 0 0 0 1px rgba(86,239,159,.45); }
+@keyframes chat-resalta { 0% { background: rgba(86,239,159,.35); } 100% { background: transparent; } }
+mark.chat-marca { background: #F5C542; color: #0d1117; border-radius: 3px; padding: 0 1px; }
+/* Separadores: minuto de la transmisión, «Nuevos», inicio, avisos. */
+.chat-sep { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: rgba(255,255,255,.45); margin: 2px 0; user-select: none; }
+.chat-sep::before, .chat-sep::after { content: ""; flex: 1; height: .5px; background: rgba(255,255,255,.12); }
+.chat-sep.nuevo { color: var(--green, #56EF9F); font-weight: 800; }
+.chat-sep.nuevo::before, .chat-sep.nuevo::after { background: rgba(86,239,159,.4); }
+.chat-sep.aviso, .chat-sep.chat-inicio { color: rgba(255,255,255,.55); }
+.chat-sep.vacio { padding: 18px 0; }
+.chat-sep.vacio::before, .chat-sep.vacio::after { display: none; }
+.chat-sep.vacio span { margin: 0 auto; }
+/* Chips de filtro + lupa + grande + teclas: una sola fila, con scroll si no cabe. */
+.chat-chips { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; flex-shrink: 0; -webkit-overflow-scrolling: touch; }
+.chat-chips::-webkit-scrollbar { display: none; }
+.chat-chips button {
+  background: rgba(255,255,255,.06); border: .5px solid rgba(255,255,255,.12); color: #cdd3de; border-radius: 999px;
+  padding: 3px 9px; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; line-height: 1.4; font-family: inherit; min-height: 24px;
+}
+.chat-chips button i { font-style: normal; font-size: 10px; color: #F5C542; font-weight: 800; }
+.chat-chips button i:empty { display: none; }
+.chat-chips button.on { background: rgba(86,239,159,.16); border-color: rgba(86,239,159,.5); color: #fff; }
+.chat-chips .chip-sep { flex: 1; }
+.chat-chips .solo-teclado { display: none; }
+@media (hover:hover) and (pointer:fine) { .chat-chips .solo-teclado { display: inline-flex; } .chat-chips button:hover { border-color: rgba(86,239,159,.4); } }
+/* La búsqueda: barra, contador, flechas y de quién. */
+.chat-busca { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+.chat-busca-fila { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08); border: .5px solid rgba(86,239,159,.35); border-radius: 999px; padding: 4px 8px 4px 12px; }
+.chat-busca-fila input { flex: 1; min-width: 0; background: none; border: none; color: #fff; font-size: 14px; font-family: inherit; outline: none; }
+.chat-busca-fila input::placeholder { color: rgba(255,255,255,.5); }
+.chat-busca-fila .cuenta { font-size: 11.5px; color: rgba(255,255,255,.6); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chat-busca-fila button { background: rgba(255,255,255,.08); border: none; color: #fff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.chat-busca-fila button:disabled { opacity: .3; cursor: default; }
+.chat-busca-de { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.chat-busca-de button { background: none; border: .5px solid rgba(255,255,255,.15); color: #cdd3de; border-radius: 999px; padding: 2px 9px; font-size: 11px; cursor: pointer; white-space: nowrap; font-family: inherit; }
+.chat-busca-de button.on { border-color: rgba(86,239,159,.5); color: #fff; background: rgba(86,239,159,.12); }
+#chat-lupa.on, #chat-alto.on { background: rgba(86,239,159,.16); border-color: rgba(86,239,159,.5); color: #fff; }
+/* «↓ En vivo» / «↓ 12 nuevos»: redondo, flotando sobre el feed, abajo al centro. */
+.chat-vivo {
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 6px; background: rgba(13,17,23,.92); color: #fff;
+  border: .5px solid rgba(86,239,159,.5); border-radius: 999px; padding: 6px 12px 6px 10px; font-size: 12px; font-weight: 800;
+  cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.45); font-family: inherit; white-space: nowrap; z-index: 2;
+  animation: chat-vivo-entra .18s ease-out;
+}
+.chat-vivo b { color: var(--green, #56EF9F); font-size: 14px; }
+.chat-vivo.con-nuevos { background: var(--green, #56EF9F); color: var(--navy, #0d1117); border-color: transparent; }
+.chat-vivo.con-nuevos b { color: var(--navy, #0d1117); }
+.chat-vivo.mencion { background: #F5C542; color: #0d1117; }
+.chat-vivo.mencion b { color: #0d1117; }
+.chat-vivo.creador { box-shadow: 0 0 0 3px rgba(86,239,159,.25), 0 6px 20px rgba(0,0,0,.45); }
+.chat-vivo[hidden] { display: none; }
+@keyframes chat-vivo-entra { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+/* Chat grande: casi toda la pantalla, para leer o moderar a gusto. */
+.chat-panel.alto { max-height: 78vh; }
+@media (min-width: 900px) { .chat-panel.alto { max-height: calc(100vh - 160px); width: 440px; } }
+.teclas-pista { margin: 0; font-size: 10.5px; color: rgba(255,255,255,.4); text-align: center; }
+.teclas-pista[hidden] { display: none; }
+kbd { font-family: inherit; font-size: 10.5px; font-weight: 800; color: #fff; background: rgba(255,255,255,.12); border: .5px solid rgba(255,255,255,.2); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.teclas-inner { max-width: 440px; }
+.teclas-lista { display: flex; flex-direction: column; gap: 6px; max-height: 56vh; overflow-y: auto; margin: 10px 0 14px; text-align: left; }
+.teclas-lista h4 { margin: 10px 0 2px; font-size: 11.5px; letter-spacing: .4px; text-transform: uppercase; color: rgba(255,255,255,.5); }
+.tecla-fila { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 10px; font-size: 13px; color: #e8edf8; }
+.tecla-fila kbd { justify-self: start; font-size: 12px; padding: 2px 8px; }
+/* Modo llamada / tele: el chat ya se oculta entero arriba; nada extra aquí. */
