@@ -1603,3 +1603,17 @@ body.gtm-cuerpo { background: #070a0f; }
   .ceo-rasgos b { font-size: 18px; }
   .ceo-tienes, .ceo-datos { grid-template-columns: 1fr; }
 }
+
+/* ── Materiales en video: imagen o video, audio y grabación ── */
+.visor-modo { display: inline-flex; background: rgba(255,255,255,.07); border-radius: 999px; padding: 3px; margin-top: 12px; }
+.visor-modo[hidden], #visor-imagen-zona[hidden], #visor-video-zona[hidden] { display: none; }
+.visor-modo button { background: none; border: none; color: #cdd3de; font-family: inherit; font-size: 13.5px; font-weight: 700; padding: 7px 16px; border-radius: 999px; cursor: pointer; }
+.visor-modo button.on { background: var(--green, #56EF9F); color: var(--navy, #0D1117); }
+.mat-musicas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.mat-musicas button { background: rgba(255,255,255,.06); border: .5px solid rgba(255,255,255,.16); color: #e5e7eb; border-radius: 999px; padding: 7px 13px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.mat-musicas button.on { background: rgba(86,239,159,.18); border-color: rgba(86,239,159,.6); color: #fff; }
+.mat-musicas button.subir { border-style: dashed; color: var(--green, #56EF9F); }
+#video-nota { margin: 8px 0 0; font-size: 12px; color: #9aa1b0; line-height: 1.4; }
+body.mat-grabando .visor-flecha, body.mat-grabando #visor-cerrar, body.mat-grabando .visor-modo, body.mat-grabando .mat-musicas { opacity: .35; pointer-events: none; }
+body.mat-grabando .visor-lienzo canvas { box-shadow: 0 0 0 3px #E5484D, 0 20px 60px rgba(0,0,0,.6); }
+@media (max-width: 860px) { .visor-lado #visor-video-zona .label { display: block; } }

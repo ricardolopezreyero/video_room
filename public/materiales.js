@@ -5,15 +5,16 @@
 (function () {
   "use strict";
   var _k = "eye", _rev = 181218;
-  const C = window.MaterialesCatalogo, M = window.MaterialesMotor, HOST = M.HOST;
+  const C = window.MaterialesCatalogo, M = window.MaterialesMotor, V = window.MaterialesVideo, HOST = M.HOST;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const LLAVE = "vr_materiales";
-  const S = Object.assign({ nombre: "", tema: "", cuando: "", fecha: "", modoCuando: "fecha", tzBase: "", tzOtros: [], conNombre: true, conQR: true, conFoto: true, foto2: "", c1: M.C1, c2: M.C2, medir: true, estilo: "original", red: "todo" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
+  const S = Object.assign({ nombre: "", tema: "", cuando: "", fecha: "", modoCuando: "fecha", tzBase: "", tzOtros: [], conNombre: true, conQR: true, conFoto: true, foto2: "", c1: M.C1, c2: M.C2, medir: true, estilo: "original", musica: "ritmo", red: "todo" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
   const guardar = () => { try { localStorage.setItem(LLAVE, JSON.stringify(S)); } catch { try { localStorage.setItem(LLAVE, JSON.stringify(Object.assign({}, S, { foto2: "" }))); } catch {} } };
   // foto1 = la de tu perfil (Google); foto2 = la otra, opcional, que adjuntas aquí. Máximo dos.
   let me = null, room = null, foto1 = null, foto2 = null, nombreTocado = !!S.nombre;
   if (!Array.isArray(S.tzOtros)) S.tzOtros = [];
+  if (S.musica === "propia") S.musica = "ritmo"; // el audio propio no se guarda entre visitas
   const fotosActivas = () => [S.conFoto ? foto1 : null, foto2].filter(Boolean);
 
   /* ── fecha, hora y horarios por país ────────────────────────────────── */
@@ -99,7 +100,7 @@
     M.pintarEn(cv, fig._pieza, datos(redDe(fig._pieza)), Math.min(fig._pieza.w || 9999, Math.round(w * Math.min(2, window.devicePixelRatio || 1))));
     fig._sucio = false;
   }
-  function cambio() { guardar(); pintarZonas(); if (firmaFaltas() !== firmaPintada) construir(); else repintar(); }
+  function cambio() { ultimoVideo = null; guardar(); pintarZonas(); if (firmaFaltas() !== firmaPintada) construir(); else repintar(); }
   let tRep = 0;
   function repintar() { clearTimeout(tRep); tRep = setTimeout(() => { document.querySelectorAll(".mat-pieza").forEach((f) => { f._sucio = true; }); visibles.forEach((f) => pintarTarjeta(f)); pintarTextos(); if (!$("mat-visor").hidden) pintarVisor(); }, 120); }
   /** Hay piezas que piden algo para tener sentido: los horarios piden fecha; la foto de perfil, una foto. */
@@ -127,11 +128,12 @@
       sec.innerHTML = `<h2>${esc(F.n)} <small>${F.w}×${F.h} · ${esc(F.para)}</small><span>${grupo.length}</span></h2><div class="mat-fila"></div>`;
       const fila = sec.querySelector(".mat-fila");
       for (const p of grupo) {
-        const fig = document.createElement("figure"), falta = leFalta(p), movil = puedeCompartir && matchMedia("(pointer:coarse)").matches;
+        const fig = document.createElement("figure"), falta = leFalta(p), movil = puedeCompartir && matchMedia("(pointer:coarse)").matches, conV = M.conVideo(p);
         fig.className = "mat-pieza" + (falta ? " falta" : ""); fig._pieza = p; fig._sucio = true; fig.dataset.id = p.id;
         fig.innerHTML = `<button type="button" class="mat-lienzo" style="aspect-ratio:${F.w}/${F.h}" aria-label="Ver ${esc(p.n)} en grande"><canvas></canvas></button>
           <figcaption><b>${esc(p.n)}</b><small>${p.vr ? "Video Room" : "Tu sala"} · ${p.id}</small></figcaption>
-          <div class="mat-btns">${falta ? `<button type="button" class="btn-ghost small" data-falta="${falta}">${falta === "fecha" ? "Elegir fecha y hora" : "Agregar mi foto"}</button>` : movil ? `<button type="button" class="btn-primary small" data-a="compartir">Compartir</button><button type="button" class="btn-ghost small" data-a="bajar">Bajar</button>` : `<button type="button" class="btn-primary small" data-a="bajar">Descargar</button><button type="button" class="btn-ghost small" data-a="texto">Texto</button>`}</div>`;
+          <div class="mat-btns">${falta ? `<button type="button" class="btn-ghost small" data-falta="${falta}">${falta === "fecha" ? "Elegir fecha y hora" : "Agregar mi foto"}</button>` : movil ? `<button type="button" class="btn-primary small" data-a="compartir">Compartir</button>${conV ? `<button type="button" class="btn-ghost small" data-video="1">▶ Video</button>` : `<button type="button" class="btn-ghost small" data-a="bajar">Bajar</button>`}` : `<button type="button" class="btn-primary small" data-a="bajar">Descargar</button>${conV ? `<button type="button" class="btn-ghost small" data-video="1">▶ Video</button>` : `<button type="button" class="btn-ghost small" data-a="texto">Texto</button>`}`}</div>`;
+        fig.querySelectorAll("[data-video]").forEach((b) => (b.onclick = () => abrirVisor(p, "video")));
         fig.querySelectorAll("[data-falta]").forEach((b) => (b.onclick = () => resolverFalta(b.dataset.falta)));
         fig.querySelector(".mat-lienzo").onclick = () => abrirVisor(p);
         fig.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => accion(b.dataset.a, p, b)));
@@ -182,24 +184,73 @@
     if (boton) boton.disabled = false;
   }
 
-  /* ── vista en grande ────────────────────────────────────────────────── */
-  let enVisor = null;
+  /* ── vista en grande: imagen o video ────────────────────────────────── */
+  let enVisor = null, modoVisor = "imagen", pararVideo = null, grabando = false, ultimoVideo = null;
+  const detener = () => { if (pararVideo) { pararVideo(); pararVideo = null; } };
   function pintarVisor() {
-    if (!enVisor) return; const p = enVisor, F = C.FORMATOS[p.f], cv = $("visor-canvas");
+    if (!enVisor || grabando) return; const p = enVisor, F = C.FORMATOS[p.f], cv = $("visor-canvas"), conV = M.conVideo(p) && !leFalta(p);
+    if (!conV) modoVisor = "imagen";
     const caja = cv.parentElement.getBoundingClientRect(), esc2 = Math.min(caja.width / F.w, caja.height / F.h, 1);
     cv.style.width = Math.round(F.w * esc2) + "px"; cv.style.height = Math.round(F.h * esc2) + "px";
-    M.pintarEn(cv, p, datos(redDe(p)), Math.min(F.w, Math.round(F.w * esc2 * Math.min(2, window.devicePixelRatio || 1))));
+    const ancho = Math.min(F.w, Math.round(F.w * esc2 * Math.min(2, window.devicePixelRatio || 1)));
     $("visor-titulo").textContent = p.n; $("visor-formato").textContent = `${F.n} · ${F.w}×${F.h} px · ${F.para}`;
     $("visor-texto").textContent = captionDe(p);
+    $("visor-modo").hidden = !conV; $("visor-modo").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.m === modoVisor));
+    $("visor-imagen-zona").hidden = modoVisor !== "imagen"; $("visor-video-zona").hidden = modoVisor !== "video";
+    detener();
+    if (modoVisor === "video") { pintarMusicas(); pararVideo = V.reproducir(cv, p, datos(redDe(p)), { anchoPx: ancho, musica: S.musica === "propia" && !V.audioPropio() ? "" : S.musica, sinSonido: () => notaVideo("Toca un audio para oírlo.") }); }
+    else M.pintarEn(cv, p, datos(redDe(p)), ancho);
   }
-  function abrirVisor(p) { enVisor = p; $("mat-visor").hidden = false; document.body.classList.add("mat-con-visor"); pintarVisor(); }
-  function cerrarVisor() { enVisor = null; $("mat-visor").hidden = true; document.body.classList.remove("mat-con-visor"); }
-  function moverVisor(dir) { const l = piezasDeVista(); if (!enVisor || !l.length) return; const i = l.indexOf(enVisor); enVisor = l[(i + dir + l.length) % l.length]; pintarVisor(); }
+  function abrirVisor(p, modo) { enVisor = p; modoVisor = modo === "video" && M.conVideo(p) ? "video" : "imagen"; $("mat-visor").hidden = false; document.body.classList.add("mat-con-visor"); notaVideo(""); pintarVisor(); }
+  function cerrarVisor() { if (grabando) return; detener(); enVisor = null; $("mat-visor").hidden = true; document.body.classList.remove("mat-con-visor"); }
+  function moverVisor(dir) { const l = piezasDeVista(); if (!enVisor || !l.length || grabando) return; const i = l.indexOf(enVisor); enVisor = l[(i + dir + l.length) % l.length]; notaVideo(""); pintarVisor(); }
   $("visor-cerrar").onclick = cerrarVisor; $("visor-ant").onclick = () => moverVisor(-1); $("visor-sig").onclick = () => moverVisor(1);
   $("mat-visor").addEventListener("click", (e) => { if (e.target.id === "mat-visor" || e.target.classList.contains("visor-cuerpo")) cerrarVisor(); });
   $("mat-visor").querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => enVisor && accion(b.dataset.a, enVisor, b)));
+  $("visor-modo").querySelectorAll("button").forEach((b) => (b.onclick = () => { if (grabando) return; modoVisor = b.dataset.m; pintarVisor(); }));
   $("visor-compartir").hidden = !puedeCompartir; $("visor-imagen").hidden = !puedeCopiarImagen;
   window.addEventListener("resize", () => { if (enVisor) pintarVisor(); });
+
+  /* ── el video: audio, grabar, descargar y compartir ─────────────────── */
+  const notaVideo = (t) => { const n = $("video-nota"); if (n) n.textContent = t || (V.puedeGrabar() ? "Se graba aquí mismo, en tu navegador. Tarda lo que dura el video." : "Este navegador no puede grabar video. Usa Chrome o Safari actualizados."); };
+  function pintarMusicas() {
+    const propia = V.audioPropio(), c = $("visor-musicas");
+    c.innerHTML = V.MUSICAS.map((m) => `<button type="button" data-m="${m.id}" class="${S.musica === m.id ? "on" : ""}">${esc(m.n)}</button>`).join("") + (propia ? `<button type="button" data-m="propia" class="${S.musica === "propia" ? "on" : ""}" title="${esc(propia.nombre)}">🎵 ${esc(propia.nombre.replace(/\.[a-z0-9]+$/i, "").slice(0, 16))}</button>` : "") + `<button type="button" id="audio-subir" class="subir">${propia ? "Cambiar mi audio" : "＋ Mi audio"}</button>`;
+    c.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { if (grabando) return; S.musica = b.dataset.m; guardar(); ultimoVideo = null; pintarVisor(); }));
+    $("audio-subir").onclick = () => { if (!grabando) $("audio-propio").click(); };
+    $("video-bajar").disabled = !V.puedeGrabar(); $("video-compartir").hidden = !puedeCompartir || !V.puedeGrabar();
+  }
+  $("audio-propio").onchange = async (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+    try { await V.ponerPropia(f); S.musica = "propia"; ultimoVideo = null; toast("Tu audio quedó puesto. Se usa desde el principio."); pintarVisor(); }
+    catch { toast("No se pudo leer ese audio. Prueba con MP3 o M4A."); }
+  };
+  const firmaVideo = (p) => p.id + "|" + JSON.stringify(S) + "|" + (room ? room.slug : "") + "|" + (V.audioPropio() ? V.audioPropio().nombre : "") + "|" + redDe(p) + "|" + fotosActivas().length;
+  async function hacerVideo(boton) {
+    const p = enVisor, firma = firmaVideo(p); if (ultimoVideo && ultimoVideo.firma === firma) return ultimoVideo;
+    const cv = $("visor-canvas"), texto = boton.textContent, musica = S.musica === "propia" && !V.audioPropio() ? "" : S.musica;
+    detener(); grabando = true; document.body.classList.add("mat-grabando"); notaVideo("Grabando. No cambies de pestaña.");
+    try {
+      const r = await V.grabar(cv, p, datos(redDe(p)), { musica, alAvance: (x) => { boton.textContent = `Grabando ${Math.round(x * 100)} %`; } });
+      ultimoVideo = Object.assign({ firma }, r);
+      notaVideo(r.ext === "mp4" ? `Listo: MP4 de ${Math.round(r.segundos)} segundos${musica ? ", con audio" : ", sin audio"}.` : "Tu navegador grabó en WebM. TikTok e Instagram piden MP4: usa Chrome o Safari actualizados.");
+      return ultimoVideo;
+    } finally { grabando = false; document.body.classList.remove("mat-grabando"); boton.textContent = texto; pintarVisor(); }
+  }
+  const nombreVideo = (p, ext) => nombreArchivo(p, ext);
+  $("video-bajar").onclick = async () => {
+    if (!enVisor || grabando) return; const p = enVisor;
+    try { const v = await hacerVideo($("video-bajar")); descargar(v.blob, nombreVideo(p, v.ext)); toast("Video descargado. El texto para publicarlo está abajo."); }
+    catch (e) { toast(e && e.message === "audio_bloqueado" ? "El navegador no soltó el audio. Toca otra vez." : e && e.message === "sin_grabadora" ? "Este navegador no puede grabar video." : "No se pudo grabar. Intenta de nuevo."); }
+  };
+  $("video-compartir").onclick = async () => {
+    if (!enVisor || grabando) return; const p = enVisor;
+    try {
+      const v = await hacerVideo($("video-compartir")), file = new File([v.blob], nombreVideo(p, v.ext), { type: v.blob.type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.clipboard.writeText(captionDe(p)); } catch {} try { await navigator.share({ files: [file], text: captionDe(p) }); toast("El texto quedó copiado: pégalo al publicar.", 3500); } catch (e) { if (e && e.name !== "AbortError") throw e; } }
+      else { descargar(v.blob, file.name); toast("Tu navegador no comparte videos: lo descargamos."); }
+    } catch (e) { toast("No se pudo. Intenta descargar el video."); }
+  };
 
   /* ── todo en un zip (sin compresión: los PNG ya vienen comprimidos) ─── */
   const TABLA = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -337,7 +388,7 @@
     // La vista (qué red) no se recuerda entre visitas: se llega a «Todo», o a la red del enlace (#tiktok).
     const h = location.hash.replace("#", ""); S.red = h && (h === "textos" || C.REDES.some((r) => r.id === h)) ? h : "todo";
     enlazarControles(); pintarYo();
-    $("mat-sub").textContent = `${C.PIEZAS.length} diseños y ${C.TEXTOS.reduce((n, g) => n + g.items.length, 0)} textos listos. Descarga, copia y publica.`;
+    $("mat-sub").textContent = `${C.PIEZAS.length} diseños, ${C.PIEZAS.filter(M.conVideo).length} también en video con audio, y ${C.TEXTOS.reduce((n, g) => n + g.items.length, 0)} textos. Descarga, copia y publica.`;
     await M.listo();
     construir();
     await cargarSesion();

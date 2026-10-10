@@ -538,6 +538,18 @@ necesita para publicar su sala o recomendar Video Room: **63 diseños** y
   `{horariosLinea}` y `{horariosLista}`. Países en `ZONAS` del catálogo.
 - Las piezas con `pide: "fecha"` o `pide: "foto"` no se descargan vacías: su
   botón dice «Elegir fecha y hora» o «Agregar mi foto» y lleva al control.
+- **Video con movimiento y audio** (`public/materiales-video.js`, la misma
+  técnica que en Cupido): las piezas vertical, cuadrada y retrato (46) también
+  se hacen video. El motor pinta la pieza en un momento dado (`d.m`, en
+  segundos): abre medio segundo con la pieza completa (sirve de portada) y
+  luego cada elemento entra en su turno, el título palabra por palabra, los
+  números contando, la identidad y el QR al final; el fondo respira y el punto
+  de «en vivo» late. `planDe()` calcula la duración (5.5 a 10 s). Se graba en
+  el navegador tomando el lienzo a 30 cuadros (`captureStream` +
+  `MediaRecorder`), en MP4 donde se puede y si no en WebM, a 1080 px. Audio:
+  cuatro fondos en `public/musica/` (los de Cupido, hechos con ElevenLabs) o
+  un audio propio que la persona sube y no sale de su aparato. En la vista
+  grande: «Imagen | Video», los audios, «Descargar video» y «Compartir video».
 - **Para agregar una pieza:** una línea en `PIEZAS` (id, formato, arquetipo,
   paleta, redes, contenido, texto sugerido). Para probar en consola:
   `__mat.ponerFoto(url)`, `MaterialesMotor.aBlob(pieza, __mat.datos())`.

@@ -48,6 +48,12 @@
 /materiales-motor.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 
+/materiales-video.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
+/musica/*
+  Cache-Control: public, max-age=604800
+
 /materiales-catalogo.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 

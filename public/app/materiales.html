@@ -90,11 +90,25 @@
     <aside class="visor-lado">
       <h2 id="visor-titulo"></h2>
       <p class="muted" id="visor-formato"></p>
-      <div class="visor-btns">
-        <button type="button" class="btn-primary" data-a="bajar">Descargar PNG</button>
-        <button type="button" class="btn-ghost" data-a="jpg">JPG</button>
-        <button type="button" class="btn-ghost" data-a="compartir" id="visor-compartir">Compartir</button>
-        <button type="button" class="btn-ghost" data-a="imagen" id="visor-imagen">Copiar imagen</button>
+      <div class="visor-modo" id="visor-modo" role="tablist" aria-label="Imagen o video" hidden><button type="button" data-m="imagen" class="on">Imagen</button><button type="button" data-m="video">▶ Video</button></div>
+      <div id="visor-imagen-zona">
+        <div class="visor-btns">
+          <button type="button" class="btn-primary" data-a="bajar">Descargar PNG</button>
+          <button type="button" class="btn-ghost" data-a="jpg">JPG</button>
+          <button type="button" class="btn-ghost" data-a="compartir" id="visor-compartir">Compartir</button>
+          <button type="button" class="btn-ghost" data-a="imagen" id="visor-imagen">Copiar imagen</button>
+        </div>
+      </div>
+      <!-- El mismo diseño con movimiento y con audio. Se graba aquí, en el navegador. -->
+      <div id="visor-video-zona" hidden>
+        <div class="label" style="margin-top:14px">Audio</div>
+        <div class="mat-musicas" id="visor-musicas"></div>
+        <input type="file" id="audio-propio" accept="audio/*" hidden>
+        <div class="visor-btns">
+          <button type="button" class="btn-primary" id="video-bajar">Descargar video</button>
+          <button type="button" class="btn-ghost" id="video-compartir" hidden>Compartir video</button>
+        </div>
+        <p class="mat-nota" id="video-nota"></p>
       </div>
       <div class="label" style="margin-top:16px">Texto para publicarla</div>
       <pre class="mat-texto" id="visor-texto"></pre>
@@ -107,6 +121,7 @@
 <script src="/qr-lib.js" defer></script>
 <script src="/materiales-catalogo.js" defer></script>
 <script src="/materiales-motor.js" defer></script>
+<script src="/materiales-video.js" defer></script>
 <script src="/materiales.js" defer></script>
 <script src="/puente-login.js"></script>
 <script src="https://login.capitaltorreon.com/login.js" data-prefs="vr_audio_modo,vr_quality,vr_notify_minutes" defer></script>

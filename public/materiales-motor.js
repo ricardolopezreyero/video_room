@@ -64,6 +64,15 @@
     return P;
   }
 
+  /* ── movimiento ─────────────────────────────────────────────────────────
+     La misma pieza se puede pintar quieta (d.m = null) o en un momento del
+     video (d.m = segundos). El video abre con la pieza completa medio segundo
+     (para que sirva de portada), luego cada elemento entra en su turno: el
+     título palabra por palabra, los renglones uno tras otro, los números
+     contando, y al final la identidad con el QR. El fondo respira. */
+  const PORTADA = 0.55, T0 = 0.12, PASO = 0.38, PASO_PALABRA = 0.1, ESPERA = 2.6;
+  const suave = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : 1 - Math.pow(1 - t, 3));
+
   /* ── primitivas ─────────────────────────────────────────────────────── */
   function rr(ctx, x, y, w, h, r) {
     r = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -113,15 +122,23 @@
     if (o.medir) return { h, tam, ancho };
     ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     let yy = y + tam * 0.8 + (tam * il - tam) / 2;
+    const A = o.anim && k.m != null ? o.anim : null, alfa0 = ctx.globalAlpha; let iPal = 0;
     for (const l of lineas) {
       let xx = o.alin === "center" ? x + (o.w - l.w) / 2 : o.alin === "right" ? x + o.w - l.w : x;
       for (const p of l.p) {
         if (p !== l.p[0] && !p.pegado) xx += esp;
-        ctx.fillStyle = p.a ? (o.acento || (k.P.ac === k.P.fg ? (k.P.realce || k.P.ac) : k.P.ac)) : (o.color || k.P.fg);
-        ctx.fillText(p.t, xx, yy); xx += p.w;
+        // en video, cada palabra entra en su turno: aparece y sube a su lugar
+        const a = A ? suave((k.m - A.t0 - iPal++ * A.paso) / 0.34) : 1;
+        if (a > 0) {
+          ctx.globalAlpha = alfa0 * a;
+          ctx.fillStyle = p.a ? (o.acento || (k.P.ac === k.P.fg ? (k.P.realce || k.P.ac) : k.P.ac)) : (o.color || k.P.fg);
+          ctx.fillText(p.t, xx, yy + (1 - a) * tam * 0.24);
+        }
+        xx += p.w;
       }
       yy += tam * il;
     }
+    ctx.globalAlpha = alfa0;
     return { h, tam, ancho };
   }
   /** Píldora (etiqueta). `vivo` = roja con punto. x es el borde izquierdo, o el centro si alin center. */
@@ -134,7 +151,7 @@
     const x0 = o.alin === "center" ? x - w / 2 : x;
     rr(ctx, x0, y, w, h, h / 2); ctx.fillStyle = o.vivo ? ROJO : (o.bg || k.P.ac); ctx.fill();
     ctx.fillStyle = o.vivo ? "#FFFFFF" : (o.fg || k.P.sobre);
-    if (o.vivo) { ctx.beginPath(); ctx.arc(x0 + padX + tam * 0.3, y + h / 2, tam * 0.3, 0, Math.PI * 2); ctx.fill(); }
+    if (o.vivo) { const a0 = ctx.globalAlpha; if (k.m != null) ctx.globalAlpha = a0 * (0.35 + 0.65 * Math.abs(Math.sin(k.m * 3.1))); ctx.beginPath(); ctx.arc(x0 + padX + tam * 0.3, y + h / 2, tam * 0.3, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = a0; }
     ctx.textBaseline = "middle"; ctx.textAlign = "left";
     ctx.fillText(str, x0 + padX + punto, y + h / 2 + tam * 0.04);
     if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
@@ -204,11 +221,13 @@
     const { ctx, W, H, P } = k, m = Math.max(W, H);
     ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
     const halo = (x, y, r, a) => { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${P.brillo},${a})`); g.addColorStop(1, `rgba(${P.brillo},0)`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); };
-    if (deco === "brillo") { halo(cx == null ? W * 0.92 : cx, cy == null ? H * 0.06 : cy, m * 0.7, 0.3); halo(W * 0.02, H * 0.98, m * 0.5, 0.14); }
+    // En video el fondo respira: el brillo se mece y los anillos se abren como onda.
+    const t = k.m == null ? 0 : k.m, mx2 = k.m == null ? 0 : Math.sin(t * 0.9) * m * 0.03, my2 = k.m == null ? 0 : Math.cos(t * 0.7) * m * 0.02;
+    if (deco === "brillo") { halo((cx == null ? W * 0.92 : cx) + mx2, (cy == null ? H * 0.06 : cy) + my2, m * 0.7, 0.3); halo(W * 0.02 - mx2, H * 0.98 - my2, m * 0.5, 0.14); }
     if (deco === "anillos") {
-      const x = cx == null ? W * 0.5 : cx, y = cy == null ? H * 0.3 : cy; halo(x, y, m * 0.6, 0.22);
+      const x = cx == null ? W * 0.5 : cx, y = cy == null ? H * 0.3 : cy, fase = k.m == null ? 0 : (t * 0.22) % 1; halo(x, y, m * (0.6 + (k.m == null ? 0 : 0.03 * Math.sin(t * 1.3))), 0.22);
       ctx.lineWidth = Math.max(2, m * 0.0022);
-      for (let i = 1; i <= 6; i++) { ctx.beginPath(); ctx.arc(x, y, m * 0.11 * i + m * 0.06, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${P.brillo},${(0.2 - i * 0.027).toFixed(3)})`; ctx.stroke(); }
+      for (let i = 0; i <= 6; i++) { const j = i + fase, alfaAnillo = Math.max(0, 0.2 - j * 0.027) * Math.min(1, j * 1.6); if (alfaAnillo <= 0) continue; ctx.beginPath(); ctx.arc(x, y, m * 0.11 * j + m * 0.06, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${P.brillo},${alfaAnillo.toFixed(3)})`; ctx.stroke(); }
     }
     if (deco === "puntos") {
       const paso = Math.min(W, H) * 0.055; ctx.fillStyle = P.borde;
@@ -237,29 +256,57 @@
     let esc = 1, total = 0;
     for (let i = 0; i < 9; i++) { total = 0; for (const it of items) { it._h = alto(k, it, x, w, alin, esc); total += it._h; } if (total <= y1 - y0 || esc < 0.55) break; esc *= 0.93; }
     let y = o.vert === "arriba" ? y0 : o.vert === "abajo" ? y1 - total : y0 + Math.max(0, (y1 - y0 - total) / 2);
+    // El reloj: en el flujo principal de la pieza cada elemento toma su turno
+    // (aunque se pinte quieta, para saber cuánto dura el video). Lo que va
+    // dentro de otro elemento (una tarjeta, el pie) entra junto con él.
+    const R = k.est, principal = !!R && R.dentro === 0;
     for (const it of items) {
-      if (it.t === "pildora") pildora(k, it.str, alin === "center" ? x + w / 2 : x, y, { tam: it.tam * esc, vivo: it.vivo, alin, bg: it.bg, fg: it.fg });
-      else if (it.t === "fn") it.dib(x, y, w);
-      else if (it.t === "fila") {
-        // País a la izquierda, hora a la derecha; el renglón principal va resaltado.
-        const ctx = k.ctx, tam = it.tam * esc, h = it._h, pad = tam * 0.7, P = k.P, colorHora = P.ac === P.fg ? (P.realce || P.fg) : P.ac;
-        if (it.resalta) { rr(ctx, x, y + h * 0.06, w, h * 0.88, tam * 0.55); ctx.fillStyle = P.tarjeta; ctx.fill(); ctx.lineWidth = Math.max(2, tam * 0.05); ctx.strokeStyle = P.borde; ctx.stroke(); }
-        else { ctx.fillStyle = P.borde; ctx.fillRect(x + pad, y + h - Math.max(1, tam * 0.03), w - pad * 2, Math.max(1, tam * 0.03)); }
-        const mH = texto(k, it.der, 0, 0, { w: w * 0.5, tam: tam * 1.12, lineas: 1, medir: true });
-        const yT = y + (h - tam * 1.1 - (it.nota ? tam * 0.62 : 0)) / 2;
-        texto(k, it.izq, x + pad, yT, { w: w - pad * 2 - mH.ancho - tam * 0.6, tam, lineas: 1, peso: 800 });
-        if (it.nota) texto(k, it.nota, x + pad, yT + tam * 1.12, { w: w - pad * 2 - mH.ancho - tam * 0.6, tam: tam * 0.52, lineas: 1, peso: 600, color: P.suave });
-        texto(k, it.der, x + w - pad - mH.ancho, y + (h - mH.h) / 2, { w: mH.ancho + 2, tam: mH.tam, min: mH.tam, lineas: 1, color: colorHora });
+      if (it.t === "esp") { y += it._h; continue; }
+      let a = 1, anim = null;
+      if (principal) {
+        const ti = R.reloj, porPalabras = it.t === "texto" && !it.cuenta && it._tam >= k.W * 0.06;
+        R.reloj += porPalabras ? Math.min(1.5, String(it.str).split(/\s+/).filter(Boolean).length * PASO_PALABRA) + 0.18 : PASO;
+        it._t0 = ti;
+        if (k.m != null) { if (porPalabras) anim = { t0: ti, paso: PASO_PALABRA }; else a = suave((k.m - ti) / 0.5); }
       }
-      else if (it.t === "vineta") {
-        const r = it.tam * esc * 0.72, ctx = k.ctx, cy = y + Math.max(r, it._th / 2);
-        ctx.beginPath(); ctx.arc(x + r, cy, r, 0, Math.PI * 2); ctx.fillStyle = k.P.ac; ctx.fill();
-        ctx.beginPath(); ctx.moveTo(x + r * 0.58, cy + r * 0.02); ctx.lineTo(x + r * 0.9, cy + r * 0.34); ctx.lineTo(x + r * 1.45, cy - r * 0.32); ctx.lineWidth = r * 0.24; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = k.P.sobre; ctx.stroke();
-        texto(k, it.str, x + r * 2 + it.tam * 0.6, y + Math.max(0, r - it._th / 2), { w: w - r * 2 - it.tam * 0.6, tam: it._tam, min: it._tam, peso: 600, lineas: 2, il: 1.22 });
-      } else if (it.t !== "esp") texto(k, it.str, x, y, Object.assign({}, it, { w, tam: it._tam, min: it._tam, alin }));
+      if (a > 0) {
+        const ctx = k.ctx, entra = a < 1;
+        if (entra) { ctx.save(); ctx.globalAlpha *= a; ctx.translate(0, (1 - a) * k.W * 0.03); }
+        if (principal) R.dentro++;
+        dibujarItem(k, it, x, y, w, alin, esc, anim);
+        if (principal) R.dentro--;
+        if (entra) ctx.restore();
+      }
       y += it._h;
     }
     return y;
+  }
+  function dibujarItem(k, it, x, y, w, alin, esc, anim) {
+    if (it.t === "pildora") pildora(k, it.str, alin === "center" ? x + w / 2 : x, y, { tam: it.tam * esc, vivo: it.vivo, alin, bg: it.bg, fg: it.fg });
+    else if (it.t === "fn") it.dib(x, y, w);
+    else if (it.t === "fila") {
+      // País a la izquierda, hora a la derecha; el renglón principal va resaltado.
+      const ctx = k.ctx, tam = it.tam * esc, h = it._h, pad = tam * 0.7, P = k.P, colorHora = P.ac === P.fg ? (P.realce || P.fg) : P.ac;
+      if (it.resalta) { rr(ctx, x, y + h * 0.06, w, h * 0.88, tam * 0.55); ctx.fillStyle = P.tarjeta; ctx.fill(); ctx.lineWidth = Math.max(2, tam * 0.05); ctx.strokeStyle = P.borde; ctx.stroke(); }
+      else { ctx.fillStyle = P.borde; ctx.fillRect(x + pad, y + h - Math.max(1, tam * 0.03), w - pad * 2, Math.max(1, tam * 0.03)); }
+      const mH = texto(k, it.der, 0, 0, { w: w * 0.5, tam: tam * 1.12, lineas: 1, medir: true });
+      const yT = y + (h - tam * 1.1 - (it.nota ? tam * 0.62 : 0)) / 2;
+      texto(k, it.izq, x + pad, yT, { w: w - pad * 2 - mH.ancho - tam * 0.6, tam, lineas: 1, peso: 800 });
+      if (it.nota) texto(k, it.nota, x + pad, yT + tam * 1.12, { w: w - pad * 2 - mH.ancho - tam * 0.6, tam: tam * 0.52, lineas: 1, peso: 600, color: P.suave });
+      texto(k, it.der, x + w - pad - mH.ancho, y + (h - mH.h) / 2, { w: mH.ancho + 2, tam: mH.tam, min: mH.tam, lineas: 1, color: colorHora });
+    } else if (it.t === "vineta") {
+      const r = it.tam * esc * 0.72, ctx = k.ctx, cy = y + Math.max(r, it._th / 2);
+      ctx.beginPath(); ctx.arc(x + r, cy, r, 0, Math.PI * 2); ctx.fillStyle = k.P.ac; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + r * 0.58, cy + r * 0.02); ctx.lineTo(x + r * 0.9, cy + r * 0.34); ctx.lineTo(x + r * 1.45, cy - r * 0.32); ctx.lineWidth = r * 0.24; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = k.P.sobre; ctx.stroke();
+      texto(k, it.str, x + r * 2 + it.tam * 0.6, y + Math.max(0, r - it._th / 2), { w: w - r * 2 - it.tam * 0.6, tam: it._tam, min: it._tam, peso: 600, lineas: 2, il: 1.22 });
+    } else {
+      let str = it.str;
+      if (it.cuenta && k.m != null && it._t0 != null) { // el número corre desde cero hasta su valor
+        const mm = /^(\D*)(\d[\d,]*)([\s\S]*)$/.exec(String(it.str));
+        if (mm) str = mm[1] + Math.round(parseInt(mm[2].replace(/,/g, ""), 10) * suave((k.m - it._t0) / 0.9)).toLocaleString("es-MX") + mm[3];
+      }
+      texto(k, str, x, y, Object.assign({}, it, { w, tam: it._tam, min: it._tam, alin, anim }));
+    }
   }
   const T = (str, tam, o) => Object.assign({ t: "texto", str, tam }, o || {});
   const E = (h) => ({ t: "esp", h });
@@ -269,6 +316,14 @@
    *  lee aunque sea largo). Sin personalizar o hablando de Video Room: la marca
    *  y el dominio. Devuelve dónde empieza. */
   function pie(k) {
+    // En video, la identidad y el QR entran juntos al final (k.tPie viene del plan).
+    const ctx = k.ctx, a = k.m == null ? 1 : suave((k.m - k.tPie) / 0.55);
+    k.est.dentro++; ctx.save(); ctx.globalAlpha *= a; ctx.translate(0, (1 - a) * k.W * 0.035);
+    const y = pieQuieto(k);
+    ctx.restore(); k.est.dentro--;
+    return y;
+  }
+  function pieQuieto(k) {
     const { W, H, P, d, mx } = k, v = k.forma === "vertical";
     const lado = k.conQR ? W * (v ? 0.27 : 0.2) : 0, y1 = H - k.bot, wTodo = W - mx * 2;
     const colorLink = P.ac === P.fg ? P.fg : P.ac;
@@ -294,7 +349,7 @@
     flujo(k, items, mx, wT, y0, y1, { vert: lado ? "centro" : "abajo" });
     return y0 - W * 0.05;
   }
-  const cabeza = (k, color) => { marca(k, k.mx, k.top, k.W * 0.044, "left", color); return k.top + k.W * 0.085; };
+  const cabeza = (k, color) => { const a0 = k.ctx.globalAlpha; if (k.m != null) k.ctx.globalAlpha = a0 * suave(k.m / 0.4); marca(k, k.mx, k.top, k.W * 0.044, "left", color); k.ctx.globalAlpha = a0; return k.top + k.W * 0.085; };
 
   /* ── arquetipos (vertical, cuadrado, retrato) ───────────────────────── */
   const A = {};
@@ -318,7 +373,7 @@
   A.precio = (k, c) => {
     const { W, mx } = k;
     fondo(k, "anillos", W * 0.78, k.H * 0.34); const yP = pie(k), y0 = cabeza(k);
-    flujo(k, [c.k && { t: "pildora", str: c.k, tam: W * 0.028 }, c.k && E(W * 0.02), T(c.n, W * 0.36, { lineas: 1, color: k.P.ac === k.P.fg ? (k.P.realce || k.P.fg) : k.P.ac, il: 1 }), T(c.t, W * 0.075, { lineas: 2 }), c.s && E(W * 0.03), c.s && T(c.s, W * 0.042, { peso: 500, color: k.P.suave, lineas: 3 })], mx, W - mx * 2, y0, yP);
+    flujo(k, [c.k && { t: "pildora", str: c.k, tam: W * 0.028 }, c.k && E(W * 0.02), T(c.n, W * 0.36, { lineas: 1, color: k.P.ac === k.P.fg ? (k.P.realce || k.P.fg) : k.P.ac, il: 1, cuenta: true }), T(c.t, W * 0.075, { lineas: 2 }), c.s && E(W * 0.03), c.s && T(c.s, W * 0.042, { peso: 500, color: k.P.suave, lineas: 3 })], mx, W - mx * 2, y0, yP);
   };
   A.cita = (k, c) => {
     const { W, mx, ctx } = k, v = k.forma === "vertical";
@@ -509,11 +564,29 @@
     };
     k.conFoto = k.fotos.length > 0 && ((pers && !vr) || pieza.a === "perfil");
     const c = {}; for (const kk in pieza.c) c[kk] = typeof pieza.c[kk] === "string" ? llenar(pieza.c[kk], d, pieza) : pieza.c[kk];
+    // El momento del video. Antes de PORTADA se ve la pieza completa; luego arranca el movimiento.
+    const bruto = d.m == null ? null : Math.max(0, d.m), plan = d.plan || null;
+    k.m = bruto == null ? null : Math.max(0, bruto - PORTADA);
+    k.est = { reloj: T0, dentro: 0 };
+    k.tPie = plan ? plan.tPie : 2;
     ctx.save(); ctx.clearRect(0, 0, W, H);
     (A[pieza.a] || A.hero)(k, c);
     ctx.restore();
+    if (bruto != null && bruto < PORTADA && plan && plan.portada) { // la portada se desvanece sobre el arranque
+      const queda = 1 - suave((bruto - 0.28) / (PORTADA - 0.28));
+      if (queda > 0) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = queda; ctx.drawImage(plan.portada, 0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore(); }
+    }
     return k;
   }
+  /** El plan del video de una pieza: cuándo entra el pie, cuánto dura y su portada (la pieza quieta). */
+  function planDe(pieza, d, anchoPx) {
+    const F = C.FORMATOS[pieza.f], w = Math.round(anchoPx || F.w), h = Math.round((w * F.h) / F.w), cv = document.createElement("canvas");
+    cv.width = w; cv.height = h; const ctx = cv.getContext("2d"); ctx.setTransform(w / F.w, 0, 0, w / F.w, 0, 0);
+    const k = pintar(pieza, ctx, Object.assign({}, d, { m: null, plan: null })), fin = k.est.reloj;
+    return { tPie: fin + 0.1, D: Math.min(10, Math.max(5.5, PORTADA + fin + 0.75 + ESPERA)), portada: cv };
+  }
+  /** Solo las piezas para publicar se hacen video: vertical, cuadrado y retrato. */
+  const conVideo = (pieza) => ["V", "C", "R"].includes(pieza.f) && pieza.a !== "perfil";
   /** Pinta en un canvas del ancho pedido (en píxeles reales). */
   function pintarEn(canvas, pieza, d, anchoPx) {
     const F = C.FORMATOS[pieza.f], w = Math.round(anchoPx || F.w), h = Math.round((w * F.h) / F.w);
@@ -530,5 +603,5 @@
   }
   const listo = () => (document.fonts && document.fonts.load ? Promise.all(["800", "700", "600", "500"].map((p) => document.fonts.load(`${p} 48px "Plus Jakarta Sans"`))).catch(() => {}) : Promise.resolve());
 
-  window.MaterialesMotor = { pintar, pintarEn, aBlob, listo, llenar, HOST, PALETAS, C1, C2 };
+  window.MaterialesMotor = { pintar, pintarEn, aBlob, listo, llenar, planDe, conVideo, HOST, PALETAS, C1, C2 };
 })();
