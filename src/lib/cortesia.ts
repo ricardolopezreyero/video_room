@@ -13,6 +13,8 @@ export const CUENTAS_CORTESIA = new Set(
     "reyero.ricardo@gmail.com",
     "ricardo@superleads.mx",
     "yudiel@superleads.mx",
+    "victor@superleads.mx",
+    "enrique@superleads.mx",
   ].map((e) => e.toLowerCase())
 );
 
