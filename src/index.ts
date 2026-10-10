@@ -189,7 +189,7 @@ app.get("/sitemap.xml", async (c) => {
 
   return c.body(
     `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` +
-      `<url><loc>${c.env.APP_URL}/</loc></url><url><loc>${c.env.APP_URL}/app/api</loc></url>${urls}</urlset>`,
+      `<url><loc>${c.env.APP_URL}/</loc></url><url><loc>${c.env.APP_URL}/app/materiales</loc></url><url><loc>${c.env.APP_URL}/app/faq</loc></url><url><loc>${c.env.APP_URL}/app/api</loc></url>${urls}</urlset>`,
     200,
     { "Content-Type": "application/xml; charset=utf-8" }
   );

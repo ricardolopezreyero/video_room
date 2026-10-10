@@ -58,6 +58,18 @@ describe("los links de sala", () => {
     expect((await get(`/${slug}`)).headers.get("location")).toBe("/ya-con-nombre");
   });
 
+  it("el alias corto ?de= es la fuente (links que se ven en los textos)", async () => {
+    const owner = await createUser();
+    const room = await createRoom(owner, "sala-de");
+    const sessionId = await createLiveSession(room.id);
+    const viewer = await createUser({ balanceCents: 10000 });
+    const visita = await get(`/sala-de?de=whatsapp`, { Cookie: await cookieFor(viewer) });
+    const utmCookie = (visita.headers.get("set-cookie") || "").split(",").map((s) => s.trim()).find((s) => s.startsWith("vr_utm="))!.split(";")[0];
+    await app.request(`/api/rooms/sala-de/pass`, { method: "POST", headers: { Cookie: `${await cookieFor(viewer)}; ${utmCookie}`, "Content-Type": "application/json" }, body: JSON.stringify({ device_id: "web" }) }, env);
+    const fila = await env.DB.prepare("SELECT utm_source, utm_medium FROM passes WHERE session_id = ? AND user_id = ?").bind(sessionId, viewer).first();
+    expect(fila).toMatchObject({ utm_source: "whatsapp", utm_medium: "link" });
+  });
+
   it("los UTM se atan a la sala donde se capturaron y se guardan en toda entrada, también las gratis", async () => {
     const owner = await createUser();
     const room = await createRoom(owner, "sala-a");

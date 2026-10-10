@@ -34,7 +34,8 @@
   // ---- a dónde suele irse la gente desde cada pantalla (pesos a priori) ----
   var SIGUIENTE = {
     "/": { "/app/monedero": 3, "/app/faq": 2, "/app/manifiesto": 2, "/app/api": 1 },
-    "/app/monedero": { "/app/estadisticas": 4, "/app/transacciones": 3, sala: 3, "/app/faq": 1, "/": 1 },
+    "/app/monedero": { "/app/estadisticas": 4, "/app/transacciones": 3, sala: 3, "/app/materiales": 2, "/app/faq": 1, "/": 1 },
+    "/app/materiales": { "/app/monedero": 3, sala: 2, "/": 1 },
     "/app/estadisticas": { "/app/monedero": 4, "/app/transacciones": 2, sala: 2 },
     "/app/transacciones": { "/app/monedero": 4, "/app/estadisticas": 2, sala: 2 },
     "/app/faq": { "/app/monedero": 2, "/": 2, "/app/manifiesto": 1 },

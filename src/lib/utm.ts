@@ -21,6 +21,9 @@ export function utmDeQuery(c: Context): Utm | null {
     const v = limpiar(c.req.query(k));
     if (v) { utm[k] = v; hay = true; }
   }
+  // Alias corto para links que se ven («…/ana?de=whatsapp»): es la fuente.
+  const de = limpiar(c.req.query("de"));
+  if (de && !utm.utm_source) { utm.utm_source = de; if (!utm.utm_medium) utm.utm_medium = "link"; hay = true; }
   return hay ? utm : null;
 }
 

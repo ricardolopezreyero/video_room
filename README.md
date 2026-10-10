@@ -480,3 +480,45 @@ a dónde se mandó). La casa la ve en `GET /api/admin/enlaces-rotos` y recibe un
 correo los viernes si hubo links sin resolver esa semana; con eso se agrega un
 sinónimo a `PAGINAS`/`RAIZ` o se corrige un QR impreso. Pruebas:
 `test/rescate.spec.ts`.
+
+## Materiales para compartir (`/app/materiales`)
+
+Una página que se comporta como modal (la ✕ o Esc regresan a donde estabas;
+si llegaste directo, al monedero o al inicio) con todo lo que alguien
+necesita para publicar su sala o recomendar Video Room: **60 diseños** y
+**47 textos**, personalizados al instante y descargables.
+
+- **Tres archivos:** `public/materiales-catalogo.js` (ahí se editan las
+  piezas y los textos), `public/materiales-motor.js` (el dibujo) y
+  `public/materiales.js` (la página). Sin servidor: todo se pinta en un
+  `<canvas>` del navegador con la tipografía de la casa, a tamaño real.
+- **Formatos:** vertical 9:16 (TikTok, Reels, Shorts, Historias, Estados),
+  cuadrado 1:1, retrato 4:5, portada de YouTube 16:9, banner de YouTube
+  (contenido dentro de la zona segura), portada de Facebook, imagen de link,
+  carta para imprimir, tarjeta de presentación y calcomanía (PNG transparente).
+- **Arquetipos** (formas de acomodar): `hero`, `tipo`, `lista`, `precio`,
+  `cita`, `bloque`, `anuncio`, `qrGrande`, `retrato`, `perfil`, `portada`,
+  `banda`, `impreso`, `tarjeta`, `sticker`. Una pieza = arquetipo + paleta
+  (`noche`, `vivo`, `oro`, `verde`, `claro`, `papel`) + contenido. El texto se
+  ajusta solo (`texto()` baja el tamaño hasta caber; `*así*` = color de acento).
+- **Personalizar:** nombre, tema y cuándo (campos), y palancas «Mi nombre y
+  mi link», «Mi código QR», «Mi foto» (prendidas por defecto) y «Medir de
+  dónde llegan». Estilo: Original / Noche / Claro / Verde. Las piezas marcadas
+  `vr:true` hablan de Video Room: llevan el dominio, y si la persona está
+  personalizada dicen «Te lo recomienda X» y su QR lleva
+  `utm_campaign=de-<su-sala>` (queda registrado quién trajo a quién).
+- **Por pieza:** descargar PNG o JPG, compartir (hoja nativa del teléfono, con
+  el texto ya copiado), copiar imagen, copiar el texto sugerido. **Por vista:**
+  un zip con todas las imágenes y un `.txt` con los textos (zip sin
+  compresión hecho a mano, sin librerías).
+- **Medición sin estorbar:** el QR de cada pieza lleva
+  `utm_source=<red>&utm_medium=material&utm_content=<id>`; los links visibles
+  en los textos usan el alias corto `?de=<red>` (lo entiende `lib/utm.ts` y
+  `utm.js` como `utm_source`). En pantalla el link se ve limpio.
+- **Se llega desde:** monedero («🎨 Materiales para compartir» junto al QR y
+  en la barra), el inicio, FAQ, Manifiesto, Estadísticas y Transacciones;
+  `/materiales`, `/kit`, `/app/portadas`… redirigen aquí (rescatador).
+  `#tiktok`, `#youtube`, `#textos`… abren esa vista.
+- **Para agregar una pieza:** una línea en `PIEZAS` (id, formato, arquetipo,
+  paleta, redes, contenido, texto sugerido). Para probar en consola:
+  `__mat.ponerFoto(url)`, `MaterialesMotor.aBlob(pieza, __mat.datos())`.

@@ -69,6 +69,7 @@ const PAGINAS: Record<string, string[]> = {
   "/app/manifiesto": ["manifiesto", "privacidad", "privacy", "terminos", "terms", "legal", "nosotros", "about", "acerca", "acerca-de"],
   "/app/bienvenida": ["bienvenida", "welcome", "onboarding", "empezar", "comenzar"],
   "/app/api": ["api", "api-docs", "docs", "developers", "desarrolladores", "integraciones", "webhooks", "embed"],
+  "/app/materiales": ["materiales", "material", "kit", "kit-de-prensa", "prensa", "press", "media", "marca", "brand", "compartir", "promocion", "promo", "disenos", "plantillas", "portadas", "imagenes", "recursos", "descargas", "guia-estilos"],
 };
 const RAIZ: Record<string, string> = {
   home: "/", inicio: "/", index: "/", principal: "/", www: "/", videoroom: "/", "video-room": "/",

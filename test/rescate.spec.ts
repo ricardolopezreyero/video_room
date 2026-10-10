@@ -112,6 +112,9 @@ describe("rescate: de punta a punta", () => {
     expect(await a("/recibo")).toBe("302 /app/transacciones");
     expect(await a("/recibo/roto")).toBe("302 /app/transacciones");
     expect(await a("/correos")).toBe("302 /app/monedero#correos");
+    expect(await a("/materiales")).toBe("302 /app/materiales");
+    expect(await a("/kit")).toBe("302 /app/materiales");
+    expect(await a("/app/portadas")).toBe("302 /app/materiales");
     expect(await a("/inicio")).toBe("302 /");
     expect(await a("/entrar")).toBe("302 /login");
   });

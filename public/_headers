@@ -39,6 +39,15 @@
 /qr.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 
+/materiales.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
+/materiales-motor.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
+/materiales-catalogo.js
+  Cache-Control: public, max-age=0, stale-while-revalidate=604800
+
 /qr-lib.js
   Cache-Control: public, max-age=0, stale-while-revalidate=604800
 

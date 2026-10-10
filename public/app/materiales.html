@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Materiales para compartir — Video Room</title>
+<meta name="description" content="60 diseños y decenas de textos listos para TikTok, Reels, Instagram, Facebook, YouTube y WhatsApp. Se personalizan con tu nombre, tu link y tu código QR. Descarga, copia y publica.">
+<meta property="og:title" content="Materiales para compartir — Video Room">
+<meta property="og:description" content="Diseños y textos listos para publicar tu sala en vivo. Con tu nombre, tu link y tu QR.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://video.capitaltorreon.com/og-default.svg">
+<link rel="canonical" href="https://video.capitaltorreon.com/app/materiales">
+<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preconnect" href="https://login.capitaltorreon.com">
+<link rel="icon" href="/og-default.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script src="/veloz.js"></script>
+</head>
+<body class="app-shell mat-cuerpo">
+<!-- Se comporta como un modal: la ✕ (o Esc) regresa a donde estabas. Si
+     llegaste directo, te lleva a tu monedero o al inicio. -->
+<div class="mat-hoja" id="mat-hoja" role="dialog" aria-modal="true" aria-labelledby="mat-titulo">
+  <header class="mat-cab">
+    <div>
+      <h1 id="mat-titulo">Materiales para compartir</h1>
+      <p id="mat-sub" class="muted">Diseños y textos listos. Descarga, copia y publica.</p>
+    </div>
+    <button type="button" class="mat-cerrar" id="mat-cerrar" aria-label="Cerrar y regresar" title="Cerrar (Esc)">✕</button>
+  </header>
+
+  <section class="mat-perso" id="mat-perso" aria-label="Personalizar">
+    <div class="mat-yo-fila">
+      <div class="mat-yo" id="mat-yo"></div>
+      <!-- En teléfono el panel viene cerrado para que los diseños queden a la vista. -->
+      <button type="button" class="btn-ghost small mat-abrir" id="mat-abrir" aria-expanded="false">Personalizar</button>
+    </div>
+    <div class="mat-campos">
+      <label><span>Nombre</span><input id="mat-nombre" maxlength="40" autocomplete="off" placeholder="Tu nombre"></label>
+      <label><span>Tema <i>opcional</i></span><input id="mat-tema" maxlength="48" autocomplete="off" placeholder="Ej. Clase de guitarra"></label>
+      <label><span>Cuándo <i>opcional</i></span><input id="mat-cuando" maxlength="28" autocomplete="off" placeholder="Ej. Hoy · 8 pm" list="mat-cuandos"></label>
+      <datalist id="mat-cuandos"><option value="Hoy · 8 pm"><option value="Hoy"><option value="Mañana · 8 pm"><option value="Esta noche"><option value="Sábado · 6 pm"><option value="Ahora"></datalist>
+    </div>
+    <div class="mat-palancas">
+      <label class="mat-palanca"><span class="switch" id="sw-nombre"><input type="checkbox" id="mat-con-nombre"><i></i></span> Mi nombre y mi link</label>
+      <label class="mat-palanca"><span class="switch" id="sw-qr"><input type="checkbox" id="mat-con-qr"><i></i></span> Mi código QR</label>
+      <label class="mat-palanca"><span class="switch" id="sw-foto"><input type="checkbox" id="mat-con-foto"><i></i></span> Mi foto</label>
+      <label class="mat-palanca" title="Agrega al link de dónde viene (?de=tiktok) para que Estadísticas te diga qué red te trajo a cada persona."><span class="switch" id="sw-medir"><input type="checkbox" id="mat-medir"><i></i></span> Medir de dónde llegan</label>
+      <div class="mat-estilos" id="mat-estilos" role="radiogroup" aria-label="Estilo de color">
+        <button type="button" data-e="original" class="on">Original</button><button type="button" data-e="noche">Noche</button><button type="button" data-e="claro">Claro</button><button type="button" data-e="verde">Verde</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="mat-chips" id="mat-chips" aria-label="Para qué red"></nav>
+  <div class="mat-barra">
+    <span id="mat-cuenta" class="muted"></span>
+    <button type="button" class="btn-ghost small" id="mat-zip">Descargar todo lo de esta vista (.zip)</button>
+  </div>
+
+  <div id="mat-grid"></div>
+  <section id="mat-textos" aria-label="Textos para copiar"></section>
+  <p class="muted mat-pie">Todo se pinta en tu navegador con tus datos: nada de lo que escribas aquí se guarda en nuestros servidores. Las imágenes son tuyas; úsalas donde quieras.</p>
+</div>
+
+<!-- Vista en grande de una pieza -->
+<div class="mat-visor" id="mat-visor" hidden>
+  <button type="button" class="mat-cerrar" id="visor-cerrar" aria-label="Cerrar vista">✕</button>
+  <button type="button" class="visor-flecha izq" id="visor-ant" aria-label="Anterior">‹</button>
+  <button type="button" class="visor-flecha der" id="visor-sig" aria-label="Siguiente">›</button>
+  <div class="visor-cuerpo">
+    <div class="visor-lienzo"><canvas id="visor-canvas"></canvas></div>
+    <aside class="visor-lado">
+      <h2 id="visor-titulo"></h2>
+      <p class="muted" id="visor-formato"></p>
+      <div class="visor-btns">
+        <button type="button" class="btn-primary" data-a="bajar">Descargar PNG</button>
+        <button type="button" class="btn-ghost" data-a="jpg">JPG</button>
+        <button type="button" class="btn-ghost" data-a="compartir" id="visor-compartir">Compartir</button>
+        <button type="button" class="btn-ghost" data-a="imagen" id="visor-imagen">Copiar imagen</button>
+      </div>
+      <div class="label" style="margin-top:16px">Texto para publicarla</div>
+      <pre class="mat-texto" id="visor-texto"></pre>
+      <button type="button" class="btn-ghost small" data-a="texto">Copiar texto</button>
+    </aside>
+  </div>
+</div>
+<div class="app-toast" id="mat-toast"></div>
+
+<script src="/qr-lib.js" defer></script>
+<script src="/materiales-catalogo.js" defer></script>
+<script src="/materiales-motor.js" defer></script>
+<script src="/materiales.js" defer></script>
+<script src="/puente-login.js"></script>
+<script src="https://login.capitaltorreon.com/login.js" data-prefs="vr_audio_modo,vr_quality,vr_notify_minutes" defer></script>
+</body>
+</html>

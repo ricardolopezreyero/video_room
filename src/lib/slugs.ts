@@ -21,10 +21,11 @@ const RESERVED_SLUGS = new Set([
   "app", "api", "auth", "webhook", "webhooks", "ws", "r", "recibo", "login", "logout", "salir", "admin",
   "unsubscribe", "embed", "well-known", "cdn-cgi",
   // páginas que vivieron en la raíz y hoy redirigen a /app/*
-  "manifiesto", "faq", "monedero", "estadisticas", "transacciones", "bienvenida", "api-docs",
+  "manifiesto", "faq", "monedero", "estadisticas", "transacciones", "bienvenida", "api-docs", "materiales", "material", "kit",
   // archivos servidos desde public/ (con y sin extensión, por si acaso)
   "sitemap.xml", "robots.txt", "favicon.ico", "index.html", "sitemap", "robots", "favicon", "index",
   "style.css", "room.js", "utm.js", "veloz.js", "sw.js", "chat.js", "embed.js", "motor-video.js", "motor-audio.js", "puente-login.js", "og-default.svg",
+  "qr.js", "qr-lib.js", "materiales.js", "materiales-motor.js", "materiales-catalogo.js", "qr", "qr-lib", "materiales-motor", "materiales-catalogo",
   "style", "room", "utm", "veloz", "sw", "chat", "motor-video", "motor-audio", "puente-login", "og-default", "fonts", "img", "static", "assets",
   // palabras que confunden o que un día pueden ser rutas
   "www", "video", "live", "en-vivo", "sala", "salas", "rooms", "room", "me", "yo", "null", "undefined", "true", "false",
