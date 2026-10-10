@@ -485,8 +485,8 @@ sinónimo a `PAGINAS`/`RAIZ` o se corrige un QR impreso. Pruebas:
 
 Una página que se comporta como modal (la ✕ o Esc regresan a donde estabas;
 si llegaste directo, al monedero o al inicio) con todo lo que alguien
-necesita para publicar su sala o recomendar Video Room: **60 diseños** y
-**47 textos**, personalizados al instante y descargables.
+necesita para publicar su sala o recomendar Video Room: **63 diseños** y
+**48 textos**, personalizados al instante y descargables.
 
 - **Tres archivos:** `public/materiales-catalogo.js` (ahí se editan las
   piezas y los textos), `public/materiales-motor.js` (el dibujo) y
@@ -519,6 +519,25 @@ necesita para publicar su sala o recomendar Video Room: **60 diseños** y
   en la barra), el inicio, FAQ, Manifiesto, Estadísticas y Transacciones;
   `/materiales`, `/kit`, `/app/portadas`… redirigen aquí (rescatador).
   `#tiktok`, `#youtube`, `#textos`… abren esa vista.
+- **Colores propios:** «Principal» y «Secundario» (por omisión verde y
+  tinta). Con los de casa las paletas son las originales; si se cambian, cada
+  paleta se deriva de esos dos (`derivada()` en el motor) cuidando el
+  contraste: el acento se aclara u oscurece hasta leerse. El QR siempre va en
+  tinta sobre blanco. «↺» regresa a los de casa.
+- **Fotos, hasta dos:** la de perfil (se prende o apaga tocándola) y otra
+  opcional que se adjunta, se cambia o se quita. La segunda se recorta y
+  achica en el navegador (640 px) y se queda en ese aparato. Con dos, salen
+  encimadas en el mismo espacio de la foto.
+- **Cuándo:** calendario (año, mes, día, hora, minuto) o texto libre. Con
+  calendario hay **horario principal** (el país del aparato si está en la
+  lista; si no, México) y **hasta 3 países más**; la conversión se hace con
+  los husos del navegador (`instanteDe` + `partesEn`, aguanta cambios de
+  horario) y cada país con su costumbre (9:00 pm o 21:00). Los anuncios
+  muestran la fecha completa y los demás países en una línea; las piezas
+  «Horarios por país» (V21, C17, R08) los listan en tabla. Los textos llevan
+  `{horariosLinea}` y `{horariosLista}`. Países en `ZONAS` del catálogo.
+- Las piezas con `pide: "fecha"` o `pide: "foto"` no se descargan vacías: su
+  botón dice «Elegir fecha y hora» o «Agregar mi foto» y lleva al control.
 - **Para agregar una pieza:** una línea en `PIEZAS` (id, formato, arquetipo,
   paleta, redes, contenido, texto sugerido). Para probar en consola:
   `__mat.ponerFoto(url)`, `MaterialesMotor.aBlob(pieza, __mat.datos())`.

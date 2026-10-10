@@ -34,6 +34,46 @@
     { id: "imprimir", n: "Para imprimir", corto: "impreso" },
   ];
 
+  // Países para los horarios. c = como se escribe en el diseño; h24 = en ese
+  // país la hora se escribe en 24 horas («21:00»); en los demás, «9:00 pm».
+  // El primero de la lista es el horario base por omisión.
+  const ZONAS = [
+    { id: "mx", n: "México (Centro · CDMX, Monterrey, Guadalajara)", c: "México", tz: "America/Mexico_City", b: "🇲🇽" },
+    { id: "mx-cun", n: "México (Quintana Roo · Cancún)", c: "Cancún", tz: "America/Cancun", b: "🇲🇽" },
+    { id: "mx-pac", n: "México (Pacífico · Sonora, Sinaloa, BCS)", c: "México Pacífico", tz: "America/Mazatlan", b: "🇲🇽" },
+    { id: "mx-tij", n: "México (Noroeste · Tijuana)", c: "Tijuana", tz: "America/Tijuana", b: "🇲🇽" },
+    { id: "us-e", n: "Estados Unidos (Este · Nueva York, Miami)", c: "EE. UU. Este", tz: "America/New_York", b: "🇺🇸" },
+    { id: "us-c", n: "Estados Unidos (Centro · Texas, Chicago)", c: "EE. UU. Centro", tz: "America/Chicago", b: "🇺🇸" },
+    { id: "us-m", n: "Estados Unidos (Montaña · Denver)", c: "EE. UU. Montaña", tz: "America/Denver", b: "🇺🇸" },
+    { id: "us-p", n: "Estados Unidos (Pacífico · Los Ángeles)", c: "EE. UU. Pacífico", tz: "America/Los_Angeles", b: "🇺🇸" },
+    { id: "ca-e", n: "Canadá (Este · Toronto)", c: "Canadá Este", tz: "America/Toronto", b: "🇨🇦" },
+    { id: "gt", n: "Guatemala", c: "Guatemala", tz: "America/Guatemala", b: "🇬🇹" },
+    { id: "sv", n: "El Salvador", c: "El Salvador", tz: "America/El_Salvador", b: "🇸🇻" },
+    { id: "hn", n: "Honduras", c: "Honduras", tz: "America/Tegucigalpa", b: "🇭🇳" },
+    { id: "ni", n: "Nicaragua", c: "Nicaragua", tz: "America/Managua", b: "🇳🇮" },
+    { id: "cr", n: "Costa Rica", c: "Costa Rica", tz: "America/Costa_Rica", b: "🇨🇷" },
+    { id: "pa", n: "Panamá", c: "Panamá", tz: "America/Panama", b: "🇵🇦" },
+    { id: "cu", n: "Cuba", c: "Cuba", tz: "America/Havana", b: "🇨🇺" },
+    { id: "do", n: "República Dominicana", c: "Rep. Dominicana", tz: "America/Santo_Domingo", b: "🇩🇴" },
+    { id: "pr", n: "Puerto Rico", c: "Puerto Rico", tz: "America/Puerto_Rico", b: "🇵🇷" },
+    { id: "co", n: "Colombia", c: "Colombia", tz: "America/Bogota", b: "🇨🇴" },
+    { id: "ve", n: "Venezuela", c: "Venezuela", tz: "America/Caracas", b: "🇻🇪" },
+    { id: "ec", n: "Ecuador", c: "Ecuador", tz: "America/Guayaquil", b: "🇪🇨" },
+    { id: "pe", n: "Perú", c: "Perú", tz: "America/Lima", b: "🇵🇪" },
+    { id: "bo", n: "Bolivia", c: "Bolivia", tz: "America/La_Paz", b: "🇧🇴" },
+    { id: "cl", n: "Chile", c: "Chile", tz: "America/Santiago", b: "🇨🇱", h24: true },
+    { id: "ar", n: "Argentina", c: "Argentina", tz: "America/Argentina/Buenos_Aires", b: "🇦🇷", h24: true },
+    { id: "uy", n: "Uruguay", c: "Uruguay", tz: "America/Montevideo", b: "🇺🇾", h24: true },
+    { id: "py", n: "Paraguay", c: "Paraguay", tz: "America/Asuncion", b: "🇵🇾", h24: true },
+    { id: "br", n: "Brasil (Brasilia · São Paulo)", c: "Brasil", tz: "America/Sao_Paulo", b: "🇧🇷", h24: true },
+    { id: "es", n: "España (península)", c: "España", tz: "Europe/Madrid", b: "🇪🇸", h24: true },
+    { id: "es-can", n: "España (Canarias)", c: "Canarias", tz: "Atlantic/Canary", b: "🇪🇸", h24: true },
+    { id: "uk", n: "Reino Unido", c: "Reino Unido", tz: "Europe/London", b: "🇬🇧" },
+    { id: "eu", n: "Europa central (Francia, Alemania, Italia)", c: "Europa central", tz: "Europe/Paris", b: "🇪🇺", h24: true },
+  ];
+  // Husos del navegador que no están tal cual en la lista → a cuál corresponden.
+  const ZONA_DE_TZ = { "America/Monterrey": "mx", "America/Merida": "mx", "America/Chihuahua": "mx", "America/Bahia_Banderas": "mx", "America/Hermosillo": "mx-pac", "America/Buenos_Aires": "ar", "America/Argentina/Cordoba": "ar", "America/Argentina/Mendoza": "ar", "America/Detroit": "us-e", "America/Phoenix": "us-m", "Europe/Berlin": "eu", "Europe/Rome": "eu", "Europe/Amsterdam": "eu", "Europe/Brussels": "eu" };
+
   const VERT = ["tiktok", "instagram", "facebook", "whatsapp", "youtube"];
   const CUAD = ["instagram", "facebook", "whatsapp", "tiktok"];
   const RETR = ["instagram", "facebook"];
@@ -54,6 +94,7 @@
     { id: "V11", n: "Te espero", f: "V", a: "tipo", p: "noche", redes: VERT, tx: "anuncio", c: { t: "TE ESPERO\nEN MI SALA\n*{cuando}*" } },
     { id: "V12", n: "Membresía", f: "V", a: "lista", p: "oro", redes: VERT, tx: "membresia", c: { k: "MEMBRESÍA", t: "Entra todo el mes, las veces que quieras", b: ["Un solo pago, 30 días", "Sin pagar cada hora", "Me apoyas directo a mí"] } },
     { id: "V13", n: "Llega completo", f: "V", a: "hero", p: "noche", redes: VERT, tx: "completo", c: { k: "SIN COMISIÓN", t: "Lo que me mandes *me llega completo*", s: "Cada peso que mandas adentro de la sala es para mí." } },
+    { id: "V21", n: "Horarios por país", f: "V", a: "horarios", p: "noche", redes: VERT, tx: "horarios", c: { k: "HORARIOS", t: "En vivo en mi sala" }, pide: "fecha" },
     // ── Vertical 9:16 · Video Room ───────────────────────────────────────
     { id: "V14", n: "Comparte. Transmite. Cobra.", f: "V", a: "tipo", p: "noche", vr: true, redes: VERT, tx: "vr_tagline", c: { t: "COMPARTE\nTU LINK.\nTRANSMITE.\n*COBRA.*" } },
     { id: "V15", n: "Te paga", f: "V", a: "hero", p: "verde", vr: true, redes: VERT, tx: "vr_paga", c: { k: "VIDEO ROOM", t: "Tu sala de video donde cada persona que entra *te paga*" } },
@@ -80,6 +121,7 @@
     { id: "C14", n: "Nunca se graba", f: "C", a: "cita", p: "noche", vr: true, redes: CUAD, tx: "vr_nograba", c: { t: "Nada se graba. *Nunca.*", firma: "Video Room" } },
     { id: "C15", n: "Cobra por tu tiempo", f: "C", a: "lista", p: "claro", vr: true, redes: CUAD, tx: "vr_tiempo", c: { t: "Cobra por tu tiempo en vivo", b: ["Tú pones el precio de tu hora", "Lo que te mandan llega completo", "Retiras a tu banco cuando quieras"] } },
     { id: "C16", n: "30 segundos", f: "C", a: "bloque", p: "verde", vr: true, redes: CUAD, tx: "vr_30", c: { k: "GRATIS", t: "Crea tu sala en 30 segundos", s: "Sin seguidores mínimos. Sin requisitos." } },
+    { id: "C17", n: "Horarios por país", f: "C", a: "horarios", p: "noche", redes: CUAD, tx: "horarios", c: { k: "HORARIOS", t: "En vivo en mi sala" }, pide: "fecha" },
     { id: "X01", n: "Foto de perfil «en vivo»", f: "C", a: "perfil", p: "vivo", redes: ["instagram", "tiktok", "facebook", "whatsapp", "youtube"], tx: "vivo", c: { k: "EN VIVO" }, pide: "foto" },
 
     // ── Retrato 4:5 ──────────────────────────────────────────────────────
@@ -88,6 +130,7 @@
     { id: "R03", n: "Estoy en vivo", f: "R", a: "hero", p: "vivo", redes: RETR, tx: "vivo", c: { k: "EN VIVO", vivo: true, t: "Estoy en vivo *ahora*", s: "Entra a mi sala. Nada se graba." } },
     { id: "R04", n: "Tres pasos", f: "R", a: "lista", p: "claro", redes: RETR, tx: "pasos", c: { k: "ASÍ DE FÁCIL", t: "Entra a mi sala en 3 pasos", b: PASOS } },
     { id: "R05", n: "Comparte. Transmite. Cobra.", f: "R", a: "tipo", p: "verde", vr: true, redes: RETR, tx: "vr_tagline", c: { t: "COMPARTE\nTU LINK.\nTRANSMITE.\n*COBRA.*" } },
+    { id: "R08", n: "Horarios por país", f: "R", a: "horarios", p: "claro", redes: RETR, tx: "horarios", c: { k: "HORARIOS", t: "En vivo en mi sala" }, pide: "fecha" },
     { id: "R07", n: "No se graba", f: "R", a: "cita", p: "oro", redes: RETR, tx: "nograba", c: { t: "Lo que platiquemos aquí *no se graba*." } },
     { id: "R06", n: "Sin algoritmo", f: "R", a: "hero", p: "noche", vr: true, redes: RETR, tx: "vr_algoritmo", c: { k: "SIN PUBLICIDAD", t: "Tu público *te paga a ti*, no a un algoritmo" } },
 
@@ -117,7 +160,8 @@
   // ── Textos sugeridos para publicar cada pieza (clave tx) ────────────────
   const CAPTIONS = {
     vivo: "🔴 Estoy en vivo ahora mismo en mi sala privada. Entra, platicamos y nada se graba.\n\n👉 {link}",
-    anuncio: "📅 {cuando}: nos vemos en vivo en mi sala{temaDe}. Entra con un toque; nada se graba.\n\nActiva «Avísame» y te llega un correo cuando abra 👉 {link}",
+    anuncio: "📅 {cuando}: nos vemos en vivo en mi sala{temaDe}. Entra con un toque; nada se graba.{horariosLinea}\n\nActiva «Avísame» y te llega un correo cuando abra 👉 {link}",
+    horarios: "🕗 ¿A qué hora en tu país?\n\n{horariosLista}\n\nNos vemos en vivo en mi sala{temaDe}. Nada se graba.\n\n👉 {link}",
     qr: "Escanea el código o toca el link y entras a mi sala de video en vivo. Nada se graba.\n\n👉 {link}",
     sala: "Esta es mi sala privada de video. Cuando estoy en vivo, entras, platicamos y nada se graba.\n\n👉 {link}",
     nograba: "Lo que platiquemos en mi sala no se graba. Ni un segundo. Por eso se puede hablar en confianza.\n\n👉 {link}",
@@ -152,7 +196,7 @@
       { t: "Una línea", x: "Estoy a un link: {linkLimpio}" },
     ] },
     { red: "tiktok", grupo: "TikTok y Reels · descripción del video", items: [
-      { t: "Voy a estar en vivo", x: "{cuando} voy a estar en vivo en mi sala privada{temaDe}. Entras con un toque y nada se graba. Link en mi perfil 🔴 #envivo #videoroom" },
+      { t: "Voy a estar en vivo", x: "{cuando} voy a estar en vivo en mi sala privada{temaDe}. Entras con un toque y nada se graba.{horariosLinea}\n\nLink en mi perfil 🔴 #envivo #videoroom" },
       { t: "Estoy en vivo", x: "Estoy en vivo AHORITA en mi sala privada 🔴 Link en mi perfil. Nada se graba. #envivo #videoroom" },
       { t: "Qué es mi sala", x: "Les enseño mi sala privada de video: entran, platicamos en vivo y nada se graba. El link está en mi perfil 👆 #videoroom" },
       { t: "Pregúntame", x: "¿Tienes una duda? Pregúntamela en vivo, de frente. Link en mi perfil 🔴 #preguntasyrespuestas #envivo" },
@@ -167,14 +211,14 @@
       { t: "Guion 5 · para recomendar Video Room", x: "TOMA 1 (3 s): «Si sabes algo que la gente te pregunta, puedes cobrar por tu tiempo en vivo.»\nTOMA 2 (pantalla, 5 s): «En Video Room creas tu sala en 30 segundos y te dan un link.»\nTOMA 3 (5 s): «Cada persona que entra te paga al entrar. 4 de cada 5 pesos son tuyos.»\nTOMA 4 (3 s): «Y lo que te mandan adentro te llega completo.»\nTEXTO EN PANTALLA: video.capitaltorreon.com" },
     ] },
     { red: "instagram", grupo: "Instagram · pie de foto", items: [
-      { t: "Anuncio", x: "📅 {cuando}: en vivo en mi sala privada{temaDe}.\n\nEntras con un toque, platicamos de frente y nada se graba.\n\n🔗 Link en mi perfil\n\n#envivo #videoroom" },
+      { t: "Anuncio", x: "📅 {cuando}: en vivo en mi sala privada{temaDe}.{horariosLinea}\n\nEntras con un toque, platicamos de frente y nada se graba.\n\n🔗 Link en mi perfil\n\n#envivo #videoroom" },
       { t: "Mi sala", x: "Esta es mi sala privada de video 🔴\n\nCuando estoy en vivo, entras, platicamos y nada se graba. Sin algoritmo de por medio.\n\n🔗 Link en mi perfil" },
       { t: "Historia con sticker de link", x: "🔴 EN VIVO AHORA\nToca aquí y entra 👇\n{link}" },
       { t: "Gracias", x: "Gracias a quienes entraron hoy 🙌\n\nNada quedó grabado, como siempre. Si quieres enterarte del próximo, entra a mi sala y activa «Avísame».\n\n🔗 Link en mi perfil" },
       { t: "Para recomendar Video Room", x: "Si enseñas, asesoras o tocas, puedes cobrar por tu tiempo en vivo.\n\nVideo Room te da una sala con tu link: quien entra, te paga al entrar. 4 de cada 5 pesos son tuyos y lo que te mandan adentro llega completo.\n\nvideo.capitaltorreon.com" },
     ] },
     { red: "facebook", grupo: "Facebook · publicación", items: [
-      { t: "Anuncio", x: "📅 {cuando} voy a estar en vivo en mi sala privada{temaDe}.\n\nEs por video, de frente, y nada se graba. Para entrar solo tocas el link e ingresas con Google.\n\n👉 {link}" },
+      { t: "Anuncio", x: "📅 {cuando} voy a estar en vivo en mi sala privada{temaDe}.{horariosLinea}\n\nEs por video, de frente, y nada se graba. Para entrar solo tocas el link e ingresas con Google.\n\n👉 {link}" },
       { t: "Estoy en vivo", x: "🔴 Estoy en vivo ahora mismo. Entra a mi sala y platicamos; nada se graba.\n\n👉 {link}" },
       { t: "Qué es y cómo entrar", x: "Me han preguntado cómo funciona mi sala:\n\n• Es una sala de video privada, en vivo.\n• Tocas el link e ingresas con Google en un toque.\n• Tu hora empieza cuando entras; puedes salir y volver.\n• Nada se graba.\n\n👉 {link}" },
       { t: "En un grupo de Facebook", x: "Hola a todos. Abrí una sala de video en vivo{temaDe} para platicar de frente y contestar dudas. Nada se graba. Si a alguien le sirve, aquí está el link:\n\n👉 {link}" },
@@ -186,13 +230,14 @@
       { t: "Título 4", x: "{temaO}: lo que no puedo decir en un video" },
       { t: "Descripción", x: "Estoy en vivo en mi sala privada de video. Ahí platicamos de frente y nada se graba.\n\n🔴 Entra aquí: {link}\n\nCómo entrar:\n1. Toca el link\n2. Ingresa con Google en un toque\n3. Listo: estás en vivo conmigo\n\nActiva «Avísame» en la sala y te llega un correo cuando vuelva a abrir." },
       { t: "Comentario fijado", x: "🔴 Mi sala en vivo (nada se graba): {link}" },
-      { t: "Publicación en la pestaña Comunidad", x: "📅 {cuando}: en vivo en mi sala privada{temaDe}. Nada se graba.\n👉 {link}" },
+      { t: "Publicación en la pestaña Comunidad", x: "📅 {cuando}: en vivo en mi sala privada{temaDe}. Nada se graba.{horariosLinea}\n👉 {link}" },
     ] },
     { red: "whatsapp", grupo: "WhatsApp · para tus grupos", items: [
-      { t: "Invitación", x: "Hola 👋 {cuando} voy a estar en vivo en mi sala de video{temaDe}. Es de frente y nada se graba.\n\nPara entrar solo toquen el link:\n{link}" },
+      { t: "Invitación", x: "Hola 👋 {cuando} voy a estar en vivo en mi sala de video{temaDe}. Es de frente y nada se graba.{horariosLinea}\n\nPara entrar solo toquen el link:\n{link}" },
       { t: "Ya casi empiezo", x: "⏰ En unos minutos empiezo en vivo. Los espero aquí:\n{link}" },
       { t: "Ya estoy en vivo", x: "🔴 Ya estoy en vivo. Entren cuando quieran:\n{link}" },
-      { t: "Recordatorio", x: "Recordatorio: {cuando} nos vemos en vivo. Si entran a la sala y activan «Avísame», les llega un correo cuando abra.\n{link}" },
+      { t: "Horarios por país", x: "🕗 Horarios del en vivo{temaDe}:\n\n{horariosLista}\n\nLos espero aquí:\n{link}" },
+      { t: "Recordatorio", x: "Recordatorio: {cuando} nos vemos en vivo.{horariosLinea} Si entran a la sala y activan «Avísame», les llega un correo cuando abra.\n{link}" },
       { t: "Gracias", x: "Gracias a quienes entraron hoy 🙌 Nada quedó grabado. Les aviso del próximo." },
       { t: "Para quien pregunta qué es", x: "Es una sala de video en vivo. Tocas el link, ingresas con Google y ya estás adentro. Tu hora empieza cuando entras y puedes salir y volver. Nada se graba.\n{link}" },
     ] },
@@ -211,5 +256,5 @@
     ] },
   ];
 
-  window.MaterialesCatalogo = { FORMATOS, REDES, PIEZAS, CAPTIONS, TEXTOS };
+  window.MaterialesCatalogo = { FORMATOS, REDES, PIEZAS, CAPTIONS, TEXTOS, ZONAS, ZONA_DE_TZ };
 })();

@@ -9,16 +9,62 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const LLAVE = "vr_materiales";
-  const S = Object.assign({ nombre: "", tema: "", cuando: "", conNombre: true, conQR: true, conFoto: true, medir: true, estilo: "original", red: "todo" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
-  const guardar = () => { try { localStorage.setItem(LLAVE, JSON.stringify(S)); } catch {} };
-  let me = null, room = null, foto = null, nombreTocado = !!S.nombre;
+  const S = Object.assign({ nombre: "", tema: "", cuando: "", fecha: "", modoCuando: "fecha", tzBase: "", tzOtros: [], conNombre: true, conQR: true, conFoto: true, foto2: "", c1: M.C1, c2: M.C2, medir: true, estilo: "original", red: "todo" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
+  const guardar = () => { try { localStorage.setItem(LLAVE, JSON.stringify(S)); } catch { try { localStorage.setItem(LLAVE, JSON.stringify(Object.assign({}, S, { foto2: "" }))); } catch {} } };
+  // foto1 = la de tu perfil (Google); foto2 = la otra, opcional, que adjuntas aquí. Máximo dos.
+  let me = null, room = null, foto1 = null, foto2 = null, nombreTocado = !!S.nombre;
+  if (!Array.isArray(S.tzOtros)) S.tzOtros = [];
+  const fotosActivas = () => [S.conFoto ? foto1 : null, foto2].filter(Boolean);
+
+  /* ── fecha, hora y horarios por país ────────────────────────────────── */
+  const zona = (id) => C.ZONAS.find((z) => z.id === id) || null;
+  if (!zona(S.tzBase)) { // el país principal: el de este aparato si está en la lista; si no, México
+    let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
+    const z = C.ZONAS.find((x) => x.tz === tz) || zona(C.ZONA_DE_TZ[tz]);
+    S.tzBase = z ? z.id : C.ZONAS[0].id;
+  }
+  S.tzOtros = S.tzOtros.filter((id) => zona(id) && id !== S.tzBase).slice(0, 3);
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"], DIAS_C = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+  const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"], MESES_C = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  const formatos = new Map();
+  /** Cómo se lee un instante en el reloj de un huso: año, mes, día, hora, minuto y día de la semana. */
+  function partesEn(ms, tz) {
+    let f = formatos.get(tz);
+    if (!f) { f = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", weekday: "short" }); formatos.set(tz, f); }
+    const o = {}; for (const p of f.formatToParts(new Date(ms))) o[p.type] = p.value;
+    return { y: +o.year, m: +o.month, d: +o.day, H: +o.hour % 24, M: +o.minute, wd: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(o.weekday) };
+  }
+  /** «2026-10-17T20:00» dicho en el reloj de `tz` → el instante real (ms). Aguanta cambios de horario. */
+  function instanteDe(local, tz) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local || ""); if (!m) return null;
+    const meta = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]); let utc = meta;
+    for (let i = 0; i < 3; i++) { const p = partesEn(utc, tz), visto = Date.UTC(p.y, p.m - 1, p.d, p.H, p.M); if (visto === meta) break; utc -= visto - meta; }
+    return utc;
+  }
+  const horaTxt = (H, M, h24) => (h24 ? `${String(H).padStart(2, "0")}:${String(M).padStart(2, "0")}` : `${H % 12 || 12}:${String(M).padStart(2, "0")} ${H < 12 ? "am" : "pm"}`);
+  const diaNum = (p) => Date.UTC(p.y, p.m - 1, p.d) / 86400000;
+  /** La sesión, ya convertida: texto principal, fecha larga y la hora en cada país. null si no hay fecha. */
+  function agenda() {
+    if (S.modoCuando !== "fecha" || !S.fecha) return null;
+    const base = zona(S.tzBase), ms = instanteDe(S.fecha, base.tz); if (ms == null) return null;
+    const pb = partesEn(ms, base.tz), hoy = partesEn(Date.now(), base.tz), dif = diaNum(pb) - diaNum(hoy);
+    const rel = dif === 0 ? "Hoy" : dif === 1 ? "Mañana" : "", hora = horaTxt(pb.H, pb.M, base.h24);
+    const larga = `${cap(DIAS[pb.wd])} ${pb.d} de ${MESES[pb.m - 1]}`, conAnio = `${larga} de ${pb.y}`;
+    const horarios = [{ pais: base.c, hora, nota: "" }].concat(S.tzOtros.map(zona).filter(Boolean).map((z) => { const p = partesEn(ms, z.tz); return { pais: z.c, hora: horaTxt(p.H, p.M, z.h24), nota: diaNum(p) !== diaNum(pb) ? `${DIAS[p.wd]} ${p.d}` : "" }; }));
+    return { ms, base, hora, larga: pb.y !== hoy.y ? conAnio : larga, conAnio, cuando: `${rel || `${cap(DIAS_C[pb.wd])} ${pb.d} ${MESES_C[pb.m - 1]}`} · ${hora}`, horarios };
+  }
+  const notaDe = (h) => (h.nota ? ` (${h.nota})` : "");
   const puedeCompartir = !!(navigator.share && navigator.canShare);
   const puedeCopiarImagen = !!(navigator.clipboard && window.ClipboardItem);
 
   function toast(msg, ms) { const t = $("mat-toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), ms || 2600); }
 
   /* ── datos con los que se pinta y se escribe ────────────────────────── */
-  const datos = (red) => ({ nombre: S.nombre.trim(), slug: room && room.slug, foto, tema: S.tema.trim(), cuando: S.cuando.trim(), precio: room && room.price_cents ? "$" + Math.round(room.price_cents / 100).toLocaleString("es-MX") : "$20", conNombre: S.conNombre, conQR: S.conQR, conFoto: S.conFoto, estilo: S.estilo, red: red || S.red });
+  const datos = (red) => {
+    const ag = agenda();
+    return { nombre: S.nombre.trim(), slug: room && room.slug, fotos: fotosActivas(), tema: S.tema.trim(), cuando: ag ? ag.cuando : (S.modoCuando === "texto" ? S.cuando.trim() : ""), fechaLarga: ag ? ag.conAnio : "", horarios: ag ? ag.horarios : [], precio: room && room.price_cents ? "$" + Math.round(room.price_cents / 100).toLocaleString("es-MX") : "$20", conNombre: S.conNombre, conQR: S.conQR, estilo: S.estilo, c1: S.c1, c2: S.c2, red: red || S.red };
+  };
   const personal = () => !!(S.conNombre && room && room.slug);
   function linkPara(red, vr) {
     const sala = personal() && !vr;
@@ -27,12 +73,15 @@
     return sala ? `https://${HOST}/${room.slug}${q}` : q ? `https://${HOST}/${q}` : `https://${HOST}`;
   }
   function escribir(str, red, vr) {
-    const tema = S.tema.trim(), nombre = S.nombre.trim(), d = datos(red);
+    const tema = S.tema.trim(), nombre = S.nombre.trim(), d = datos(red), ag = agenda();
+    const cuandoTxt = ag ? `${ag.larga}, ${ag.hora}${ag.horarios.length > 1 ? ` (hora de ${ag.base.c})` : ""}` : (S.modoCuando === "texto" && S.cuando.trim()) || "Hoy";
     return String(str)
+      .replace(/\{horariosLinea\}/g, ag && ag.horarios.length > 1 ? `\n\n🌎 ${ag.horarios.map((h) => `${h.pais} ${h.hora}${notaDe(h)}`).join(" · ")}` : "")
+      .replace(/\{horariosLista\}/g, ag ? `📅 ${ag.conAnio}\n${ag.horarios.map((h) => `• ${h.pais}: ${h.hora}${notaDe(h)}`).join("\n")}` : `• ${cuandoTxt}`)
       .replace(/\{link\}/g, linkPara(red, vr))
       .replace(/\{linkLimpio\}/g, personal() && !vr ? `${HOST}/${room.slug}` : HOST)
       .replace(/\{precio\}/g, d.precio)
-      .replace(/\{cuando\}/g, S.cuando.trim() || "Hoy")
+      .replace(/\{cuando\}/g, cuandoTxt)
       .replace(/\{temaDe\}/g, tema ? `: ${tema}` : "")
       .replace(/\{temaO\}/g, tema || "En vivo conmigo")
       .replace(/\{nombreO\}/g, nombre || "En vivo")
@@ -50,12 +99,27 @@
     M.pintarEn(cv, fig._pieza, datos(redDe(fig._pieza)), Math.min(fig._pieza.w || 9999, Math.round(w * Math.min(2, window.devicePixelRatio || 1))));
     fig._sucio = false;
   }
+  function cambio() { guardar(); pintarZonas(); if (firmaFaltas() !== firmaPintada) construir(); else repintar(); }
   let tRep = 0;
   function repintar() { clearTimeout(tRep); tRep = setTimeout(() => { document.querySelectorAll(".mat-pieza").forEach((f) => { f._sucio = true; }); visibles.forEach((f) => pintarTarjeta(f)); pintarTextos(); if (!$("mat-visor").hidden) pintarVisor(); }, 120); }
+  /** Hay piezas que piden algo para tener sentido: los horarios piden fecha; la foto de perfil, una foto. */
+  const leFalta = (p) => (p.pide === "fecha" ? (agenda() ? "" : "fecha") : p.pide === "foto" ? (fotosActivas().length ? "" : "foto") : "");
+  const firmaFaltas = () => C.PIEZAS.filter((p) => p.pide).map((p) => leFalta(p)).join("|");
+  let firmaPintada = "";
+  function abrirPanel(idFoco) {
+    const pe = $("mat-perso"); if (!pe.classList.contains("abierto")) $("mat-abrir").click();
+    pe.scrollIntoView({ block: "start", behavior: "smooth" });
+    const el = $(idFoco); if (el) setTimeout(() => { try { el.focus(); if (el.showPicker) el.showPicker(); } catch {} }, 350);
+  }
+  function resolverFalta(falta) {
+    if (falta === "fecha") { if (S.modoCuando !== "fecha") { S.modoCuando = "fecha"; pintarCuando(); } abrirPanel("mat-fecha"); }
+    else if (!me) { if (window.VRLogin) VRLogin.entrar(); }
+    else $("foto-2-archivo").click();
+  }
   const piezasDeVista = () => (S.red === "textos" ? [] : C.PIEZAS.filter((p) => S.red === "todo" || p.redes.includes(S.red)));
 
   function construir() {
-    const grid = $("mat-grid"); obs.disconnect(); visibles.clear(); grid.textContent = "";
+    const grid = $("mat-grid"); obs.disconnect(); visibles.clear(); grid.textContent = ""; firmaPintada = firmaFaltas();
     const piezas = piezasDeVista();
     for (const f of Object.keys(C.FORMATOS)) {
       const grupo = piezas.filter((p) => p.f === f); if (!grupo.length) continue;
@@ -63,10 +127,12 @@
       sec.innerHTML = `<h2>${esc(F.n)} <small>${F.w}×${F.h} · ${esc(F.para)}</small><span>${grupo.length}</span></h2><div class="mat-fila"></div>`;
       const fila = sec.querySelector(".mat-fila");
       for (const p of grupo) {
-        const fig = document.createElement("figure"); fig.className = "mat-pieza"; fig._pieza = p; fig._sucio = true; fig.dataset.id = p.id;
+        const fig = document.createElement("figure"), falta = leFalta(p), movil = puedeCompartir && matchMedia("(pointer:coarse)").matches;
+        fig.className = "mat-pieza" + (falta ? " falta" : ""); fig._pieza = p; fig._sucio = true; fig.dataset.id = p.id;
         fig.innerHTML = `<button type="button" class="mat-lienzo" style="aspect-ratio:${F.w}/${F.h}" aria-label="Ver ${esc(p.n)} en grande"><canvas></canvas></button>
           <figcaption><b>${esc(p.n)}</b><small>${p.vr ? "Video Room" : "Tu sala"} · ${p.id}</small></figcaption>
-          <div class="mat-btns"><button type="button" class="btn-primary small" data-a="${puedeCompartir && matchMedia("(pointer:coarse)").matches ? "compartir" : "bajar"}">${puedeCompartir && matchMedia("(pointer:coarse)").matches ? "Compartir" : "Descargar"}</button><button type="button" class="btn-ghost small" data-a="${puedeCompartir && matchMedia("(pointer:coarse)").matches ? "bajar" : "texto"}">${puedeCompartir && matchMedia("(pointer:coarse)").matches ? "Bajar" : "Texto"}</button></div>`;
+          <div class="mat-btns">${falta ? `<button type="button" class="btn-ghost small" data-falta="${falta}">${falta === "fecha" ? "Elegir fecha y hora" : "Agregar mi foto"}</button>` : movil ? `<button type="button" class="btn-primary small" data-a="compartir">Compartir</button><button type="button" class="btn-ghost small" data-a="bajar">Bajar</button>` : `<button type="button" class="btn-primary small" data-a="bajar">Descargar</button><button type="button" class="btn-ghost small" data-a="texto">Texto</button>`}</div>`;
+        fig.querySelectorAll("[data-falta]").forEach((b) => (b.onclick = () => resolverFalta(b.dataset.falta)));
         fig.querySelector(".mat-lienzo").onclick = () => abrirVisor(p);
         fig.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => accion(b.dataset.a, p, b)));
         fila.appendChild(fig); obs.observe(fig);
@@ -177,28 +243,78 @@
   /* ── personalizar ───────────────────────────────────────────────────── */
   function pintarYo() {
     const yo = $("mat-yo");
-    if (me) yo.innerHTML = `${me.avatar_url ? `<img src="${esc(me.avatar_url)}" alt="" referrerpolicy="no-referrer">` : ""}<div><b>${esc(me.name || "")}</b><small>${room ? esc(HOST + "/" + room.slug) : "Aún no tienes sala"}</small></div>`;
-    else yo.innerHTML = `<div class="mat-anon"><b>Ponles tu nombre, tu link y tu QR</b><small>Entra con Google y todos los diseños se personalizan solos.</small><div data-login-ct="ancho" data-texto="Entrar con Google"></div></div>`;
-    if (!me && window.LoginCT && LoginCT.montar) { const el = yo.querySelector("[data-login-ct]"); if (el) try { LoginCT.montar(el, "ancho"); } catch {} }
-    const sinSala = !room;
-    ["mat-con-nombre", "mat-con-foto"].forEach((id) => { $(id).disabled = sinSala; $(id).closest(".mat-palanca").classList.toggle("apagada", sinSala); });
-    $("mat-con-foto").disabled = sinSala || !foto; $("mat-con-foto").closest(".mat-palanca").classList.toggle("apagada", sinSala || !foto);
+    if (me) {
+      const inicial = esc((me.name || "?").trim().charAt(0).toUpperCase());
+      yo.innerHTML = `<div class="mat-fotos" role="group" aria-label="Fotos (hasta dos)">
+          <button type="button" class="mat-foto${S.conFoto && foto1 ? " on" : ""}" id="foto-1" ${foto1 ? "" : "disabled"} title="${foto1 ? (S.conFoto ? "Tu foto de perfil: toca para no usarla" : "Tu foto de perfil: toca para usarla") : "Tu cuenta no tiene foto de perfil"}" aria-pressed="${S.conFoto && foto1 ? "true" : "false"}">${me.avatar_url && foto1 ? `<img src="${esc(me.avatar_url)}" alt="Tu foto de perfil" referrerpolicy="no-referrer">` : `<span>${inicial}</span>`}</button>
+          <span class="mat-foto-caja"><button type="button" class="mat-foto${foto2 ? " on" : " vacia"}" id="foto-2" title="${foto2 ? "Cambiar la otra foto" : "Agregar otra foto (opcional)"}">${foto2 ? `<img src="${S.foto2}" alt="La otra foto">` : "<span>＋</span>"}</button>${foto2 ? `<button type="button" class="mat-foto-x" id="foto-2-x" aria-label="Quitar la otra foto" title="Quitar la otra foto">✕</button>` : ""}</span>
+        </div>
+        <div class="mat-yo-txt"><b>${esc(me.name || "")}</b><small>${room ? esc(HOST + "/" + room.slug) : "Aún no tienes sala"}</small><small class="mat-nota">${foto2 ? "Toca la foto para cambiarla" : "＋ agrega otra foto, opcional"}</small></div>`;
+      const f1 = $("foto-1"); if (f1) f1.onclick = () => { S.conFoto = !S.conFoto; pintarYo(); cambio(); };
+      $("foto-2").onclick = () => $("foto-2-archivo").click();
+      const fx = $("foto-2-x"); if (fx) fx.onclick = () => { S.foto2 = ""; foto2 = null; pintarYo(); cambio(); toast("Foto quitada."); };
+    } else {
+      yo.innerHTML = `<div class="mat-anon"><b>Ponles tu nombre, tu link y tu QR</b><small>Entra con Google y todos los diseños se personalizan solos.</small><div data-login-ct="ancho" data-texto="Entrar con Google"></div></div>`;
+      if (window.LoginCT && LoginCT.montar) { const el = yo.querySelector("[data-login-ct]"); if (el) try { LoginCT.montar(el, "ancho"); } catch {} }
+    }
+    const sinSala = !room; $("mat-con-nombre").disabled = sinSala; $("mat-con-nombre").closest(".mat-palanca").classList.toggle("apagada", sinSala);
+  }
+  // La otra foto: se achica en el navegador y se queda en este aparato (no sube a ningún servidor).
+  const cargarImagen = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+  $("foto-2-archivo").onchange = async (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+    try {
+      const im = await cargarImagen(URL.createObjectURL(f)), lado = Math.min(im.width, im.height), tam = Math.min(640, lado), cv = document.createElement("canvas");
+      cv.width = cv.height = tam; cv.getContext("2d").drawImage(im, (im.width - lado) / 2, (im.height - lado) / 2, lado, lado, 0, 0, tam, tam);
+      S.foto2 = cv.toDataURL("image/jpeg", 0.86); foto2 = await cargarImagen(S.foto2);
+      pintarYo(); cambio(); toast(foto1 && S.conFoto ? "Listo: salen las dos fotos. Toca la de tu perfil si quieres solo la nueva." : "Foto agregada.", 3600);
+    } catch { toast("No se pudo leer esa imagen. Prueba con otra (JPG o PNG)."); }
+  };
+  function pintarCuando() {
+    const conFecha = S.modoCuando === "fecha";
+    $("mat-modo").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.m === S.modoCuando));
+    $("mat-fecha-fila").hidden = !conFecha; $("mat-cuando").hidden = conFecha; $("mat-horarios").hidden = !conFecha;
+    $("mat-fecha").value = S.fecha || ""; $("mat-fecha-x").hidden = !S.fecha;
+  }
+  function pintarZonas() {
+    const sel = $("mat-tz"), opcion = (z) => `<option value="${z.id}">${z.b} ${esc(z.n)}</option>`;
+    if (!sel.options.length) { sel.innerHTML = C.ZONAS.map(opcion).join(""); sel.onchange = () => { S.tzBase = sel.value; S.tzOtros = S.tzOtros.filter((id) => id !== S.tzBase); cambio(); }; }
+    sel.value = S.tzBase;
+    const usados = new Set([S.tzBase].concat(S.tzOtros)), cont = $("mat-tz-chips");
+    cont.innerHTML = S.tzOtros.map((id) => { const z = zona(id); return z ? `<span class="mat-chip">${z.b} ${esc(z.c)}<button type="button" data-q="${id}" aria-label="Quitar ${esc(z.c)}">✕</button></span>` : ""; }).join("") + (S.tzOtros.length < 3 ? `<select id="mat-tz-mas" aria-label="Agregar el horario de otro país"><option value="">＋ Agregar país</option>${C.ZONAS.filter((z) => !usados.has(z.id)).map(opcion).join("")}</select>` : `<span class="mat-nota">Máximo 3</span>`);
+    cont.querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => { S.tzOtros = S.tzOtros.filter((id) => id !== b.dataset.q); cambio(); }));
+    const mas = $("mat-tz-mas"); if (mas) mas.onchange = () => { if (mas.value && S.tzOtros.length < 3) { S.tzOtros.push(mas.value); cambio(); } };
+    const ag = agenda();
+    $("mat-horarios-vista").textContent = ag ? `${ag.conAnio} · ${ag.horarios.map((h) => `${h.pais} ${h.hora}${notaDe(h)}`).join(" · ")}` : "Elige fecha y hora: aquí ves la conversión a cada país.";
+    $("mat-horarios-vista").classList.toggle("lista", !!ag);
+  }
+  function pintarColores() {
+    $("mat-c1").value = S.c1; $("mat-c2").value = S.c2;
+    $("mat-c-reset").hidden = S.c1.toUpperCase() === M.C1 && S.c2.toUpperCase() === M.C2;
   }
   function enlazarControles() {
-    const campo = (id, llave) => { const el = $(id); el.value = S[llave] || ""; el.oninput = () => { S[llave] = el.value; if (llave === "nombre") nombreTocado = true; guardar(); repintar(); }; };
+    const campo = (id, llave) => { const el = $(id); el.value = S[llave] || ""; el.oninput = () => { S[llave] = el.value; if (llave === "nombre") nombreTocado = true; cambio(); }; };
     campo("mat-nombre", "nombre"); campo("mat-tema", "tema"); campo("mat-cuando", "cuando");
-    const palanca = (id, llave) => { const el = $(id), sw = el.closest(".switch"); el.checked = !!S[llave]; sw.classList.toggle("on", el.checked); el.onchange = () => { S[llave] = el.checked; sw.classList.toggle("on", el.checked); guardar(); repintar(); }; };
-    palanca("mat-con-nombre", "conNombre"); palanca("mat-con-qr", "conQR"); palanca("mat-con-foto", "conFoto"); palanca("mat-medir", "medir");
-    $("mat-estilos").querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.e === S.estilo); b.onclick = () => { S.estilo = b.dataset.e; guardar(); $("mat-estilos").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); repintar(); }; });
+    const palanca = (id, llave) => { const el = $(id), sw = el.closest(".switch"); el.checked = !!S[llave]; sw.classList.toggle("on", el.checked); el.onchange = () => { S[llave] = el.checked; sw.classList.toggle("on", el.checked); cambio(); }; };
+    palanca("mat-con-nombre", "conNombre"); palanca("mat-con-qr", "conQR"); palanca("mat-medir", "medir");
+    $("mat-estilos").querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.e === S.estilo); b.onclick = () => { S.estilo = b.dataset.e; $("mat-estilos").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); cambio(); }; });
+    $("mat-modo").querySelectorAll("button").forEach((b) => (b.onclick = () => { S.modoCuando = b.dataset.m; pintarCuando(); cambio(); }));
+    $("mat-fecha").oninput = () => { S.fecha = $("mat-fecha").value; $("mat-fecha-x").hidden = !S.fecha; cambio(); };
+    $("mat-fecha-x").onclick = () => { S.fecha = ""; pintarCuando(); cambio(); };
+    const color = (id, llave) => { $(id).oninput = () => { S[llave] = $(id).value.toUpperCase(); pintarColores(); cambio(); }; };
+    color("mat-c1", "c1"); color("mat-c2", "c2");
+    $("mat-c-reset").onclick = () => { S.c1 = M.C1; S.c2 = M.C2; pintarColores(); cambio(); toast("De vuelta a los colores de Video Room."); };
+    pintarCuando(); pintarZonas(); pintarColores();
   }
   async function cargarSesion() {
+    if (S.foto2) { try { foto2 = await cargarImagen(S.foto2); } catch { S.foto2 = ""; } }
     try {
       const r = await fetch("/api/wallet/me"); if (!r.ok) return;
       me = await r.json();
       const rr = await fetch("/api/rooms/mine"); if (rr.ok) room = await rr.json();
       else if (rr.status === 401) { me = null; return; } // la sesión ya no vale (lo de «me» venía de la memoria rápida)
       if (!nombreTocado && me.name) { S.nombre = me.name; $("mat-nombre").value = me.name; }
-      if (me.avatar_url) { try { const b = await (await fetch("/api/wallet/avatar")).blob(); if (b.size > 200) foto = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(b); }); } catch {} }
+      if (me.avatar_url) { try { const b = await (await fetch("/api/wallet/avatar")).blob(); if (b.size > 200) foto1 = await cargarImagen(URL.createObjectURL(b)); } catch {} }
     } catch {}
   }
 
@@ -225,8 +341,8 @@
     await M.listo();
     construir();
     await cargarSesion();
-    pintarYo(); repintar();
+    pintarYo(); cambio();
   })();
   // Para probar en consola (por ejemplo, con una foto cualquiera).
-  window.__mat = { S, datos, piezas: piezasDeVista, abrirVisor, repintar, ponerFoto: (src) => new Promise((res) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => { foto = im; pintarYo(); repintar(); res(true); }; im.onerror = () => res(false); im.src = src; }) };
+  window.__mat = { S, datos, piezas: piezasDeVista, abrirVisor, repintar, agenda, cambio, ponerFoto: (src, cual) => new Promise((res) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => { if (cual === 2) { foto2 = im; S.foto2 = src; } else foto1 = im; pintarYo(); cambio(); res(true); }; im.onerror = () => res(false); im.src = src; }) };
 })();

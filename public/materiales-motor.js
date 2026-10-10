@@ -23,10 +23,45 @@
     claro: { bg: "#F3F5F7", bg2: "#FFFFFF", fg: TINTA, suave: "#566070", ac: "#0C9A57", sobre: "#FFFFFF", tarjeta: "#FFFFFF", borde: "rgba(13,17,23,.13)", brillo: "86,239,159" },
     papel: { bg: "#FFFFFF", bg2: "#FFFFFF", fg: TINTA, suave: "#566070", ac: "#0C9A57", sobre: "#FFFFFF", tarjeta: "#FFFFFF", borde: "rgba(13,17,23,.18)", brillo: "255,255,255" },
   };
-  function paletaDe(pieza, estilo) {
-    if (pieza.p === "papel" || !estilo || estilo === "original") return PALETAS[pieza.p] || PALETAS.noche;
-    const base = PALETAS[estilo] || PALETAS.noche;
-    return pieza.p === "vivo" ? Object.assign({}, base, { anillo: ROJO }) : base;
+  PALETAS.papel.b1 = TINTA; PALETAS.papel.b2 = VERDE;
+
+  /* ── colores propios: principal y secundario ────────────────────────────
+     Con los de casa (verde y tinta) las paletas son las de arriba, tal cual.
+     Si la persona elige los suyos, cada paleta se deriva de esos dos colores
+     cuidando que el texto siempre se lea (contraste mínimo). */
+  const rgbDe = (hex) => { const h = String(hex || "").replace("#", ""); const n = parseInt(h.length === 3 ? h.split("").map((x) => x + x).join("") : h.padEnd(6, "0").slice(0, 6), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const hexDe = (r, g, b) => "#" + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("").toUpperCase();
+  const lum = (hex) => { const [r, g, b] = rgbDe(hex).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const contraste = (a, b) => { const la = lum(a), lb = lum(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
+  const mezcla = (a, b, t) => { const x = rgbDe(a), y = rgbDe(b); return hexDe(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t); };
+  const legible = (fondo) => (contraste("#FFFFFF", fondo) >= contraste(TINTA, fondo) ? "#FFFFFF" : TINTA);
+  /** Acerca el color al blanco o al negro hasta que se lea sobre ese fondo. */
+  function asegurar(color, fondo, min) { const hacia = legible(fondo); let c = color; for (let i = 0; i < 12 && contraste(c, fondo) < min; i++) c = mezcla(c, hacia, 0.14); return c; }
+  const alfa = (hex, a) => { const [r, g, b] = rgbDe(hex); return `rgba(${r},${g},${b},${a})`; };
+  function derivada(clave, c1, c2) {
+    if (clave === "verde") { // el color principal de fondo
+      const fg = contraste(c2, c1) >= 4.5 ? c2 : legible(c1), realce = fg === "#FFFFFF" ? asegurar(mezcla(c1, "#FFFFFF", 0.7), c1, 2.2) : "#FFFFFF";
+      return { bg: c1, bg2: mezcla(c1, "#FFFFFF", 0.25), fg, suave: mezcla(fg, c1, 0.26), ac: fg, sobre: c1, tarjeta: alfa(fg, 0.09), borde: alfa(fg, 0.22), brillo: "255,255,255", realce };
+    }
+    if (clave === "claro" || clave === "papel") {
+      const bg = clave === "papel" ? "#FFFFFF" : "#F3F5F7", fg = lum(c2) < 0.2 ? c2 : TINTA, ac = asegurar(c1, bg, 3);
+      return { bg, bg2: "#FFFFFF", fg, suave: mezcla(fg, bg, 0.4), ac, sobre: legible(ac), tarjeta: "#FFFFFF", borde: alfa(fg, clave === "papel" ? 0.18 : 0.13), brillo: clave === "papel" ? "255,255,255" : rgbDe(c1).join(","), b1: fg, b2: c1 };
+    }
+    // noche: el secundario de fondo, el principal de acento
+    const fg = legible(c2), ac = asegurar(c1, c2, 3);
+    return { bg: c2, bg2: mezcla(c2, fg, 0.09), fg, suave: mezcla(fg, c2, 0.34), ac, sobre: contraste(c2, ac) >= 3 ? c2 : legible(ac), tarjeta: alfa(fg, 0.07), borde: alfa(fg, 0.16), brillo: rgbDe(ac).join(",") };
+  }
+  const C1 = VERDE.toUpperCase(), C2 = TINTA.toUpperCase();
+  function paletaDe(pieza, d) {
+    const estilo = d.estilo, c1 = String(d.c1 || C1).toUpperCase(), c2 = String(d.c2 || C2).toUpperCase();
+    if (c1 === C1 && c2 === C2) { // los colores de casa
+      if (pieza.p === "papel" || !estilo || estilo === "original") return PALETAS[pieza.p] || PALETAS.noche;
+      const base = PALETAS[estilo] || PALETAS.noche;
+      return pieza.p === "vivo" ? Object.assign({}, base, { anillo: ROJO }) : base;
+    }
+    const clave = pieza.p === "papel" ? "papel" : !estilo || estilo === "original" ? (pieza.p === "oro" || pieza.p === "vivo" ? "noche" : pieza.p) : estilo;
+    const P = derivada(clave, c1, c2); if (pieza.p === "vivo") P.anillo = ROJO;
+    return P;
   }
 
   /* ── primitivas ─────────────────────────────────────────────────────── */
@@ -129,12 +164,12 @@
     const mod = (lado - pad * 2) / m.n; ctx.fillStyle = TINTA;
     for (const i of m.d) { const rr2 = Math.floor(i / m.n), cc = i % m.n; ctx.fillRect(x + pad + cc * mod - 0.2, y + pad + rr2 * mod - 0.2, mod + 0.4, mod + 0.4); }
   }
-  /** Foto redonda con aro; sin foto, la inicial (o una cámara si no hay nombre). */
-  function foto(k, cx, cy, r, o) {
+  /** Una foto redonda con aro; sin foto, la inicial (o una cámara si no hay nombre). */
+  function unaFoto(k, im, cx, cy, r, o) {
     const ctx = k.ctx, d = k.d, grosor = (o && o.grosor) || r * 0.07, aro = (o && o.aro) || k.P.anillo || k.P.ac;
     ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath();
-    if (k.conFoto) {
-      ctx.clip(); const im = d.foto, s = Math.max((2 * r) / im.width, (2 * r) / im.height);
+    if (im) {
+      ctx.clip(); const s = Math.max((2 * r) / im.width, (2 * r) / im.height);
       ctx.drawImage(im, cx - (im.width * s) / 2, cy - (im.height * s) / 2, im.width * s, im.height * s);
     } else {
       ctx.fillStyle = k.P.bg2; ctx.fill();
@@ -146,6 +181,15 @@
     }
     ctx.restore();
     ctx.beginPath(); ctx.arc(cx, cy, r + grosor * 0.9, 0, Math.PI * 2); ctx.lineWidth = grosor; ctx.strokeStyle = aro; ctx.stroke();
+  }
+  /** La foto de la pieza: una, o dos encimadas dentro del mismo espacio (2r de ancho). */
+  function foto(k, cx, cy, r, o) {
+    const fs = k.conFoto ? k.fotos : [];
+    if (fs.length < 2) return unaFoto(k, fs[0] || null, cx, cy, r, o);
+    const r2 = r * 0.66, dx = r * 0.36, g = ((o && o.grosor) || r * 0.07) * 0.85, o2 = Object.assign({}, o, { grosor: g });
+    unaFoto(k, fs[0], cx - dx, cy, r2, o2);
+    k.ctx.beginPath(); k.ctx.arc(cx + dx, cy, r2 + g * 2.6, 0, Math.PI * 2); k.ctx.fillStyle = (o && o.fondo) || k.P.bg; k.ctx.fill(); // respiro entre las dos
+    unaFoto(k, fs[1], cx + dx, cy, r2, o2);
   }
   function marca(k, x, y, tam, alin, color) {
     const ctx = k.ctx; fuente(ctx, tam, 800); if ("letterSpacing" in ctx) ctx.letterSpacing = `${(-tam * 0.02).toFixed(2)}px`;
@@ -184,6 +228,7 @@
     if (it.t === "esp") return it.h * esc;
     if (it.t === "pildora") return pildora(k, it.str, 0, 0, { tam: it.tam * esc, vivo: it.vivo, medir: true }).h;
     if (it.t === "fn") return it.h;
+    if (it.t === "fila") return it.tam * esc * (it.nota ? 2.75 : 2.25);
     if (it.t === "vineta") { const r = it.tam * esc * 0.72; const m = texto(k, it.str, 0, 0, { w: w - r * 2 - it.tam * 0.6, tam: it.tam * esc, peso: 600, lineas: 2, il: 1.22, medir: true }); it._tam = m.tam; it._th = m.h; return Math.max(r * 2, m.h) + it.tam * esc * 0.62; }
     const m = texto(k, it.str, 0, 0, Object.assign({}, it, { w, tam: it.tam * esc, min: it.min ? it.min * esc : undefined, medir: true })); it._tam = m.tam; return m.h;
   }
@@ -195,6 +240,17 @@
     for (const it of items) {
       if (it.t === "pildora") pildora(k, it.str, alin === "center" ? x + w / 2 : x, y, { tam: it.tam * esc, vivo: it.vivo, alin, bg: it.bg, fg: it.fg });
       else if (it.t === "fn") it.dib(x, y, w);
+      else if (it.t === "fila") {
+        // País a la izquierda, hora a la derecha; el renglón principal va resaltado.
+        const ctx = k.ctx, tam = it.tam * esc, h = it._h, pad = tam * 0.7, P = k.P, colorHora = P.ac === P.fg ? (P.realce || P.fg) : P.ac;
+        if (it.resalta) { rr(ctx, x, y + h * 0.06, w, h * 0.88, tam * 0.55); ctx.fillStyle = P.tarjeta; ctx.fill(); ctx.lineWidth = Math.max(2, tam * 0.05); ctx.strokeStyle = P.borde; ctx.stroke(); }
+        else { ctx.fillStyle = P.borde; ctx.fillRect(x + pad, y + h - Math.max(1, tam * 0.03), w - pad * 2, Math.max(1, tam * 0.03)); }
+        const mH = texto(k, it.der, 0, 0, { w: w * 0.5, tam: tam * 1.12, lineas: 1, medir: true });
+        const yT = y + (h - tam * 1.1 - (it.nota ? tam * 0.62 : 0)) / 2;
+        texto(k, it.izq, x + pad, yT, { w: w - pad * 2 - mH.ancho - tam * 0.6, tam, lineas: 1, peso: 800 });
+        if (it.nota) texto(k, it.nota, x + pad, yT + tam * 1.12, { w: w - pad * 2 - mH.ancho - tam * 0.6, tam: tam * 0.52, lineas: 1, peso: 600, color: P.suave });
+        texto(k, it.der, x + w - pad - mH.ancho, y + (h - mH.h) / 2, { w: mH.ancho + 2, tam: mH.tam, min: mH.tam, lineas: 1, color: colorHora });
+      }
       else if (it.t === "vineta") {
         const r = it.tam * esc * 0.72, ctx = k.ctx, cy = y + Math.max(r, it._th / 2);
         ctx.beginPath(); ctx.arc(x + r, cy, r, 0, Math.PI * 2); ctx.fillStyle = k.P.ac; ctx.fill();
@@ -251,7 +307,7 @@
     const { W, mx, ctx } = k;
     fondo(k, "banda"); const yP = pie(k), y0 = cabeza(k);
     const n = c.t.split("\n").length;
-    const fin = flujo(k, [T(c.t, W * 0.2, { lineas: n, il: 0.98, may: true }), E(W * 0.05), { t: "fn", h: W * 0.022, dib: (x, y) => { ctx.fillStyle = k.P.ac === k.P.fg ? (k.P.realce || k.P.fg) : k.P.ac; rr(ctx, x, y, W * 0.24, W * 0.022, W * 0.011); ctx.fill(); } }], mx, W - mx * 2, y0, yP);
+    const fin = flujo(k, [T(c.t, W * 0.2, { lineas: n + 1, il: 0.98, may: true }), E(W * 0.05), { t: "fn", h: W * 0.022, dib: (x, y) => { ctx.fillStyle = k.P.ac === k.P.fg ? (k.P.realce || k.P.fg) : k.P.ac; rr(ctx, x, y, W * 0.24, W * 0.022, W * 0.011); ctx.fill(); } }], mx, W - mx * 2, y0, yP);
     return fin;
   };
   A.lista = (k, c) => {
@@ -284,13 +340,16 @@
   A.anuncio = (k, c) => {
     const { W, mx, ctx, P, d } = k, w = W - mx * 2;
     fondo(k, "anillos", W * 0.85, k.H * 0.16); const yP = pie(k), y0 = cabeza(k);
-    const cuando = (d.cuando || "Hoy").toUpperCase(), tema = d.tema || "En vivo en mi sala";
+    // Una fecha larga se parte en dos renglones limpios: el día arriba, la hora abajo.
+    const cuando = partirCuando((d.cuando || "Hoy").toUpperCase()), tema = d.tema || "En vivo en mi sala";
+    const otros = (d.horarios || []).slice(1);
     const hPil = pildora(k, c.k || "PRÓXIMO EN VIVO", 0, 0, { tam: W * 0.03, medir: true }).h + W * 0.045;
     // La tarjeta se encoge hasta caber entre la cabeza y el pie (temas largos, formatos bajos).
     let e = 1, interior, hTar, pad;
     for (;;) {
       pad = W * 0.06 * e;
-      interior = [T(cuando, W * 0.15 * e, { lineas: 2, color: P.ac === P.fg ? (P.realce || P.fg) : P.ac, il: 1 }), E(W * 0.03 * e), { t: "fn", h: W * 0.006, dib: (x, y, ww) => { ctx.fillStyle = P.borde; ctx.fillRect(x, y, ww, Math.max(2, W * 0.003)); } }, E(W * 0.035 * e), T(tema, W * 0.07 * e, { lineas: 3 }), k.pers && d.nombre && E(W * 0.02 * e), k.pers && d.nombre && T("con " + d.nombre, W * 0.04 * e, { peso: 600, color: P.suave, lineas: 1 })].filter(Boolean);
+      interior = [T(cuando, W * 0.15 * e, { lineas: cuando.includes("\n") || cuando.length > 14 ? 2 : 1, min: W * 0.07 * e, color: P.ac === P.fg ? (P.realce || P.fg) : P.ac, il: 1 }), d.fechaLarga && E(W * 0.012 * e), d.fechaLarga && T(d.fechaLarga + (otros.length ? ` · hora de ${d.horarios[0].pais}` : ""), W * 0.036 * e, { peso: 600, color: P.suave, lineas: 2 }), E(W * 0.03 * e), { t: "fn", h: W * 0.006, dib: (x, y, ww) => { ctx.fillStyle = P.borde; ctx.fillRect(x, y, ww, Math.max(2, W * 0.003)); } }, E(W * 0.035 * e), T(tema, W * 0.07 * e, { lineas: 3 }), k.pers && d.nombre && E(W * 0.02 * e), k.pers && d.nombre && T("con " + d.nombre, W * 0.04 * e, { peso: 600, color: P.suave, lineas: 1 }),
+        otros.length && E(W * 0.03 * e), otros.length && T(otros.map((h) => `${h.pais} *${h.hora}*${h.nota ? ` (${h.nota})` : ""}`).join("  ·  "), W * 0.038 * e, { peso: 700, color: P.suave, lineas: 3, il: 1.35 })].filter(Boolean);
       let hInt = 0; for (const it of interior) hInt += alto(k, it, 0, w - pad * 2, "left", 1);
       hTar = hInt + pad * 2;
       if (hTar + hPil <= yP - y0 || e < 0.5) break;
@@ -335,6 +394,23 @@
     pildora(k, c.k || "EN VIVO", W / 2, H * 0.47 + r - p.h * 0.5, { tam: W * 0.062, vivo: true, alin: "center" });
   };
 
+  /* ── horarios por país: el post que lista todas las horas ────────────── */
+  A.horarios = (k, c) => {
+    const { W, mx, P, d, ctx } = k, w = W - mx * 2, hs = d.horarios || [];
+    fondo(k, "brillo", W * 0.9, k.H * 0.08); const yP = pie(k), y0 = cabeza(k);
+    // En vertical sobra alto: todo más grande. En cuadrado manda la lista: título corto y sin etiqueta.
+    const v = k.forma === "vertical", cuad = k.forma === "cuadrado";
+    const items = [!cuad && { t: "pildora", str: c.k || "HORARIOS", tam: W * 0.03 }, !cuad && E(W * 0.035), T(d.tema || c.t || "En vivo en mi sala", W * (v ? 0.095 : cuad ? 0.062 : 0.08), { lineas: cuad ? 1 : 2 })];
+    if (d.fechaLarga) items.push(E(W * 0.016), T(d.fechaLarga, W * (v ? 0.052 : 0.044), { peso: 700, color: P.ac === P.fg ? (P.realce || P.fg) : P.ac, lineas: 1 }));
+    items.push(E(W * (v ? 0.05 : 0.03)));
+    if (hs.length) hs.forEach((h, i) => items.push({ t: "fila", izq: h.pais, der: h.hora, nota: h.nota, tam: W * (v ? 0.062 : cuad ? 0.046 : 0.052), resalta: i === 0 }));
+    else { // todavía no eligen fecha: se dice de frente, no se inventa una hora
+      const hT = W * 0.3;
+      items.push({ t: "fn", h: hT, dib: (x, y) => { rr(ctx, x, y, w, hT, W * 0.04); ctx.fillStyle = P.tarjeta; ctx.fill(); ctx.setLineDash([W * 0.02, W * 0.014]); ctx.lineWidth = Math.max(2, W * 0.003); ctx.strokeStyle = P.borde; ctx.stroke(); ctx.setLineDash([]); flujo(k, [T("Elige la fecha y la hora arriba, en «Cuándo»", W * 0.046, { lineas: 3, peso: 700 }), E(W * 0.012), T("y aquí aparecen los horarios de cada país.", W * 0.036, { lineas: 2, peso: 500, color: P.suave })], x + W * 0.05, w - W * 0.1, y, y + hT, { alin: "center" }); } });
+    }
+    flujo(k, items, mx, w, y0, yP);
+  };
+
   /* ── portada de YouTube (16:9) ──────────────────────────────────────── */
   A.portada = (k, c) => {
     const { W, H, P, d, ctx } = k, izq = k.pieza.lado === "izq";
@@ -375,8 +451,9 @@
   A.impreso = (k, c) => {
     const { W, H, P, d, ctx } = k, mx = W * 0.1, w = W - mx * 2, lado = W * 0.56;
     ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = TINTA; ctx.fillRect(0, 0, W, H * 0.022); ctx.fillStyle = VERDE; ctx.fillRect(0, H * 0.022, W, H * 0.008);
-    const items = [c.k && { t: "pildora", str: c.k, tam: W * 0.026, bg: TINTA, fg: VERDE }, c.k && E(W * 0.035), T(c.t, W * 0.105, { lineas: 2 }), c.s && E(W * 0.02), c.s && T(c.s, W * 0.034, { peso: 500, color: P.suave, lineas: 2 }), E(W * 0.055)];
+    const b1 = P.b1 || TINTA, b2 = P.b2 || VERDE;
+    ctx.fillStyle = b1; ctx.fillRect(0, 0, W, H * 0.022); ctx.fillStyle = b2; ctx.fillRect(0, H * 0.022, W, H * 0.008);
+    const items = [c.k && { t: "pildora", str: c.k, tam: W * 0.026, bg: b1, fg: contraste(b2, b1) >= 3 ? b2 : legible(b1) }, c.k && E(W * 0.035), T(c.t, W * 0.105, { lineas: 2 }), c.s && E(W * 0.02), c.s && T(c.s, W * 0.034, { peso: 500, color: P.suave, lineas: 2 }), E(W * 0.055)];
     if (k.conQR) items.push({ t: "fn", h: lado, dib: (x, y) => { qr(k, W / 2 - lado / 2, y, lado, { borde: true }); } }, E(W * 0.05));
     items.push(T(k.linkVis, W * 0.052, { lineas: 1 }));
     if (k.pers && d.nombre) items.push(E(W * 0.012), T(d.nombre, W * 0.036, { peso: 600, color: P.suave, lineas: 1 }));
@@ -396,19 +473,21 @@
     const { W, H, ctx } = k, cx = W / 2, cy = H / 2, r = W * 0.485, lado = W * 0.43;
     ctx.clearRect(0, 0, W, H);
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = "#FFFFFF"; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, r - W * 0.022, 0, Math.PI * 2); ctx.lineWidth = W * 0.03; ctx.strokeStyle = TINTA; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, r - W * 0.045, 0, Math.PI * 2); ctx.lineWidth = W * 0.012; ctx.strokeStyle = VERDE; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, r - W * 0.022, 0, Math.PI * 2); ctx.lineWidth = W * 0.03; ctx.strokeStyle = k.P.b1 || TINTA; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, r - W * 0.045, 0, Math.PI * 2); ctx.lineWidth = W * 0.012; ctx.strokeStyle = k.P.b2 || VERDE; ctx.stroke();
     const w = W * 0.58, items = [T(c.t, W * 0.05, { lineas: 2 }), E(W * 0.03)];
     if (k.conQR) items.push({ t: "fn", h: lado, dib: (x, y) => qr(k, cx - lado / 2, y, lado) }, E(W * 0.03));
     items.push(T(k.linkVis, W * 0.038, { lineas: 1, color: k.P.ac }));
     flujo(k, items, cx - w / 2, w, H * 0.13, H * 0.87, { alin: "center" });
   };
 
+  const partirCuando = (t) => (t.length > 14 && t.includes(" · ") ? t.replace(" · ", "\n") : t);
+
   /* ── pintar una pieza ───────────────────────────────────────────────── */
   function llenar(str, d, pieza) {
     return String(str || "")
       .replace(/\{precio\}/g, d.precio || "$20")
-      .replace(/\{cuando\}/g, (d.cuando || "HOY").toUpperCase())
+      .replace(/\{cuando\}/g, pieza && pieza.a === "tipo" ? partirCuando((d.cuando || "HOY").toUpperCase()) : (d.cuando || "HOY").toUpperCase())
       .replace(/\{tema\}/g, d.tema || (pieza && pieza.a === "portada" ? "EN VIVO\nCONMIGO" : "En vivo"))
       .replace(/\{nombre\}/g, d.nombre || "");
   }
@@ -420,14 +499,15 @@
     const red = d.red && d.red !== "todo" ? d.red : pieza.redes[0];
     const fuenteUtm = red === "imprimir" ? "utm_source=qr&utm_medium=impreso" : `utm_source=${red}&utm_medium=material`;
     const k = {
-      ctx, W, H, forma, pieza, d, pers, vr, P: paletaDe(pieza, d.estilo),
+      ctx, W, H, forma, pieza, d, pers, vr, P: paletaDe(pieza, d), fotos: (d.fotos || []).filter(Boolean).slice(0, 2),
       mx: W * (forma === "vertical" ? 0.078 : 0.07),
       top: forma === "vertical" ? H * 0.075 : forma === "retrato" ? H * 0.055 : H * 0.065,
       bot: forma === "vertical" ? H * 0.115 : forma === "retrato" ? H * 0.055 : H * 0.065,
-      conQR: !!d.conQR, conFoto: !!(d.conFoto && d.foto && pers && !vr) || (pieza.a === "perfil" && !!d.foto),
+      conQR: !!d.conQR, conFoto: false,
       linkVis: pers && !vr ? `${HOST}/${d.slug}` : HOST,
       url: pers && !vr ? `https://${HOST}/${d.slug}?${fuenteUtm}&utm_content=${pieza.id.toLowerCase()}` : `https://${HOST}/?${fuenteUtm}${d.slug ? `&utm_campaign=de-${d.slug}` : ""}`,
     };
+    k.conFoto = k.fotos.length > 0 && ((pers && !vr) || pieza.a === "perfil");
     const c = {}; for (const kk in pieza.c) c[kk] = typeof pieza.c[kk] === "string" ? llenar(pieza.c[kk], d, pieza) : pieza.c[kk];
     ctx.save(); ctx.clearRect(0, 0, W, H);
     (A[pieza.a] || A.hero)(k, c);
@@ -450,5 +530,5 @@
   }
   const listo = () => (document.fonts && document.fonts.load ? Promise.all(["800", "700", "600", "500"].map((p) => document.fonts.load(`${p} 48px "Plus Jakarta Sans"`))).catch(() => {}) : Promise.resolve());
 
-  window.MaterialesMotor = { pintar, pintarEn, aBlob, listo, llenar, HOST, PALETAS };
+  window.MaterialesMotor = { pintar, pintarEn, aBlob, listo, llenar, HOST, PALETAS, C1, C2 };
 })();

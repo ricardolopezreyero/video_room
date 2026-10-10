@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Materiales para compartir — Video Room</title>
-<meta name="description" content="60 diseños y decenas de textos listos para TikTok, Reels, Instagram, Facebook, YouTube y WhatsApp. Se personalizan con tu nombre, tu link y tu código QR. Descarga, copia y publica.">
+<meta name="description" content="Más de 60 diseños y decenas de textos listos para TikTok, Reels, Instagram, Facebook, YouTube y WhatsApp. Se personalizan con tu nombre, tu link y tu código QR. Descarga, copia y publica.">
 <meta property="og:title" content="Materiales para compartir — Video Room">
 <meta property="og:description" content="Diseños y textos listos para publicar tu sala en vivo. Con tu nombre, tu link y tu QR.">
 <meta property="og:type" content="website">
@@ -37,18 +37,36 @@
     <div class="mat-campos">
       <label><span>Nombre</span><input id="mat-nombre" maxlength="40" autocomplete="off" placeholder="Tu nombre"></label>
       <label><span>Tema <i>opcional</i></span><input id="mat-tema" maxlength="48" autocomplete="off" placeholder="Ej. Clase de guitarra"></label>
-      <label><span>Cuándo <i>opcional</i></span><input id="mat-cuando" maxlength="28" autocomplete="off" placeholder="Ej. Hoy · 8 pm" list="mat-cuandos"></label>
-      <datalist id="mat-cuandos"><option value="Hoy · 8 pm"><option value="Hoy"><option value="Mañana · 8 pm"><option value="Esta noche"><option value="Sábado · 6 pm"><option value="Ahora"></datalist>
+      <div class="mat-campo">
+        <span class="mat-campo-tit">Cuándo <i>opcional</i>
+          <span class="mat-modo" id="mat-modo" role="radiogroup" aria-label="Cómo poner la fecha"><button type="button" data-m="fecha">Calendario</button><button type="button" data-m="texto">Texto</button></span>
+        </span>
+        <!-- Año, mes, día, hora y minuto, en la hora del país principal. -->
+        <div class="mat-fecha-fila" id="mat-fecha-fila"><input type="datetime-local" id="mat-fecha" aria-label="Fecha y hora de la sesión"><button type="button" class="mat-x" id="mat-fecha-x" title="Quitar la fecha" aria-label="Quitar la fecha" hidden>✕</button></div>
+        <input id="mat-cuando" maxlength="28" autocomplete="off" placeholder="Ej. Hoy · 8 pm" list="mat-cuandos" hidden>
+        <datalist id="mat-cuandos"><option value="Hoy · 8 pm"><option value="Hoy"><option value="Mañana · 8 pm"><option value="Esta noche"><option value="Ahora"></datalist>
+      </div>
+    </div>
+    <!-- Horarios: el país principal manda; los demás (hasta 3) se convierten solos. -->
+    <div class="mat-horarios" id="mat-horarios">
+      <label><span>Horario principal</span><select id="mat-tz" aria-label="País del horario principal"></select></label>
+      <div class="mat-otros"><span class="mat-campo-tit">También en la hora de <i>opcional, hasta 3 países</i></span><div class="mat-tz-chips" id="mat-tz-chips"></div></div>
+      <p class="mat-horarios-vista" id="mat-horarios-vista"></p>
     </div>
     <div class="mat-palancas">
       <label class="mat-palanca"><span class="switch" id="sw-nombre"><input type="checkbox" id="mat-con-nombre"><i></i></span> Mi nombre y mi link</label>
       <label class="mat-palanca"><span class="switch" id="sw-qr"><input type="checkbox" id="mat-con-qr"><i></i></span> Mi código QR</label>
-      <label class="mat-palanca"><span class="switch" id="sw-foto"><input type="checkbox" id="mat-con-foto"><i></i></span> Mi foto</label>
       <label class="mat-palanca" title="Agrega al link de dónde viene (?de=tiktok) para que Estadísticas te diga qué red te trajo a cada persona."><span class="switch" id="sw-medir"><input type="checkbox" id="mat-medir"><i></i></span> Medir de dónde llegan</label>
+      <div class="mat-colores" id="mat-colores">
+        <label title="Color principal"><input type="color" id="mat-c1" aria-label="Color principal"><span>Principal</span></label>
+        <label title="Color secundario"><input type="color" id="mat-c2" aria-label="Color secundario"><span>Secundario</span></label>
+        <button type="button" class="mat-x" id="mat-c-reset" title="Volver a los colores de Video Room" aria-label="Volver a los colores de Video Room" hidden>↺</button>
+      </div>
       <div class="mat-estilos" id="mat-estilos" role="radiogroup" aria-label="Estilo de color">
-        <button type="button" data-e="original" class="on">Original</button><button type="button" data-e="noche">Noche</button><button type="button" data-e="claro">Claro</button><button type="button" data-e="verde">Verde</button>
+        <button type="button" data-e="original" class="on">Original</button><button type="button" data-e="noche">Noche</button><button type="button" data-e="claro">Claro</button><button type="button" data-e="verde">Color</button>
       </div>
     </div>
+    <input type="file" id="foto-2-archivo" accept="image/*" hidden>
   </section>
 
   <nav class="mat-chips" id="mat-chips" aria-label="Para qué red"></nav>
