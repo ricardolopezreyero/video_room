@@ -613,6 +613,28 @@ checklist compartido de 214 tareas.
 - API: `GET /api/gtm`, `POST /api/gtm/tarea`, `POST /api/gtm/equipo`.
   Migración 0016. Pruebas: `test/gtm.spec.ts`.
 
+## Proyecciones (`/proyecciones`): los próximos 15 años
+
+Página interna, hermana del Go-to-market: mismo acceso y liga de ida y vuelta
+entre las dos. Arriba la gráfica con la curva de ingresos y la de gastos; abajo
+la tabla con las mismas columnas (usuarios, ingresos, gastos y resultado). Todo
+corre de izquierda a derecha en un solo carril: mes por mes son 180 columnas,
+o año por año son 15.
+
+- **El modelo** vive en `src/lib/proyecciones.ts` (`MODELO`) y solo viaja a
+  quien tiene acceso; `public/proyecciones.js` hace la cuenta y el dibujo. El
+  año 1 sigue los puntos de control del plan; del año 2 al 15 la puerta crece
+  cada año menos que el anterior. El ingreso es la comisión sobre la puerta.
+  Los gastos tienen un piso y una parte proporcional al tamaño.
+- **Tres escenarios** (prudente, el plan, ambicioso) y **doce supuestos** que
+  se mueven en la página y se guardan en el navegador.
+- **Lo real** de cada mes transcurrido sale de los indicadores en vivo y se
+  pinta sobre la curva y en su renglón de la tabla.
+- Resumen arriba: punto de equilibrio, cuánto hay que poner antes de que se
+  pague sola, primer millón al mes, ingreso de los años 1, 5 y 15, y utilidad
+  acumulada. Es antes de impuestos y en pesos de hoy.
+- Pruebas: `test/proyecciones.spec.ts`.
+
 ## Dirección: el perfil de quien va a dirigir (`/ceo`)
 
 Página pública pero sin listar en buscadores (se manda por liga). Está en

@@ -418,6 +418,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
     <button type="button" data-tab="ritmo">Ritmo</button>
     <button type="button" data-tab="equipo">Equipo</button>
     <button type="button" data-tab="candidatos">Candidatos <i id="gtm-cand-tab"></i></button>
+    <a class="gtm-tab-liga" href="/proyecciones">Proyecciones →</a>
   </nav>
   <main>
     <div class="gtm-tab" id="tab-resumen">${RESUMEN}</div>

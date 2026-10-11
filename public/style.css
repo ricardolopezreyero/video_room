@@ -1792,3 +1792,74 @@ body.mat-grabando .visor-lienzo canvas { box-shadow: 0 0 0 3px #E5484D, 0 20px 6
   .gtm-ind-paso + .gtm-ind-paso::before { display: none; }
   .gtm-ind-gordo > b { font-size: 25px; }
 }
+
+/* ── Proyecciones: 15 años de ingresos y gastos, de izquierda a derecha ─── */
+.gtm-tab-liga, .proy-nav a { flex-shrink: 0; color: #F5C542; font-size: 14.5px; font-weight: 700; padding: 9px 14px; border-radius: 999px; white-space: nowrap; text-decoration: none; border: .5px solid rgba(245,197,66,.4); margin-left: 4px; }
+.gtm-tab-liga:hover, .proy-nav a:hover { background: rgba(245,197,66,.12); }
+.proy-nav a { color: #cdd3de; border-color: rgba(255,255,255,.14); margin-left: 0; }
+.proy-nav a:first-child { color: var(--green, #56EF9F); border-color: rgba(86,239,159,.4); }
+.proy-nav span.on { flex-shrink: 0; background: #F5C542; color: var(--navy, #0D1117); font-size: 14.5px; font-weight: 800; padding: 9px 14px; border-radius: 999px; }
+.proy-hoja { max-width: 1280px; }
+.proy-barra { display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.proy-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
+.proy-resumen .gtm-ind-gordo > b { font-size: 25px; }
+.proy-sec-lienzo { padding-top: 14px; }
+.proy-leyenda { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 13px; color: #cdd3de; margin-bottom: 8px; }
+.proy-leyenda span { display: inline-flex; align-items: center; gap: 7px; }
+.proy-leyenda i { display: inline-block; width: 22px; height: 4px; border-radius: 4px; }
+.proy-leyenda i.ingreso { background: var(--green, #56EF9F); }
+.proy-leyenda i.gastos { background: #FF8A7A; }
+.proy-leyenda i.real { width: 10px; height: 10px; border-radius: 50%; background: #F5C542; }
+.proy-leyenda i.eq { width: 2px; height: 14px; background: repeating-linear-gradient(#fff 0 3px, transparent 3px 6px); border-radius: 0; }
+.proy-leyenda em { margin-left: auto; font-style: normal; color: #9aa1b0; font-weight: 700; }
+.proy-scroll { overflow-x: auto; overflow-y: hidden; border: .5px solid rgba(255,255,255,.12); border-radius: 16px; background: #0D1117; -webkit-overflow-scrolling: touch; scrollbar-color: rgba(255,255,255,.35) transparent; }
+.proy-scroll:focus-visible { outline: 2px solid var(--green, #56EF9F); outline-offset: 2px; }
+.proy-scroll::-webkit-scrollbar { height: 12px; }
+.proy-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.3); border-radius: 999px; border: 3px solid #0D1117; }
+.proy-lienzo { position: relative; }
+.proy-grafica { position: relative; }
+.proy-plano { position: absolute; top: 0; }
+.proy-svg { display: block; }
+.proy-eje { position: sticky; left: 0; width: 212px; z-index: 4; background: linear-gradient(90deg, #0D1117 82%, rgba(13,17,23,0)); pointer-events: none; }
+.proy-eje span { position: absolute; left: 14px; transform: translateY(-50%); font-size: 11.5px; font-weight: 700; color: #9aa1b0; font-variant-numeric: tabular-nums; }
+.proy-eje span.tit { top: 14px; transform: none; font-size: 10.5px; letter-spacing: .7px; text-transform: uppercase; color: #7c8696; }
+.proy-banda { fill: rgba(255,255,255,.012); }
+.proy-banda.par { fill: rgba(255,255,255,.04); }
+.proy-anio { fill: #9aa1b0; font-size: 12px; font-weight: 800; font-family: inherit; }
+.proy-reja { stroke: rgba(255,255,255,.07); stroke-width: 1; }
+.proy-area { fill: rgba(86,239,159,.09); }
+.proy-linea { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.proy-linea.ingreso { stroke: #56EF9F; }
+.proy-linea.gastos { stroke: #FF8A7A; }
+.proy-eq { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 4 5; }
+.proy-eq-txt { fill: #fff; font-size: 11.5px; font-weight: 800; font-family: inherit; }
+.proy-hoy { stroke: #F5C542; stroke-width: 1.5; }
+.proy-hoy-txt { fill: #F5C542; font-size: 11.5px; font-weight: 800; font-family: inherit; }
+.proy-real { fill: #F5C542; stroke: #0D1117; stroke-width: 2; }
+.proy-cursor { position: absolute; top: 0; bottom: 0; background: rgba(255,255,255,.055); border-left: .5px solid rgba(255,255,255,.2); border-right: .5px solid rgba(255,255,255,.2); pointer-events: none; z-index: 2; }
+.proy-tabla { border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.proy-tabla th, .proy-tabla td { padding: 8px 10px; border-top: .5px solid rgba(255,255,255,.07); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cdd3de; font-variant-numeric: tabular-nums; }
+.proy-tabla th:first-child { position: sticky; left: 0; z-index: 3; background: #12151C; text-align: left; color: #e5e7eb; font-weight: 600; border-right: .5px solid rgba(255,255,255,.1); }
+.proy-tabla thead th { background: #161a22; color: #fff; font-weight: 700; padding: 9px 10px; line-height: 1.25; }
+.proy-tabla thead th b { display: block; text-transform: capitalize; }
+.proy-tabla thead th small { display: block; font-size: 10.5px; color: #7c8696; font-weight: 600; }
+.proy-tabla thead th.inicio { border-left: .5px solid rgba(255,255,255,.2); }
+.proy-tabla thead th.hoy { background: rgba(245,197,66,.2); }
+.proy-tabla thead th.hoy small { color: #F5C542; }
+.proy-tabla tr.sep th { font-size: 10.5px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; color: var(--green, #56EF9F) !important; background: #161a22 !important; padding-top: 10px; }
+.proy-tabla tr.sep td { background: rgba(255,255,255,.03); }
+.proy-tabla tr.fuerte th, .proy-tabla tr.fuerte td { font-weight: 800; color: #fff; }
+.proy-tabla tr.verde td { color: var(--green, #56EF9F); }
+.proy-tabla tr.rojo td { color: #FF8A7A; }
+.proy-tabla tr.oro td { color: #F5C542; font-weight: 800; }
+.proy-tabla tr.signo td, .proy-tabla tr.signoMargen td { color: var(--green, #56EF9F); }
+.proy-tabla td.neg { color: #FF8A7A !important; }
+.proy-mando { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; }
+.proy-mando input[type=range] { flex: 1; accent-color: #56EF9F; height: 28px; }
+.proy-supuestos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+.proy-supuestos label span small { display: block; font-size: 11.5px; color: #7c8696; line-height: 1.35; margin-top: 1px; }
+@media (max-width: 760px) {
+  .proy-supuestos { grid-template-columns: 1fr; }
+  .proy-eje { width: 150px; }
+  .proy-leyenda em { margin-left: 0; width: 100%; }
+}
