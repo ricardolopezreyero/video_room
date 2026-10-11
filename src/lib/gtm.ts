@@ -13,7 +13,7 @@ import { PUNTOS } from "./gtm-puntos";
 type Ctx = Context<{ Bindings: Env }>;
 
 /** Quién administra (agrega o quita personas) y el equipo de base. Los demás se agregan desde la página. */
-const ADMINS = new Set([ADMIN_EMAIL.toLowerCase(), "reyero.ricardo@gmail.com"]);
+const ADMINS = new Set([ADMIN_EMAIL.toLowerCase(), "reyero.ricardo@gmail.com", "contacto@ingenieriadigital.mx"]);
 const EQUIPO_BASE = new Set([...ADMINS, "yudiel@superleads.mx", "victor@superleads.mx", "enrique@superleads.mx"]);
 
 /** Ver el plan es una cosa; palomear es administrativo: solo correos de la casa. */
