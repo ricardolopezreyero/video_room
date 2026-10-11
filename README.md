@@ -571,18 +571,34 @@ necesita para publicar su sala o recomendar Video Room: **63 diseños** y
 
     La llave de ElevenLabs viene de la bóveda (Secrets Store), ligada en
     `wrangler.toml`. Cada pedido gasta créditos.
-- **La campaña «Aquí todos ganan»:** quince publicaciones verticales (ids
-  `K01` a `K15`), una por día, sobre el valor de Video Room para las dos
-  partes: quien transmite cobra por su tiempo; quien entra se lleva
-  conocimiento o un momento en vivo que no vuelve a existir. Van arriba de la
-  galería en todas las vistas y tienen su propia pestaña (`#campana`), con sus
-  cinco textos largos (manifiesto, para quien transmite, para quien entra,
-  guion de 30 segundos y calendario) y sus zips de video. En el catálogo se
-  marcan con `camp` y `dia`; la campaña se describe en `CAMPANAS` y la que
-  está al aire es `CAMP` en `materiales.js`. Para otra campaña: piezas nuevas
-  con otro `camp`, su entrada en `CAMPANAS` y cambiar `CAMP`. Regla del
-  texto: nada de prometer ingresos; se dice lo que la persona cobra y la
-  cuenta se hace con un ejemplo.
+- **Carpetas:** la galería se abre en cinco carpetas, para que todos tengan
+  todo pero separado. «Todo», «Personalizados» (llevan tu nombre, tu link y tu
+  QR), «Sin personalizar» (hablan de Video Room), «Campañas» y «Casos de uso».
+  Las redes son un filtro dentro de cada carpeta. Cada carpeta tiene su liga:
+  `#personalizados`, `#sin-personalizar`, `#campanas`, `#casos`, y cada campaña
+  la suya (`#ganan`, `#oficios`, `#historias`). Los zips bajan lo de la carpeta
+  abierta. La regla vive en `enCarpeta()` de `materiales.js`: una pieza con
+  `camp` va a Campañas; sin `camp` y con `vr` va a Sin personalizar; el resto
+  es personalizada.
+- **Las campañas** (`CAMPANAS` en el catálogo; las piezas se marcan con `camp`
+  y `dia`, y cada una trae sus textos largos en `TEXTOS` con el mismo `camp`):
+  - **«Aquí todos ganan»** (`K01` a `K15`): el valor para las dos partes. Quien
+    transmite cobra por su tiempo; quien entra se lleva conocimiento o un
+    momento en vivo que no vuelve a existir.
+  - **«Tu oficio ya se cobra»** (`O01` a `O15`): una publicación por oficio.
+    Impuestos, asesoría legal, pensiones, migración, nutrición, tarot,
+    astrología, música, comedia, zumba, yoga, inglés y guitarra.
+  - **«Cuéntalo en vivo»** (`H01` a `H12`): contar una historia en vivo. Las
+    ocho primeras explican la idea; las cuatro últimas son personalizadas y
+    sirven para anunciar la historia propia.
+  Para otra campaña: piezas nuevas con otro `camp` y su entrada en `CAMPANAS`;
+  la pestaña y la liga salen solas. Regla del texto: nada de prometer
+  ingresos; se dice lo que la persona cobra y la cuenta se hace con un ejemplo.
+- **Casos de uso** (`CASOS` en el catálogo): quince ideas de qué hacer con una
+  sala, en cuatro grupos (historias, enseñar, consultar, comunidad). Cada una
+  trae qué es, tres pasos, cuánto se suele cobrar y el botón que abre el
+  diseño para anunciarla (`pieza` apunta a un id de `PIEZAS`). Para agregar
+  uno: una línea en `CASOS`.
 - **La foto** (`public/foto-editor.js`): tocar el círculo de la foto abre el
   editor. Ahí se adjunta una foto y se acomoda: arrastrar para moverla; rueda,
   pellizco, deslizador o botones para acercarla; «Centrar» la regresa. El

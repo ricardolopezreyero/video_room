@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const LLAVE = "vr_materiales";
-  const S = Object.assign({ nombre: "", tema: "", cuando: "", fecha: "", modoCuando: "fecha", tzBase: "", tzOtros: [], conNombre: true, conQR: true, conFoto: true, foto2: "", f1: null, f2: null, c1: M.C1, c2: M.C2, medir: true, estilo: "original", musica: "auto", red: "todo" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
+  const S = Object.assign({ nombre: "", tema: "", cuando: "", fecha: "", modoCuando: "fecha", tzBase: "", tzOtros: [], conNombre: true, conQR: true, conFoto: true, foto2: "", f1: null, f2: null, c1: M.C1, c2: M.C2, medir: true, estilo: "original", musica: "auto", red: "todo", carpeta: "todo", camp: "" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
   // Si las fotos no caben en la memoria del navegador, se guarda todo lo demás y de las fotos solo el recorte.
   const guardar = () => { try { localStorage.setItem(LLAVE, JSON.stringify(S)); } catch { try { localStorage.setItem(LLAVE, JSON.stringify(Object.assign({}, S, { f1: S.f1 ? Object.assign({}, S.f1, { src: "" }) : null, f2: S.f2 ? Object.assign({}, S.f2, { src: "" }) : null }))); } catch { try { localStorage.setItem(LLAVE, JSON.stringify(Object.assign({}, S, { f1: null, f2: null, foto2: "" }))); } catch {} } } };
   // foto1 = la principal (la que adjuntas y acomodas; si no, la de tu cuenta de Google); foto2 = la otra, opcional. Máximo dos.
@@ -91,8 +91,7 @@
       .replace(/\{nombreO\}/g, nombre || "En vivo")
       .replace(/\{nombre\}/g, nombre);
   }
-  // La campaña es una vista, no una red: para medir y para escribir cuenta como «todo».
-  const redVista = () => (S.red === "campana" ? "todo" : S.red);
+  const redVista = () => S.red;
   const redDe = (pieza) => (redVista() !== "todo" && S.red !== "textos" ? S.red : pieza.redes[0]);
   const captionDe = (pieza) => escribir(C.CAPTIONS[pieza.tx] || "", redDe(pieza), !!pieza.vr);
   const nombreArchivo = (pieza, ext) => `VideoRoom-${pieza.id}-${pieza.n.normalize("NFD").replace(/\p{M}/gu, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}${personal() && !pieza.vr ? "-" + room.slug : ""}.${ext}`;
@@ -122,9 +121,18 @@
     else if (!me) { if (window.VRLogin) VRLogin.entrar(); }
     else editarFoto(1);
   }
-  const CAMP = "ganan"; // la campaña que está al aire
-  // En la vista de la campaña van solo sus piezas, en su orden; en las demás, la campaña va primero.
-  const piezasDeVista = () => (S.red === "textos" ? [] : S.red === "campana" ? C.PIEZAS.filter((p) => p.camp === CAMP).sort((a, b) => a.dia - b.dia) : C.PIEZAS.filter((p) => S.red === "todo" || p.redes.includes(S.red)).sort((a, b) => (a.camp ? a.dia : 99) - (b.camp ? b.dia : 99)));
+  // CARPETAS: todo está junto y también separado. «Tuyos» llevan tu nombre, tu link y tu QR;
+  // «de Video Room» son los que hablan de la marca; «campañas» son series con una sola idea;
+  // «casos de uso» es la carpeta del curioso: qué se puede hacer con una sala.
+  const CARPETAS = [["todo", "Todo"], ["tuyos", "Personalizados"], ["marca", "Sin personalizar"], ["campanas", "Campañas"], ["casos", "Casos de uso"]];
+  const CAMPS = Object.keys(C.CAMPANAS);
+  const enCarpeta = (p, c) => (c === "todo" ? true : c === "tuyos" ? !p.vr && !p.camp : c === "marca" ? !!p.vr && !p.camp : c === "campanas" ? !!p.camp && (!S.camp || p.camp === S.camp) : false);
+  const deRed = (p) => S.red === "todo" || S.red === "textos" || p.redes.includes(S.red);
+  // Las campañas van primero, en su orden y cada una por día; luego lo demás como está en el catálogo.
+  const pesoDe = (p) => (p.camp ? CAMPS.indexOf(p.camp) * 100 + p.dia : 9000);
+  const piezasDeVista = () => (S.red === "textos" || S.carpeta === "casos" ? [] : C.PIEZAS.filter((p) => enCarpeta(p, S.carpeta) && deRed(p)).sort((a, b) => pesoDe(a) - pesoDe(b)));
+  const casosTodos = () => C.CASOS.reduce((l, g) => l.concat(g.items), []);
+  function irACarpeta(c, camp) { S.carpeta = c; S.camp = camp || ""; if (S.red === "textos" && c !== "todo") S.red = "todo"; guardar(); history.replaceState(null, "", c === "todo" ? location.pathname : "#" + (c === "campanas" && camp ? camp : c === "tuyos" ? "personalizados" : c === "marca" ? "sin-personalizar" : c)); construir(); }
 
   function construir() {
     const grid = $("mat-grid"); obs.disconnect(); visibles.clear(); grid.textContent = ""; firmaPintada = firmaFaltas();
@@ -142,15 +150,18 @@
       fig.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => accion(b.dataset.a, p, b)));
       obs.observe(fig); return fig;
     };
-    // La campaña al aire va arriba de todo, con su idea y su orden.
-    const deCamp = piezas.filter((p) => p.camp === CAMP), K = C.CAMPANAS[CAMP];
-    if (deCamp.length && K) {
-      const sec = document.createElement("section"); sec.className = "mat-grupo mat-campana";
-      sec.innerHTML = `<div class="mat-camp-cab"><p>${esc(K.ceja)}</p><h2>${esc(K.n)} <span>${deCamp.length}</span></h2><p class="mat-camp-idea">${esc(K.idea)}</p><p class="mat-camp-uso">${esc(K.uso)}${S.red === "campana" ? "" : ` <button type="button" class="mat-camp-ver" data-ver-camp>Ver solo la campaña</button>`}</p></div><div class="mat-fila"></div>`;
+    if (S.carpeta === "casos") { grid.appendChild(seccionCasos()); pintarTextos(); pintarCarpetas(); pintarChips(); $("mat-cuenta").textContent = `${casosTodos().length} casos de uso`; $("mat-zip").hidden = $("mat-zip-videos").hidden = $("mat-zip-videos-limpios").hidden = true; return; }
+    // Cada campaña es una sección con su idea y su orden. Van arriba de todo.
+    for (const k of CAMPS) {
+      const deCamp = piezas.filter((p) => p.camp === k), K = C.CAMPANAS[k]; if (!deCamp.length) continue;
+      const sola = S.carpeta === "campanas" && S.camp === k;
+      const sec = document.createElement("section"); sec.className = "mat-grupo mat-campana c-" + k;
+      sec.innerHTML = `<div class="mat-camp-cab"><p>${esc(K.ceja)}</p><h2>${esc(K.n)} <span>${deCamp.length}</span></h2><p class="mat-camp-idea">${esc(K.idea)}</p><p class="mat-camp-uso">${esc(K.uso)}${sola ? "" : ` <button type="button" class="mat-camp-ver" data-ver-camp>Ver solo esta campaña</button>`}</p></div><div class="mat-fila"></div>`;
       const fila = sec.querySelector(".mat-fila"); for (const p of deCamp) fila.appendChild(figura(p));
-      const ver = sec.querySelector("[data-ver-camp]"); if (ver) ver.onclick = () => { S.red = "campana"; guardar(); history.replaceState(null, "", "#campana"); construir(); window.scrollTo({ top: $("mat-chips").getBoundingClientRect().top + scrollY - 10, behavior: "smooth" }); };
+      const ver = sec.querySelector("[data-ver-camp]"); if (ver) ver.onclick = () => { irACarpeta("campanas", k); window.scrollTo({ top: $("mat-carpetas").getBoundingClientRect().top + scrollY - 80, behavior: "smooth" }); };
       grid.appendChild(sec);
     }
+    if (!piezas.length && S.red !== "textos") { const v = document.createElement("p"); v.className = "mat-vacio"; v.textContent = "No hay diseños de esta carpeta para esa red. Prueba con «Todo» en las redes."; grid.appendChild(v); }
     for (const f of Object.keys(C.FORMATOS)) {
       const grupo = piezas.filter((p) => p.f === f && !p.camp); if (!grupo.length) continue;
       const F = C.FORMATOS[f], sec = document.createElement("section"); sec.className = "mat-grupo f-" + f;
@@ -159,23 +170,41 @@
       for (const p of grupo) fila.appendChild(figura(p));
       grid.appendChild(sec);
     }
-    pintarTextos(); pintarChips();
+    pintarTextos(); pintarCarpetas(); pintarChips();
     const nT = textosDeVista().reduce((n, g) => n + g.items.length, 0);
     $("mat-cuenta").textContent = `${piezas.length ? piezas.length + (piezas.length === 1 ? " diseño" : " diseños") : ""}${piezas.length && nT ? " · " : ""}${nT ? nT + " textos" : ""}`;
     $("mat-zip").hidden = !piezas.length;
     const conVideos = piezas.filter((p) => M.conVideo(p)).length; $("mat-zip-videos").hidden = $("mat-zip-videos-limpios").hidden = !conVideos || !V.puedeHacer();
     if (conVideos && !enLote) { $("mat-zip-videos").textContent = `Los ${conVideos} videos con música (.zip)`; $("mat-zip-videos-limpios").textContent = `Los ${conVideos} videos sin audio (.zip)`; }
   }
+  function pintarCarpetas() {
+    const n = (c) => (c === "casos" ? casosTodos().length : c === "campanas" ? C.PIEZAS.filter((p) => p.camp).length : C.PIEZAS.filter((p) => enCarpeta(p, c === "campanas" ? "todo" : c)).length);
+    const nota = { todo: "todo junto", tuyos: "con tu nombre, tu link y tu QR", marca: "hablan de Video Room", campanas: `${CAMPS.length} series con una idea`, casos: "qué puedes hacer con tu sala" };
+    $("mat-carpetas").innerHTML = `<div class="mat-carp-fila">${CARPETAS.map(([id, nom]) => `<button type="button" data-carpeta="${id}" class="${S.carpeta === id ? "on" : ""}"><b>${nom} <i>${n(id)}</i></b><small>${nota[id]}</small></button>`).join("")}</div>` +
+      (S.carpeta === "campanas" ? `<div class="mat-carp-sub"><button type="button" data-camp="" class="${S.camp ? "" : "on"}">Todas</button>${CAMPS.map((k) => `<button type="button" data-camp="${k}" class="${S.camp === k ? "on" : ""}">${esc(C.CAMPANAS[k].n)} <i>${C.PIEZAS.filter((p) => p.camp === k).length}</i></button>`).join("")}</div>` : "");
+    $("mat-carpetas").querySelectorAll("[data-carpeta]").forEach((b) => (b.onclick = () => irACarpeta(b.dataset.carpeta, "")));
+    $("mat-carpetas").querySelectorAll("[data-camp]").forEach((b) => (b.onclick = () => irACarpeta("campanas", b.dataset.camp)));
+    $("mat-chips").hidden = S.carpeta === "casos";
+  }
+  // La carpeta del curioso: qué se puede hacer con una sala, cómo, cuánto se cobra y con qué se anuncia.
+  function seccionCasos() {
+    const sec = document.createElement("section"); sec.className = "mat-casos";
+    sec.innerHTML = `<div class="mat-camp-cab"><p>Casos de uso</p><h2>Qué puedes hacer con tu sala <span>${casosTodos().length}</span></h2><p class="mat-camp-idea">Antes no había dónde cobrar por esto. Ahora sí: una sala en vivo con puerta, donde entra quien quiera estar y nada se graba.</p><p class="mat-camp-uso">Cada idea trae sus tres pasos, cuánto se suele cobrar y el diseño para anunciarla en tus redes.</p></div>` +
+      C.CASOS.map((g) => `<h3 class="mat-casos-h">${esc(g.grupo)}</h3><div class="mat-casos-fila">${g.items.map((c) => `<article class="mat-caso" data-caso="${c.id}"><h4>${esc(c.n)}</h4><p>${esc(c.que)}</p><ol>${c.pasos.map((x) => `<li>${esc(x)}</li>`).join("")}</ol><small>${esc(c.cobro)}</small><div class="mat-caso-btns"><button type="button" class="btn-primary small" data-caso-ver="${c.pieza}">Ver el diseño para anunciarlo</button><button type="button" class="btn-ghost small" data-caso-txt="${c.pieza}">Copiar el texto</button></div></article>`).join("")}</div>`).join("");
+    const pieza = (id) => C.PIEZAS.find((p) => p.id === id);
+    sec.querySelectorAll("[data-caso-ver]").forEach((b) => (b.onclick = () => { const p = pieza(b.dataset.casoVer); if (p) abrirVisor(p); }));
+    sec.querySelectorAll("[data-caso-txt]").forEach((b) => (b.onclick = () => { const p = pieza(b.dataset.casoTxt); if (p) copiar(captionDe(p), b); }));
+    return sec;
+  }
   function pintarChips() {
-    const cuenta = (id) => C.PIEZAS.filter((p) => p.redes.includes(id)).length;
-    const chips = [{ id: "todo", n: "Todo", c: C.PIEZAS.length }, { id: "campana", n: "★ Campaña", c: C.PIEZAS.filter((p) => p.camp === CAMP).length }].concat(C.REDES.map((r) => ({ id: r.id, n: r.n, c: cuenta(r.id) })), [{ id: "textos", n: "Textos", c: C.TEXTOS.reduce((n, g) => n + g.items.length, 0) }]);
+    const base = C.PIEZAS.filter((p) => enCarpeta(p, S.carpeta)), cuenta = (id) => base.filter((p) => p.redes.includes(id)).length;
+    const chips = [{ id: "todo", n: "Todas las redes", c: base.length }].concat(C.REDES.map((r) => ({ id: r.id, n: r.n, c: cuenta(r.id) })).filter((c) => c.c), S.carpeta === "todo" ? [{ id: "textos", n: "Textos", c: C.TEXTOS.reduce((n, g) => n + g.items.length, 0) }] : []);
     $("mat-chips").innerHTML = chips.map((c) => `<button type="button" data-red="${c.id}" class="${c.id === S.red ? "on" : ""}">${esc(c.n)} <i>${c.c}</i></button>`).join("");
-    $("mat-chips").querySelectorAll("button").forEach((b) => (b.onclick = () => { S.red = b.dataset.red; guardar(); history.replaceState(null, "", S.red === "todo" ? location.pathname : "#" + S.red); construir(); $("mat-chips").scrollIntoView({ block: "start", behavior: "smooth" }); }));
+    $("mat-chips").querySelectorAll("button").forEach((b) => (b.onclick = () => { S.red = b.dataset.red; guardar(); construir(); $("mat-chips").scrollIntoView({ block: "start", behavior: "smooth" }); }));
     const activo = $("mat-chips").querySelector("button.on"); if (activo) $("mat-chips").scrollLeft = Math.max(0, activo.offsetLeft - 16);
   }
-
-  /* ── textos para copiar ─────────────────────────────────────────────── */
-  const textosDeVista = () => (S.red === "campana" ? C.TEXTOS.filter((g) => g.camp === CAMP) : C.TEXTOS.filter((g) => S.red === "todo" || S.red === "textos" || g.red === S.red || (g.red === "todas" && S.red !== "imprimir")));
+  // Los textos siguen a la carpeta: en campañas, los de esa campaña; en casos, ninguno (cada caso trae el suyo).
+  const textosDeVista = () => (S.carpeta === "casos" ? [] : S.carpeta === "campanas" ? C.TEXTOS.filter((g) => g.camp && (!S.camp || g.camp === S.camp)) : C.TEXTOS.filter((g) => (S.carpeta === "todo" || !g.camp) && (S.red === "todo" || S.red === "textos" || g.red === S.red || (g.red === "todas" && S.red !== "imprimir"))));
   function pintarTextos() {
     const cont = $("mat-textos"), grupos = textosDeVista();
     cont.innerHTML = grupos.length ? `<h2 class="mat-h2">Textos para copiar</h2>` + grupos.map((g, gi) => `<div class="mat-tgrupo"><h3>${esc(g.grupo)}</h3><div class="mat-tfila">${g.items.map((it, ii) => `<article class="mat-tcard"><header><b>${esc(it.t)}</b><button type="button" class="btn-ghost small" data-g="${gi}" data-i="${ii}">Copiar</button></header><pre class="mat-texto">${esc(escribir(it.x, g.red === "todas" ? redVista() : g.red, /Video Room/.test(it.t)))}</pre></article>`).join("")}</div></div>`).join("") : "";
@@ -306,7 +335,7 @@
     const rapido = await V.puedeCodificar(conAudio);
     if (!rapido && !confirm(`Este navegador graba en tiempo real: ${piezas.length} videos tardan unos ${Math.ceil((piezas.length * 8) / 60)} minutos y no puedes cambiar de pestaña. ¿Seguir?`)) return;
     enLote = true; grabando = true; detener(); document.querySelectorAll("[data-lote]").forEach((b) => (b.disabled = true));
-    const archivos = [], redTxt = S.red === "todo" ? "todo" : S.red; let fallas = 0;
+    const archivos = [], redTxt = [S.carpeta === "campanas" ? (S.camp ? "campana-" + S.camp : "campanas") : S.carpeta === "tuyos" ? "personalizados" : S.carpeta === "marca" ? "video-room" : "todo", S.red === "todo" ? "" : S.red].filter(Boolean).join("-"); let fallas = 0;
     try {
       for (let i = 0; i < piezas.length; i++) {
         const p = piezas[i], F = C.FORMATOS[p.f];
@@ -330,7 +359,7 @@
 
   $("mat-zip").onclick = async () => {
     const b = $("mat-zip"), piezas = piezasDeVista(), original = b.textContent; if (!piezas.length || b.disabled) return;
-    b.disabled = true; const archivos = [], redTxt = S.red === "todo" ? "todo" : S.red;
+    b.disabled = true; const archivos = [], redTxt = [S.carpeta === "campanas" ? (S.camp ? "campana-" + S.camp : "campanas") : S.carpeta === "tuyos" ? "personalizados" : S.carpeta === "marca" ? "video-room" : "todo", S.red === "todo" ? "" : S.red].filter(Boolean).join("-");
     try {
       for (let i = 0; i < piezas.length; i++) {
         b.textContent = `Preparando ${i + 1} de ${piezas.length}…`;
@@ -468,9 +497,12 @@
   /* ── arranque ───────────────────────────────────────────────────────── */
   (async function () {
     // La vista (qué red) no se recuerda entre visitas: se llega a «Todo», o a la red del enlace (#tiktok).
-    const h = location.hash.replace("#", ""); S.red = h && (h === "textos" || h === "campana" || C.REDES.some((r) => r.id === h)) ? h : "todo";
+    // La liga dice a dónde ir: una carpeta, una campaña o una red. Sin liga, todo.
+    const h = location.hash.replace("#", "");
+    S.carpeta = "todo"; S.camp = ""; S.red = "todo";
+    if (h === "campana" || h === "campanas") S.carpeta = "campanas"; else if (CAMPS.includes(h)) { S.carpeta = "campanas"; S.camp = h; } else if (h === "personalizados") S.carpeta = "tuyos"; else if (h === "sin-personalizar") S.carpeta = "marca"; else if (h === "casos") S.carpeta = "casos"; else if (h === "profesiones") { S.carpeta = "campanas"; S.camp = "oficios"; } else if (h === "textos" || C.REDES.some((r) => r.id === h)) S.red = h;
     enlazarControles(); pintarYo();
-    $("mat-sub").textContent = `${C.PIEZAS.length} diseños, ${C.PIEZAS.filter(M.conVideo).length} también en video con música, y ${C.TEXTOS.reduce((n, g) => n + g.items.length, 0)} textos. Descarga, copia y publica.`;
+    $("mat-sub").textContent = `${C.PIEZAS.length} diseños, ${C.PIEZAS.filter(M.conVideo).length} también en video con música, ${C.TEXTOS.reduce((n, g) => n + g.items.length, 0)} textos y ${casosTodos().length} casos de uso. Todo en carpetas.`;
     await M.listo();
     construir();
     await cargarSesion();

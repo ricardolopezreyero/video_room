@@ -1909,3 +1909,49 @@ body.fe-abierto { overflow: hidden; }
 /* la barra de descargas: la cuenta a la izquierda y los botones juntos a la derecha */
 .mat-barra { justify-content: flex-end; gap: 8px; }
 .mat-barra #mat-cuenta { margin-right: auto; }
+
+/* ── Materiales: carpetas (todo junto y también separado) ─────────────── */
+.mat-carpetas { margin: 14px 0 2px; }
+.mat-carp-fila { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.mat-carp-fila button { text-align: left; background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.12); border-radius: 16px; padding: 12px 14px 11px; cursor: pointer; font: inherit; color: #e5e7eb; min-width: 0; transition: border-color .12s, background .12s; }
+.mat-carp-fila button:hover { border-color: rgba(86,239,159,.5); }
+.mat-carp-fila button b { display: flex; align-items: baseline; gap: 7px; font-size: 15.5px; font-weight: 800; color: #fff; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mat-carp-fila button b::before { content: "▤"; color: #7c8696; font-size: 13px; font-weight: 400; }
+.mat-carp-fila button b i { font-style: normal; font-size: 11.5px; font-weight: 700; color: #9aa1b0; }
+.mat-carp-fila button small { display: block; font-size: 12px; color: #9aa1b0; margin-top: 3px; line-height: 1.35; }
+.mat-carp-fila button.on { background: var(--green, #56EF9F); border-color: transparent; }
+.mat-carp-fila button.on b, .mat-carp-fila button.on b i, .mat-carp-fila button.on small, .mat-carp-fila button.on b::before { color: var(--navy, #0D1117); }
+.mat-carp-sub { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-top: 10px; }
+.mat-carp-sub::-webkit-scrollbar { display: none; }
+.mat-carp-sub button { flex-shrink: 0; background: transparent; border: .5px solid rgba(86,239,159,.4); color: #e5e7eb; border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.mat-carp-sub button.on { background: #fff; color: var(--navy, #0D1117); border-color: transparent; }
+.mat-carp-sub button i { font-style: normal; font-size: 11px; opacity: .65; margin-left: 3px; }
+.mat-vacio { text-align: center; color: #9aa1b0; padding: 40px 0; }
+/* cada campaña con su color de borde, para distinguirlas de un vistazo */
+.mat-campana.c-oficios { border-color: rgba(245,197,66,.45); background: linear-gradient(160deg, rgba(245,197,66,.09), rgba(245,197,66,.02) 45%, rgba(255,255,255,.02)); }
+.mat-campana.c-oficios .mat-camp-cab > p:first-child, .mat-campana.c-oficios .mat-camp-ver { color: #F5C542; }
+.mat-campana.c-oficios .mat-camp-cab h2 span { background: #F5C542; }
+.mat-campana.c-historias { border-color: rgba(255,138,122,.45); background: linear-gradient(160deg, rgba(255,138,122,.09), rgba(255,138,122,.02) 45%, rgba(255,255,255,.02)); }
+.mat-campana.c-historias .mat-camp-cab > p:first-child, .mat-campana.c-historias .mat-camp-ver { color: #FF8A7A; }
+.mat-campana.c-historias .mat-camp-cab h2 span { background: #FF8A7A; }
+
+/* casos de uso: la carpeta del curioso */
+.mat-casos { padding-top: 6px; }
+.mat-casos .mat-camp-cab { margin-bottom: 6px; }
+.mat-casos-h { margin: 22px 0 10px; font-size: 12px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--green, #56EF9F); }
+.mat-casos-fila { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.mat-caso { background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.11); border-radius: 18px; padding: 16px 16px 14px; display: flex; flex-direction: column; min-width: 0; }
+.mat-caso h4 { margin: 0 0 6px; font-size: 19px; font-weight: 800; letter-spacing: -.4px; color: #fff; line-height: 1.2; }
+.mat-caso p { margin: 0 0 10px; font-size: 14px; color: #cdd3de; line-height: 1.5; }
+.mat-caso ol { margin: 0 0 10px; padding-left: 20px; font-size: 13.5px; color: #e5e7eb; line-height: 1.5; }
+.mat-caso ol li { margin-bottom: 3px; }
+.mat-caso ol li::marker { color: var(--green, #56EF9F); font-weight: 800; }
+.mat-caso small { display: inline-block; align-self: flex-start; font-size: 12px; font-weight: 700; color: #F5C542; background: rgba(245,197,66,.13); border-radius: 999px; padding: 4px 11px; margin-bottom: 12px; }
+.mat-caso-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+@media (max-width: 860px) {
+  .mat-carp-fila { display: flex; overflow-x: auto; scrollbar-width: none; gap: 7px; }
+  .mat-carp-fila::-webkit-scrollbar { display: none; }
+  .mat-carp-fila button { flex: 0 0 auto; min-width: 150px; }
+}
+/* lo que la carpeta esconde, de verdad se esconde */
+.mat-chips[hidden], .mat-barra [hidden], .mat-carpetas [hidden] { display: none !important; }
