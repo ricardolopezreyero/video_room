@@ -189,3 +189,88 @@
 .cand-prensa small { color: var(--cand-tenue); font-size: 12px; }
 .cand-ficha.chica.ancha { grid-column: 1 / -1; }
 .cand-ficha.chica .cand-proposito { margin-top: 12px; }
+
+/* ── la cara, la frase y la comparación de todos contra todos ─────────── */
+.cand-cara { display: block; object-fit: cover; border-radius: 22%; background: var(--cand-hundido); }
+.cand-cara.sin { display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--cand-acento); border: 1.5px dashed var(--cand-borde); letter-spacing: -.5px; }
+.cand-cara-btn { display: block; padding: 0; border: none; background: none; cursor: zoom-in; border-radius: 22%; line-height: 0; }
+.cand-cara-btn .cand-cara { width: 100%; height: 100%; transition: transform .18s; }
+.cand-cara-btn:hover .cand-cara { transform: scale(1.03); }
+.cand-cara-btn:focus-visible { outline: 2px solid var(--cand-acento); outline-offset: 3px; }
+.cand-cara.grande, .cand-cara-btn.grande { width: 168px; height: 168px; font-size: 54px; }
+.cand-cara.media, .cand-cara-btn.media { width: 96px; height: 96px; font-size: 32px; }
+.cand-cara.mini { width: 56px; height: 56px; font-size: 19px; border-radius: 16px; }
+.cand-retrato { position: relative; flex-shrink: 0; }
+.cand-retrato .cand-lugar { position: absolute; left: -8px; top: -10px; z-index: 2; font-size: 15px; letter-spacing: 0; line-height: 1; background: var(--cand-acento); color: var(--cand-sobre-acento); border-radius: 999px; padding: 6px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.cand-frente { align-items: flex-start; }
+.cand-quien h3 { font-size: 27px; }
+/* la frase: por qué podría ser esta persona. Es lo primero que se lee. */
+.cand-clave { margin: 4px 0 12px !important; padding: 12px 15px 13px; border-radius: 14px; background: var(--cand-acento-suave); border: .5px solid var(--cand-acento); color: var(--cand-fuerte); font-size: 18px; font-weight: 700; line-height: 1.35; letter-spacing: -.25px; max-width: 760px; }
+.cand-clave small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--cand-acento); margin-bottom: 4px; }
+.cand-clave.chica { font-size: 14px; padding: 9px 11px 10px; margin: 8px 0 8px !important; letter-spacing: 0; }
+.cand-ficha.chica .cand-clave { font-size: 15px; margin: 12px 0 0 !important; padding: 10px 12px 11px; }
+.cand-ficha.chica .cand-frente { gap: 12px; }
+.cand-ficha.destello { animation: cand-destello 1.8s ease-out; }
+@keyframes cand-destello { 0%, 35% { box-shadow: 0 0 0 3px var(--cand-acento); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+/* tabla de todos contra todos */
+.cand-matriz { min-width: 900px; }
+.cand-matriz thead th button { background: none; border: none; font: inherit; font-size: 11px; font-weight: 700; color: var(--cand-tenue); cursor: pointer; padding: 5px 7px; border-radius: 999px; white-space: nowrap; }
+.cand-matriz thead th button:hover { color: var(--cand-fuerte); }
+.cand-matriz thead th button.on { background: var(--cand-acento); color: var(--cand-sobre-acento); }
+.cand-matriz thead th[colspan] { text-align: left; padding-left: 12px; }
+.cand-matriz tbody { cursor: pointer; border-top: .5px solid var(--cand-borde); }
+.cand-matriz tbody tr { border-top: none; }
+.cand-matriz tbody:hover { background: var(--cand-acento-suave); }
+.cand-matriz tbody tr:hover { background: none; }
+.cand-matriz tbody.banca .cand-m-cara i { color: var(--cand-tenue); }
+.cand-matriz tbody.careo { background: var(--cand-acento-suave); box-shadow: inset 3px 0 0 var(--cand-acento); }
+.cand-m-cara { padding: 10px 6px 10px 12px !important; vertical-align: top; width: 96px; }
+.cand-m-cara div { display: flex; align-items: center; gap: 8px; }
+.cand-m-cara i { font-style: normal; font-size: 12px; font-weight: 800; color: var(--cand-acento); font-variant-numeric: tabular-nums; width: 18px; }
+.cand-matriz tbody th { display: table-cell; min-width: 190px; padding: 12px 8px 2px 4px; text-align: left; }
+.cand-matriz tbody th b { font-size: 15px; }
+.cand-m-clave td { text-align: left !important; padding: 0 14px 12px 4px !important; font-size: 13.5px; color: var(--cand-texto); line-height: 1.45; white-space: normal; }
+.cand-m-careo button { width: 30px; height: 30px; border-radius: 50%; border: .5px solid var(--cand-borde); background: transparent; color: var(--cand-fuerte); font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
+.cand-m-careo button[aria-pressed="true"] { background: var(--cand-acento); color: var(--cand-sobre-acento); border-color: transparent; }
+
+/* el careo: lado a lado */
+.cand-careo { margin-top: 16px; }
+.cand-careo.vacio p { border: .5px dashed var(--cand-borde); border-radius: 14px; padding: 14px 16px; color: var(--cand-tenue); font-size: 13.5px; margin: 0; text-align: center; }
+.cand-careo h4 { margin: 0 0 10px; }
+.cand-careo-fila { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(230px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.cand-careo-col { background: var(--cand-tarjeta); border: .5px solid var(--cand-borde); border-radius: 18px; padding: 14px 14px 12px; min-width: 0; display: flex; flex-direction: column; }
+.cand-careo-cab { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding-bottom: 10px; border-bottom: .5px solid var(--cand-borde); margin-bottom: 8px; }
+.cand-careo-cab .media { width: 112px; height: 112px; margin-bottom: 8px; }
+.cand-careo-cab b { color: var(--cand-fuerte); font-size: 18px; letter-spacing: -.3px; line-height: 1.2; }
+.cand-careo-cab small { color: var(--cand-tenue); font-size: 12.5px; line-height: 1.4; }
+.cand-careo-suma { font-size: 12px; font-weight: 700; color: var(--cand-tenue); }
+.cand-careo-rasgo { padding: 7px 0; border-bottom: .5px solid var(--cand-borde); }
+.cand-careo-rasgo span { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 800; color: var(--cand-fuerte); }
+.cand-careo-rasgo p { margin: 3px 0 0 20px; font-size: 12.5px; color: var(--cand-texto); line-height: 1.45; }
+.cand-careo-rasgo.n1 span { color: var(--cand-tenue); }
+.cand-careo-rasgo.n1 p { color: var(--cand-tenue); }
+.cand-careo-rasgo.n0 span { color: var(--cand-alerta); }
+.cand-careo-pie { margin-top: auto; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.cand-careo-pie h5 { flex-basis: 100%; margin: 0; font-size: 10.5px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; color: var(--cand-alerta); }
+.cand-careo-pie ul { flex-basis: 100%; margin: 0 0 6px; padding-left: 16px; font-size: 12.5px; color: var(--cand-texto); line-height: 1.45; }
+.cand-careo-pie p { flex-basis: 100%; margin: 0 0 6px; font-size: 12.5px; color: var(--cand-texto); line-height: 1.45; }
+
+/* la foto en grande */
+.cand-visor { position: fixed; inset: 0; z-index: 500; background: rgba(5,7,10,.86); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; cursor: zoom-out; }
+.cand-visor figure { margin: 0; max-width: 420px; width: 100%; text-align: center; color: #fff; }
+.cand-visor img { width: min(380px, 86vw); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 26px; display: block; margin: 0 auto 14px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.cand-visor figcaption b { display: block; font-size: 22px; font-weight: 800; letter-spacing: -.4px; }
+.cand-visor figcaption span { display: block; font-size: 13.5px; color: #b6bdc9; margin-top: 4px; line-height: 1.45; }
+.cand-visor figcaption em { display: block; font-style: normal; font-size: 16px; font-weight: 700; color: #56EF9F; margin-top: 10px; line-height: 1.4; }
+.cand-visor .cand-btn { margin-top: 16px; color: #fff; border-color: rgba(255,255,255,.3); }
+
+@media (max-width: 820px) {
+  .cand-cara.grande, .cand-cara-btn.grande { width: 116px; height: 116px; font-size: 40px; }
+  .cand-quien h3 { font-size: 22px; }
+  .cand-clave { font-size: 16px; }
+  .cand-frente { flex-wrap: nowrap; }
+  .cand-ficha:not(.chica) .cand-frente { flex-wrap: wrap; }
+  .cand-ficha:not(.chica) .cand-quien { flex-basis: calc(100% - 140px); }
+  .cand-careo-fila { grid-template-columns: repeat(var(--n, 2), minmax(250px, 82vw)); }
+}

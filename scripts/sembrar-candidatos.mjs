@@ -6,12 +6,16 @@
 //   node scripts/sembrar-candidatos.mjs privado/candidatos-ceo.json --remote
 //
 // El archivo: { "vacante": "ceo", "meta": {…}, "fichas": [{ "id", "grupo", "orden", …ficha }] }
+// Fotos: si junto al archivo hay una carpeta fotos/ con <id>.jpg (unos 320 px),
+// se guarda dentro de la ficha como imagen incrustada. Tampoco van al
+// repositorio: viven en privado/ y en la base.
+//
 // Volver a sembrar actualiza el contenido de cada ficha y respeta el estado y
 // las notas que el equipo ya escribió. Con --podar borra las fichas sembradas
 // que ya no vengan en el archivo (nunca las que agregó el equipo a mano).
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const [archivo, ...resto] = process.argv.slice(2);
@@ -32,6 +36,12 @@ for (const f of j.fichas || []) {
   if (datos.liga && !/^https?:\/\/[^\s<>"']+$/i.test(datos.liga)) throw new Error("liga inválida en " + id);
   if (datos.nota_conexion && datos.nota_conexion.length > NOTA_MAX) throw new Error(`la nota de ${id} mide ${datos.nota_conexion.length} (máximo ${NOTA_MAX})`);
   for (const [k, r] of Object.entries(datos.rasgos || {})) if (![0, 1, 2, 3].includes(r[0])) throw new Error(`nivel inválido en ${id} · ${k}`);
+  const foto = join(dirname(archivo), "fotos", id + ".jpg");
+  if (existsSync(foto)) {
+    const b = readFileSync(foto);
+    if (b.length > 60_000) throw new Error(`la foto de ${id} pesa ${b.length} bytes: achícala a unos 320 px`);
+    datos.foto = "data:image/jpeg;base64," + b.toString("base64");
+  }
   filas.push({ id, grupo, orden: Number(orden) || 100, datos });
 }
 const sql = filas.map((f) =>
@@ -45,4 +55,4 @@ writeFileSync(ruta, sql.join("\n") + "\n");
 const r = spawnSync("npx", ["wrangler", "d1", "execute", "video-room-db", destino, "--file", ruta, "--yes"], { stdio: "inherit" });
 rmSync(dir, { recursive: true, force: true });
 if (r.status !== 0) process.exit(r.status || 1);
-console.log(`Sembradas ${filas.length} filas de «${vacante}» (${destino.slice(2)}).`);
+console.log(`Sembradas ${filas.length} filas de «${vacante}» (${destino.slice(2)}), ${filas.filter((f) => f.datos.foto).length} con foto.`);

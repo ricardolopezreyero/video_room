@@ -712,6 +712,15 @@ salimos a buscar con el perfil en la mano y guardamos una ficha por persona.
   comprobar o bandera, cada uno con su evidencia), qué revisar, quién puede
   hacer la presentación, la nota de invitación (cabe en 200 caracteres), el
   mensaje completo y tres preguntas para la primera llamada.
+- **La cara y la frase:** cada ficha lleva su `foto` (320 px, incrustada en la
+  ficha; se abre en grande con un toque) y su `clave`: una frase que dice por
+  qué podría ser esa persona. Es lo primero que se lee, arriba de todo. Las
+  fotos viven en `privado/fotos/<id>.jpg` y el sembrador las mete a la base;
+  no van al repositorio.
+- **Todos contra todos:** una tabla con todas las fichas que traen rasgos,
+  principales y banca, con su foto y su frase. Se ordena tocando el nombre de
+  un rasgo. Con ＋ se eligen de dos a cuatro personas y salen lado a lado:
+  foto, frase, cada rasgo con su evidencia y qué revisar.
 - **Rondas:** la búsqueda se hace por rondas. Quien baja de la lista principal
   no se borra: pasa a la banca con su ficha completa (se abre igual) y la razón.
   Las fichas nuevas de una ronda llevan su etiqueta (campo `nuevo`).
