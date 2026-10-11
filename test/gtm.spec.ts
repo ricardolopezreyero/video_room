@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/index";
-import { cookieFor, createUser } from "./helpers";
+import { cookieFor, createUser, createRoom, createLiveSession } from "./helpers";
 import { TAREAS } from "../src/lib/gtm-tareas";
+import { PUNTOS, puntoAlcanzado } from "../src/lib/gtm-puntos";
 
 const conCorreo = async (email: string) => { const id = await createUser(); await env.DB.prepare("UPDATE users SET email = ?, name = ? WHERE id = ?").bind(email, email.split("@")[0], id).run(); return id; };
 const pedir = async (path: string, uid?: string, body?: unknown) => app.request(path, { method: body ? "POST" : "GET", headers: Object.assign({ "Content-Type": "application/json" }, uid ? { Cookie: await cookieFor(uid) } : {}), body: body ? JSON.stringify(body) : undefined }, env);
@@ -71,5 +72,67 @@ describe("go-to-market", () => {
     expect((await pedir("/api/gtm/tarea", nueva, { id: "202", hecha: true })).status).toBe(200);
     await pedir("/api/gtm/equipo", ricardo, { email: "intensa@ejemplo.mx", quitar: true });
     expect((await pedir("/gtm", nueva)).status).toBe(403);
+  });
+
+  it("los puntos de control cuelgan de tareas reales, van en orden y sus metas nunca bajan", () => {
+    expect(PUNTOS.length).toBeGreaterThanOrEqual(12);
+    expect(new Set(PUNTOS.map((p) => p.id)).size).toBe(PUNTOS.length);
+    const orden = TAREAS.map((t) => t[0]);
+    let pos = -1;
+    for (const p of PUNTOS) {
+      const t = TAREAS.find((x) => x[0] === p.despues);
+      expect(t, `la tarea ${p.despues} de ${p.id}`).toBeTruthy();
+      expect(t![1]).toBe(p.fase); // el punto vive en el mismo paso que su tarea
+      expect(orden.indexOf(p.despues)).toBeGreaterThan(pos); // y aparecen en orden a lo largo del checklist
+      pos = orden.indexOf(p.despues);
+      expect(TAREAS.some((x) => x[0] === p.id)).toBe(false); // nunca choca con el id de una tarea
+      for (const id of p.empujan) expect(orden, `tarea ${id} que empuja ${p.id}`).toContain(id);
+      expect(p.titulo.length).toBeGreaterThan(8);
+      expect(p.detalle.length).toBeGreaterThan(40);
+      expect(p.si_no.length).toBeGreaterThan(30);
+    }
+    // Cada paso tiene al menos un punto, y cada meta crece o se queda igual.
+    for (const f of [1, 2, 3, 4, 5]) expect(PUNTOS.some((p) => p.fase === f)).toBe(true);
+    for (const k of ["creadores", "pagan", "puerta", "casa"] as const) {
+      const serie = PUNTOS.map((p) => p.metas[k]).filter((v): v is number => v != null);
+      expect([...serie].sort((a, b) => a - b)).toEqual(serie);
+    }
+    // La casa se queda con 20 % de la puerta en todas las metas.
+    for (const p of PUNTOS) if (p.metas.puerta && p.metas.casa) expect(p.metas.casa).toBe(p.metas.puerta * 0.2);
+    // El último punto con puerta es el millón.
+    expect(PUNTOS.filter((p) => p.metas.casa).pop()!.metas.casa).toBe(1000000);
+  });
+
+  it("un punto de control no se palomea a mano: se cumple solo cuando los números reales llegan", async () => {
+    const ricardo = await conCorreo("ricardo@superleads.mx");
+    const html = await (await pedir("/gtm", ricardo)).text();
+    expect(html).toContain('"puntos":[');
+    expect(html).toContain("puntos de control");
+    // A mano no se puede.
+    expect((await pedir("/api/gtm/tarea", ricardo, { id: "pc01", hecha: true })).status).toBe(400);
+    const antes = (await (await pedir("/api/gtm", ricardo)).json()) as { hechas: Record<string, unknown>; real: { creadores_mes: number; pagan_mes: number; puerta_mes_cents: number; casa_mes_cents: number; casa_3m_min_cents: number } };
+    expect(antes.hechas.pc01).toBeUndefined();
+    expect(puntoAlcanzado(PUNTOS[0], antes.real)).toBe(false);
+
+    // Una sala real cobra cinco entradas de $60 a cinco personas distintas: $300 de puerta, $60 para la casa.
+    const creador = await createUser();
+    const sala = await createRoom(creador), sesion = await createLiveSession(sala.id);
+    for (let i = 0; i < 5; i++) {
+      const u = await createUser();
+      await env.DB.prepare("INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, unixepoch() + 3600, 'd', 6000, 4800)").bind(`pase_pc_${i}`, sesion, u).run();
+    }
+    await env.DB.prepare("INSERT INTO ledger (id, user_id, amount_cents, type, ref_id, idem_key) VALUES ('ldg_pc_1', ?, 24000, 'ganancia_entrada', 'x', 'idem_pc_1')").bind(creador).run();
+
+    const j = (await (await pedir("/api/gtm", ricardo)).json()) as { hechas: Record<string, { por: string; at: number }>; real: { creadores_mes: number; pagan_mes: number; puerta_mes_cents: number; casa_mes_cents: number } };
+    expect(j.real).toMatchObject({ creadores_mes: 1, pagan_mes: 5, puerta_mes_cents: 30000, casa_mes_cents: 6000 });
+    expect(j.hechas.pc01.por).toBe("sistema");
+    expect(j.hechas.pc02).toBeUndefined(); // el siguiente pide 20 personas y $1,500
+    // La fecha queda guardada aunque los números del mes cambien después.
+    await env.DB.prepare("DELETE FROM passes WHERE id LIKE 'pase_pc_%'").run();
+    const luego = (await (await pedir("/api/gtm", ricardo)).json()) as { hechas: Record<string, { at: number }>; real: { puerta_mes_cents: number } };
+    expect(luego.real.puerta_mes_cents).toBe(0);
+    expect(luego.hechas.pc01.at).toBe(j.hechas.pc01.at);
+    // Y nadie lo puede despalomear.
+    expect((await pedir("/api/gtm/tarea", ricardo, { id: "pc01", hecha: false })).status).toBe(400);
   });
 });

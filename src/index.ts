@@ -23,6 +23,7 @@ import { enviarCortesSemanales } from "./lib/corte-semanal";
 import { rescatar, esRuido } from "./lib/rescate";
 import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm } from "./lib/gtm";
 import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candidatos";
+import { registrarPuntos } from "./lib/gtm-puntos";
 import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
@@ -160,6 +161,7 @@ app.get("/gtm", async (c) => {
   const cab = { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" };
   if (!a.ok || !a.user) return c.html(paginaGtmCerrada({ conSesion: !!a.user, email: a.user?.email, v }), a.user ? 403 : 401, cab);
   const [estado, real, postulaciones] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env)]);
+  await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
   return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, v }), 200, cab);
 });
 
@@ -167,6 +169,7 @@ app.get("/api/gtm", async (c) => {
   const a = await accesoGtm(c);
   if (!a.ok) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
   const [estado, real, postulaciones] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env)]);
+  await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
   return c.json({ ...estado, real, postulaciones }, 200, { "Cache-Control": "no-store" });
 });
 
@@ -489,6 +492,11 @@ export default {
       ctx.waitUntil(enviarCortesSemanales(env).then((r) => console.log("corte semanal", r)));
       ctx.waitUntil(resumenEnlacesRotos(env).catch((err) => console.error("enlaces rotos", err)));
     }
-    else ctx.waitUntil(cleanupStaleLiveSessions(env));
+    else {
+      ctx.waitUntil(cleanupStaleLiveSessions(env));
+      // Los puntos de control del plan se cumplen solos: cada media hora se
+      // comparan con los números reales y se guarda la fecha del que se alcanza.
+      ctx.waitUntil(numerosReales(env).then((real) => registrarPuntos(env, real)).then((n) => { if (n.length) console.log("puntos de control alcanzados", n); }).catch((err) => console.error("puntos gtm", err)));
+    }
   },
 };

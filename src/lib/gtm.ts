@@ -8,6 +8,7 @@ import type { User } from "./db";
 import { currentUser } from "./current-user";
 import { ADMIN_EMAIL, escapeHtml } from "./email";
 import { TAREAS } from "./gtm-tareas";
+import { PUNTOS } from "./gtm-puntos";
 
 type Ctx = Context<{ Bindings: Env }>;
 
@@ -43,7 +44,12 @@ export async function numerosReales(env: Env) {
   const d = new Date((ahora - CDMX) * 1000);
   const inicioMes = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000) + CDMX, hace7 = ahora - 7 * 86400;
   const uno = <T>(sql: string, ...b: unknown[]) => env.DB.prepare(sql).bind(...b).first<T>().catch(() => null);
-  const [pases, memb, envios, creadores, registros, salas, sesiones] = await Promise.all([
+  // Los tres últimos meses cerrados (para «el millón, tres meses seguidos»).
+  const mes = (k: number) => Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - k, 1) / 1000) + CDMX;
+  const [m3, m2, m1] = [mes(3), mes(2), mes(1)];
+  const tres = (tabla: string, campo: string, monto: string, extra = "") => uno<{ a: number; b: number; c: number }>(
+    `SELECT COALESCE(SUM(CASE WHEN ${campo} < ?2 THEN ${monto} ELSE 0 END),0) a, COALESCE(SUM(CASE WHEN ${campo} >= ?2 AND ${campo} < ?3 THEN ${monto} ELSE 0 END),0) b, COALESCE(SUM(CASE WHEN ${campo} >= ?3 THEN ${monto} ELSE 0 END),0) c FROM ${tabla} WHERE ${campo} >= ?1 AND ${campo} < ?4${extra}`, m3, m2, m1, inicioMes);
+  const [pases, memb, envios, creadores, registros, salas, sesiones, creadoresMes, pagan, pases3, memb3] = await Promise.all([
     uno<{ g: number; casa: number; n: number }>("SELECT COALESCE(SUM(amount_cents),0) g, COALESCE(SUM(amount_cents - creator_cents),0) casa, COUNT(*) n FROM passes WHERE purchased_at >= ? AND amount_cents > 0", inicioMes),
     uno<{ g: number; casa: number }>("SELECT COALESCE(SUM(price_cents),0) g, COALESCE(SUM(price_cents - creator_cents),0) casa FROM memberships WHERE created_at >= ?", inicioMes),
     uno<{ g: number }>("SELECT COALESCE(SUM(amount_cents),0) g FROM tips WHERE created_at >= ?", inicioMes),
@@ -51,13 +57,21 @@ export async function numerosReales(env: Env) {
     uno<{ n: number }>("SELECT COUNT(*) n FROM users"),
     uno<{ n: number }>("SELECT COUNT(*) n FROM rooms"),
     uno<{ n: number }>("SELECT COUNT(*) n FROM sessions WHERE started_at >= ?", hace7),
+    uno<{ n: number }>(`SELECT COUNT(DISTINCT user_id) n FROM ledger WHERE amount_cents > 0 AND type IN ${GANANCIAS} AND created_at >= ?`, inicioMes),
+    uno<{ n: number }>("SELECT COUNT(*) n FROM (SELECT user_id FROM passes WHERE purchased_at >= ?1 AND amount_cents > 0 UNION SELECT user_id FROM memberships WHERE created_at >= ?1)", inicioMes),
+    tres("passes", "purchased_at", "amount_cents - creator_cents", " AND amount_cents > 0"),
+    tres("memberships", "created_at", "price_cents - creator_cents"),
   ]);
+  const casa3 = (["a", "b", "c"] as const).map((k) => (pases3?.[k] ?? 0) + (memb3?.[k] ?? 0));
   return {
     puerta_mes_cents: (pases?.g ?? 0) + (memb?.g ?? 0),
     casa_mes_cents: (pases?.casa ?? 0) + (memb?.casa ?? 0),
     entradas_mes: pases?.n ?? 0,
     envios_mes_cents: envios?.g ?? 0,
     creadores_semana: creadores?.n ?? 0,
+    creadores_mes: creadoresMes?.n ?? 0,
+    pagan_mes: pagan?.n ?? 0,
+    casa_3m_min_cents: Math.min(...casa3),
     registros: registros?.n ?? 0,
     salas: salas?.n ?? 0,
     sesiones_semana: sesiones?.n ?? 0,
@@ -175,6 +189,14 @@ const NUMEROS = `
     <div class="gtm-calc-out" id="gtm-calc-out"></div>
   </div>
   <p class="gtm-nota">El costo de tarjeta es una estimación con la tarifa pública (3.6 % más $3 y su impuesto por recarga). Hay que confirmarlo con el procesador: tarea 106.</p>
+</section>
+
+<section class="gtm-sec">
+  <p class="gtm-ceja gtm-ceja-oro">Usuarios e ingreso, mes por mes</p>
+  <h3>La escalera: los puntos de control</h3>
+  <p>Cada escalón dice cuántos usuarios y cuánto dinero debe haber en un mes. A la derecha, dónde vamos hoy con datos reales. Están también dentro del checklist, después de las tareas que los producen.</p>
+  <div id="gtm-escalera"></div>
+  <p class="gtm-nota">«Personas que pagan» sale de un supuesto: cada persona gasta en promedio $110 al mes en la puerta (dos entradas de $55). «Para la casa» es el 20 % de la puerta, antes del costo de tarjeta. Se corrigen con el dato real.</p>
 </section>
 
 <section class="gtm-sec">
@@ -362,7 +384,7 @@ const EQUIPO = `
 </section>`;
 
 export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; v: string }): string {
-  const datos = JSON.stringify({ yo: { email: o.user.email, nombre: o.user.name, admin: o.admin }, tareas: TAREAS, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
+  const datos = JSON.stringify({ yo: { email: o.user.email, nombre: o.user.name, admin: o.admin }, tareas: TAREAS, puntos: PUNTOS, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
   const v = `?v=${encodeURIComponent(o.v)}`;
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -373,10 +395,11 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
 <body class="app-shell gtm-cuerpo">
 <div class="gtm-hoja">
   <header class="gtm-cab">
-    <div><p class="gtm-ceja">Video Room · plan interno del equipo</p><h1>Go-to-market</h1><p class="muted">De cero a $1,000,000 al mes: la estrategia, la cuenta y las ${TAREAS.length} tareas.</p></div>
+    <div><p class="gtm-ceja">Video Room · plan interno del equipo</p><h1>Go-to-market</h1><p class="muted">De cero a $1,000,000 al mes: la estrategia, la cuenta, las ${TAREAS.length} tareas y ${PUNTOS.length} puntos de control.</p></div>
     <a class="gtm-salir" href="/app/monedero" title="Volver al monedero" aria-label="Volver al monedero">✕</a>
   </header>
   <div class="gtm-hoy" id="gtm-hoy" aria-label="Dónde vamos hoy"></div>
+  <div id="gtm-siguiente"></div>
   <nav class="gtm-tabs" id="gtm-tabs" role="tablist">
     <button type="button" data-tab="resumen" class="on">Resumen</button>
     <button type="button" data-tab="numeros">Números</button>
@@ -393,6 +416,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
         <p class="gtm-ceja">Lo que hay que hacer</p>
         <h2>Checklist</h2>
         <p>Cada palomita se guarda sola y la ve todo el equipo. Las tareas con ritmo se palomean cuando la costumbre ya quedó instalada.</p>
+        <p class="gtm-nota gtm-nota-oro"><b>Los puntos de control</b> van mezclados entre las tareas y no se palomean. Son los números a los que hay que llegar: usuarios al mes e ingreso al mes. Se cumplen solos cuando los datos reales llegan, y queda la fecha.</p>
         <div class="gtm-carga" id="gtm-carga"></div>
         <div class="gtm-filtros" id="gtm-filtros"></div>
         <div id="gtm-lista"></div>

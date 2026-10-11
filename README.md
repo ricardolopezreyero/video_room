@@ -580,6 +580,17 @@ checklist compartido de 214 tareas.
 - **Dónde vamos hoy:** la franja de arriba usa datos reales
   (`numerosReales`): creadores que cobraron en 7 días, puerta del mes
   (entradas + membresías), lo que deja a la casa, salas y sesiones.
+- **Puntos de control:** `src/lib/gtm-puntos.ts`. Son los objetivos económicos
+  del plan: cuántos usuarios al mes (creadores que cobran y personas que pagan)
+  y cuánto ingreso al mes (puerta y lo que le queda a la casa). Van mezclados
+  en el checklist, justo después de la tarea de la que cuelgan (`despues`), en
+  oro y sin palomita, porque no son cosas por hacer sino números a los que hay
+  que llegar. **No se palomean a mano:** se cumplen solos cuando los números
+  reales del mes alcanzan todas sus metas, y la fecha queda guardada (en
+  `gtm_tareas`, con `hecha_por = 'sistema'`); lo revisa cada visita a `/gtm` y
+  el cron de cada media hora. También salen arriba («siguiente punto de
+  control»), en cada paso del Resumen y como escalera completa en Números.
+  Para mover una meta: cambiar el número en el archivo (no el `id`).
 - API: `GET /api/gtm`, `POST /api/gtm/tarea`, `POST /api/gtm/equipo`.
   Migración 0016. Pruebas: `test/gtm.spec.ts`.
 

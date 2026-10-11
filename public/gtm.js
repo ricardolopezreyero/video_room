@@ -2,7 +2,9 @@
 // estrategia ni las tareas: el servidor las entrega en window.__GTM solo a
 // quien tiene acceso. Aquí viven las pestañas, el checklist (cada palomita se
 // guarda en el servidor y la ve todo el equipo), los filtros, la carga por
-// persona y por área, y la calculadora hacia el millón.
+// persona y por área, y la calculadora hacia el millón. Y los puntos de control:
+// los números (usuarios e ingreso al mes) a los que hay que llegar, mezclados
+// entre las tareas; no se palomean, se cumplen solos con los datos reales.
 (function () {
   "use strict";
   var _k = "eye", _rev = 181218;
@@ -18,6 +20,13 @@
   const RITMO = { u: "", d: "diario", s: "semanal", m: "mensual" };
   const T = G.tareas.map((t) => ({ id: t[0], fase: t[1], area: t[2], quien: t[3], esf: t[4], ritmo: t[5], titulo: t[6], detalle: t[7] }));
   let hechas = G.hechas || {}, real = G.real || {}, equipo = G.equipo || [], postulaciones = G.postulaciones || [];
+  const P = G.puntos || [];
+  // Cada meta: cómo se llama, si es dinero y a cuál de las dos preguntas responde (usuarios o ingreso).
+  const METAS = { creadores: ["creadores que cobran", "", "u"], pagan: ["personas que pagan", "", "u"], puerta: ["de puerta", "$", "i"], casa: ["para la casa", "$", "i"], casa3: ["para la casa, en cada uno de los últimos tres meses", "$", "i"] };
+  const realDe = (k) => (k === "creadores" ? real.creadores_mes || 0 : k === "pagan" ? real.pagan_mes || 0 : k === "puerta" ? (real.puerta_mes_cents || 0) / 100 : k === "casa" ? (real.casa_mes_cents || 0) / 100 : (real.casa_3m_min_cents || 0) / 100);
+  const cifra = (k, v) => (METAS[k][1] === "$" ? pesos(v) : num(v));
+  const avancePunto = (p) => Math.min(...Object.keys(p.metas).map((k) => Math.min(1, realDe(k) / p.metas[k])));
+  const siguientePunto = () => P.find((p) => !hechas[p.id]);
   const F = Object.assign({ fase: 0, area: "", quien: "", estado: "todas", q: "" }, (() => { try { return JSON.parse(localStorage.getItem("vr_gtm_filtros") || "{}"); } catch { return {}; } })());
   const recordar = () => { try { localStorage.setItem("vr_gtm_filtros", JSON.stringify(F)); } catch {} };
   function toast(msg) { const t = $("gtm-toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2400); }
@@ -50,11 +59,63 @@
       a.querySelector(".gtm-avance div").style.width = (tot.length ? (h / tot.length) * 100 : 0) + "%";
       a.querySelector("small").textContent = `${h} de ${tot.length} tareas`;
       a.onclick = () => { F.fase = f; F.area = ""; F.quien = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist(); verTab("checklist", true); };
+      // La meta económica del paso: su último punto de control con puerta.
+      const ult = P.filter((p) => p.fase === f && p.metas.puerta).pop();
+      if (ult) { let e = a.querySelector(".gtm-meta-eco"); if (!e) { e = document.createElement("p"); e.className = "gtm-meta-eco"; a.insertBefore(e, a.querySelector(".gtm-avance")); } e.innerHTML = `<i>◆ Al cerrar:</i> ${ult.metas.creadores === 1 ? "1 creador" : num(ult.metas.creadores) + " creadores"} · ${pesos(ult.metas.puerta)} de puerta · ${pesos(ult.metas.casa)} para la casa${hechas[ult.id] ? " ✓" : ""}`; }
     });
+    pintarSiguiente();
+  }
+
+  /* ── puntos de control: usuarios e ingreso al mes ───────────────────── */
+  function pintarSiguiente() {
+    const c = $("gtm-siguiente"); if (!c || !P.length) return;
+    const p = siguientePunto(), listos = P.filter((x) => hechas[x.id]).length;
+    if (!p) { c.innerHTML = `<div class="gtm-sig alcanzado"><span>◆ Puntos de control</span><b>Los ${P.length} están alcanzados.</b></div>`; return; }
+    c.innerHTML = `<button type="button" class="gtm-sig" data-ir-punto="${p.id}"><span>◆ Siguiente punto de control · ${listos} de ${P.length} alcanzados · ${esc(p.cuando)}</span><b>${esc(p.titulo)}</b><em>${Object.keys(p.metas).map((k) => `<u class="${realDe(k) >= p.metas[k] ? "ok" : ""}">${cifra(k, realDe(k))} de ${cifra(k, p.metas[k])}</u> ${METAS[k][0]}`).join(" · ")}</em><div class="gtm-avance"><div style="width:${Math.max(1.5, avancePunto(p) * 100).toFixed(1)}%"></div></div></button>`;
+    c.querySelector("[data-ir-punto]").onclick = () => irAPunto(p.id);
+  }
+  function puntoHtml(p) {
+    const h = hechas[p.id], n = P.indexOf(p) + 1;
+    const meta = (k) => { const v = realDe(k), m = p.metas[k]; return `<div class="gtm-meta-num${v >= m ? " ok" : ""}"><b>${cifra(k, m)}</b><span>${METAS[k][0]}</span><div class="gtm-avance"><div style="width:${Math.min(100, Math.max(v > 0 ? 2 : 0, (v / m) * 100)).toFixed(1)}%"></div></div><small>este mes: ${cifra(k, v)}</small></div>`; };
+    const grupo = (tipo, titulo) => { const ks = Object.keys(p.metas).filter((k) => METAS[k][2] === tipo); return ks.length ? `<div class="gtm-punto-grupo"><h5>${titulo}</h5><div>${ks.map(meta).join("")}</div></div>` : ""; };
+    const emp = p.empujan.map((id) => { const t = T.find((x) => x.id === id); return t ? `<button type="button" data-ir-tarea="${id}" class="${hechas[id] ? "hecha" : ""}">${hechas[id] ? "✓ " : ""}${id} · ${esc(t.titulo)}</button>` : ""; }).join("");
+    return `<article class="gtm-punto${h ? " alcanzado" : ""}" data-punto="${p.id}">
+      <div class="gtm-punto-cab"><span>◆ Punto de control ${n} de ${P.length}</span><em>${esc(p.cuando)}</em>${h ? `<i class="ok">Alcanzado · ${fecha(h.at)}</i>` : `<i>Vamos al ${Math.floor(avancePunto(p) * 100)} %</i>`}</div>
+      <b>${esc(p.titulo)}</b><p>${esc(p.detalle)}</p>
+      <div class="gtm-punto-metas">${grupo("u", "Usuarios al mes")}${grupo("i", "Ingreso al mes")}</div>
+      <div class="gtm-punto-pie"><h5>Lo que más lo mueve</h5><div class="gtm-punto-emp">${emp}</div><p><u>Si no se llega:</u> ${esc(p.si_no)}</p></div>
+    </article>`;
+  }
+  const pasaPunto = (p) => (!F.fase || p.fase === F.fase) && (F.estado === "todas" || F.estado === "puntos" || (F.estado === "hechas") === !!hechas[p.id]) && (!F.q || llano(p.titulo + " " + p.detalle + " punto de control " + p.cuando).includes(llano(F.q)));
+  function enlazarPuntos(raiz) {
+    (raiz || document).querySelectorAll("[data-ir-tarea]").forEach((b) => (b.onclick = () => irATarea(b.dataset.irTarea)));
+  }
+  function repintarPuntos() {
+    document.querySelectorAll("#gtm-lista .gtm-punto").forEach((el) => { const p = P.find((x) => x.id === el.dataset.punto); if (p) el.outerHTML = puntoHtml(p); });
+    enlazarPuntos($("gtm-lista")); pintarEscalera();
+  }
+  function destello(el) { if (!el) return; el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("destello"); setTimeout(() => el.classList.remove("destello"), 1800); }
+  function irAPunto(id) {
+    const p = P.find((x) => x.id === id); if (!p) return;
+    F.fase = 0; F.q = ""; if (F.estado !== "todas" && F.estado !== "puntos") F.estado = "todas"; recordar(); pintarChecklist(); verTab("checklist", true);
+    setTimeout(() => destello(document.querySelector(`.gtm-punto[data-punto="${id}"]`)), 60);
+  }
+  function irATarea(id) {
+    F.fase = 0; F.area = ""; F.quien = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist();
+    setTimeout(() => destello(document.querySelector(`.gtm-tarea[data-id="${id}"]`)), 60);
+  }
+  function pintarEscalera() {
+    const c = $("gtm-escalera"); if (!c || !P.length) return;
+    const celda = (p, k) => (p.metas[k] == null ? "<td>—</td>" : `<td class="${realDe(k) >= p.metas[k] ? "ok" : ""}">${cifra(k, p.metas[k])}</td>`);
+    c.innerHTML = `<div class="gtm-tabla-caja"><table class="gtm-tabla gtm-escalera"><thead><tr><th>#</th><th>Cuándo</th><th>Punto de control</th><th>Creadores que cobran</th><th>Personas que pagan</th><th>Puerta del mes</th><th>Para la casa</th><th>Cómo vamos</th></tr></thead><tbody>
+      <tr class="hoy"><td>◆</td><td>Hoy</td><td><b>Este mes, con datos reales</b></td><td>${num(realDe("creadores"))}</td><td>${num(realDe("pagan"))}</td><td>${pesos(realDe("puerta"))}</td><td>${pesos(realDe("casa"))}</td><td></td></tr>
+      ${P.map((p, i) => `<tr data-ir-punto="${p.id}" class="${hechas[p.id] ? "alcanzado" : ""}"><td>${i + 1}</td><td>${esc(p.cuando)}</td><td><b>${esc(p.titulo)}</b><small>Paso ${p.fase} · ${FASES[p.fase]}</small></td>${celda(p, "creadores")}${celda(p, "pagan")}${celda(p, "puerta")}${p.metas.casa3 ? `<td>${pesos(p.metas.casa3)} × 3 meses</td>` : celda(p, "casa")}<td>${hechas[p.id] ? `<i class="ok">Alcanzado · ${fecha(hechas[p.id].at)}</i>` : `<i>${Math.floor(avancePunto(p) * 100)} %</i>`}</td></tr>`).join("")}
+    </tbody></table></div>`;
+    c.querySelectorAll("[data-ir-punto]").forEach((tr) => (tr.onclick = () => irAPunto(tr.dataset.irPunto)));
   }
 
   /* ── checklist ──────────────────────────────────────────────────────── */
-  const pasa = (t, sin) => (sin === "fase" || !F.fase || t.fase === F.fase) && (sin === "area" || !F.area || t.area === F.area) && (sin === "quien" || !F.quien || t.quien === F.quien) && (F.estado === "todas" || (F.estado === "hechas") === !!hechas[t.id]) && (!F.q || llano(t.titulo + " " + t.detalle + " " + t.id).includes(llano(F.q)));
+  const pasa = (t, sin) => (sin === "fase" || !F.fase || t.fase === F.fase) && (sin === "area" || !F.area || t.area === F.area) && (sin === "quien" || !F.quien || t.quien === F.quien) && (F.estado === "todas" || (F.estado !== "puntos" && (F.estado === "hechas") === !!hechas[t.id])) && (!F.q || llano(t.titulo + " " + t.detalle + " " + t.id).includes(llano(F.q)));
   function pintarCarga() {
     // La carga: cuánto falta por quién y por área, en tareas y en horas aproximadas.
     const grupo = (titulo, mapa, campo) => {
@@ -69,7 +130,7 @@
   function pintarFiltros() {
     const chip = (campo, valor, txt) => `<button type="button" data-campo="${campo}" data-v="${valor}" class="${String(F[campo]) === String(valor) ? "on" : ""}">${txt}</button>`;
     $("gtm-filtros").innerHTML = `<div class="gtm-chips">${chip("fase", 0, "Todos los pasos")}${[1, 2, 3, 4, 5].map((f) => chip("fase", f, `${f} · ${FASES[f]}`)).join("")}</div>
-      <div class="gtm-chips">${chip("estado", "todas", "Todas")}${chip("estado", "pendientes", "Pendientes")}${chip("estado", "hechas", "Hechas")}<input type="search" id="gtm-q" placeholder="Buscar tarea…" value="${esc(F.q)}" autocomplete="off">${F.area || F.quien || F.q || F.fase || F.estado !== "todas" ? `<button type="button" id="gtm-limpiar" class="limpiar">Quitar filtros</button>` : ""}</div>`;
+      <div class="gtm-chips">${chip("estado", "todas", "Todas")}${chip("estado", "pendientes", "Pendientes")}${chip("estado", "hechas", "Hechas")}${P.length ? chip("estado", "puntos", "◆ Solo puntos de control") : ""}<input type="search" id="gtm-q" placeholder="Buscar tarea…" value="${esc(F.q)}" autocomplete="off">${F.area || F.quien || F.q || F.fase || F.estado !== "todas" ? `<button type="button" id="gtm-limpiar" class="limpiar">Quitar filtros</button>` : ""}</div>`;
     $("gtm-filtros").querySelectorAll("[data-campo]").forEach((b) => (b.onclick = () => { F[b.dataset.campo] = b.dataset.campo === "fase" ? +b.dataset.v : b.dataset.v; recordar(); pintarChecklist(); }));
     let tq = 0; $("gtm-q").oninput = (e) => { F.q = e.target.value; clearTimeout(tq); tq = setTimeout(() => { recordar(); pintarLista(); pintarCarga(); }, 160); };
     const l = $("gtm-limpiar"); if (l) l.onclick = () => { F.fase = 0; F.area = ""; F.quien = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist(); };
@@ -83,22 +144,26 @@
       </div></article>`;
   }
   function pintarLista() {
-    const lista = T.filter((t) => pasa(t)), cont = $("gtm-lista");
-    if (!lista.length) { cont.innerHTML = `<p class="gtm-vacio">Nada con esos filtros.</p>`; return; }
+    const lista = T.filter((t) => pasa(t)), puntos = P.filter(pasaPunto), cont = $("gtm-lista");
+    if (!lista.length && !puntos.length) { cont.innerHTML = `<p class="gtm-vacio">Nada con esos filtros.</p>`; return; }
     cont.innerHTML = [1, 2, 3, 4, 5].map((f) => {
-      const ts = lista.filter((t) => t.fase === f); if (!ts.length) return "";
       const todas = T.filter((t) => t.fase === f), h = todas.filter((t) => hechas[t.id]).length;
-      return `<section class="gtm-grupo"><h3><span>Paso ${f}</span> ${FASES[f]} <em>${h} de ${todas.length}</em></h3><div class="gtm-avance"><div style="width:${((h / todas.length) * 100).toFixed(1)}%"></div></div>${ts.map(tarjeta).join("")}</section>`;
+      const pf = P.filter((p) => p.fase === f), ph = pf.filter((p) => hechas[p.id]).length;
+      // Cada punto de control va justo después de la tarea de la que cuelga, se vea o no esa tarea.
+      const cuerpo = todas.map((t) => (pasa(t) ? tarjeta(t) : "") + pf.filter((p) => p.despues === t.id && pasaPunto(p)).map(puntoHtml).join("")).join("");
+      if (!cuerpo) return "";
+      return `<section class="gtm-grupo"><h3><span>Paso ${f}</span> ${FASES[f]} ${pf.length ? `<small class="gtm-grupo-pts">◆ ${ph} de ${pf.length}</small>` : ""}<em>${h} de ${todas.length}</em></h3><div class="gtm-avance"><div style="width:${((h / todas.length) * 100).toFixed(1)}%"></div></div>${cuerpo}</section>`;
     }).join("");
     cont.querySelectorAll(".gtm-palomita").forEach((b) => (b.onclick = () => palomear(b.closest(".gtm-tarea").dataset.id)));
+    enlazarPuntos(cont);
   }
-  function pintarChecklist() { pintarCarga(); pintarFiltros(); pintarLista(); pintarHoy(); }
+  function pintarChecklist() { pintarCarga(); pintarFiltros(); pintarLista(); pintarHoy(); pintarEscalera(); }
   async function palomear(id) {
     const antes = hechas[id], hecha = !antes;
     if (hecha) hechas[id] = { por: G.yo.email, nombre: G.yo.nombre, at: Math.floor(Date.now() / 1000) }; else delete hechas[id];
     const art = document.querySelector(`.gtm-tarea[data-id="${id}"]`); if (art) art.outerHTML = tarjeta(T.find((t) => t.id === id));
     const nuevo = document.querySelector(`.gtm-tarea[data-id="${id}"] .gtm-palomita`); if (nuevo) nuevo.onclick = () => palomear(id);
-    pintarCarga(); pintarHoy(); actualizarGrupos();
+    pintarCarga(); pintarHoy(); actualizarGrupos(); repintarPuntos();
     try {
       const r = await fetch("/api/gtm/tarea", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hecha }) });
       if (!r.ok) throw new Error(String(r.status));
@@ -113,7 +178,7 @@
   // Lo que palomea otra persona del equipo aparece solo.
   setInterval(async () => {
     if (document.hidden) return;
-    try { const r = await fetch("/api/gtm"); if (!r.ok) return; const j = await r.json(); const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas); hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo; if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); } if (cambio) pintarChecklist(); else pintarHoy(); } catch {}
+    try { const r = await fetch("/api/gtm"); if (!r.ok) return; const j = await r.json(); const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas), cambioReal = JSON.stringify(j.real) !== JSON.stringify(real); hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo; if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); } if (cambio) pintarChecklist(); else { pintarHoy(); if (cambioReal) repintarPuntos(); } } catch {}
   }, 45000);
 
   /* ── calculadora hacia el millón ────────────────────────────────────── */
