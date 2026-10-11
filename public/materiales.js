@@ -9,12 +9,15 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const LLAVE = "vr_materiales";
-  const S = Object.assign({ nombre: "", tema: "", cuando: "", fecha: "", modoCuando: "fecha", tzBase: "", tzOtros: [], conNombre: true, conQR: true, conFoto: true, foto2: "", c1: M.C1, c2: M.C2, medir: true, estilo: "original", musica: "ritmo", red: "todo" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
-  const guardar = () => { try { localStorage.setItem(LLAVE, JSON.stringify(S)); } catch { try { localStorage.setItem(LLAVE, JSON.stringify(Object.assign({}, S, { foto2: "" }))); } catch {} } };
-  // foto1 = la de tu perfil (Google); foto2 = la otra, opcional, que adjuntas aquí. Máximo dos.
+  const S = Object.assign({ nombre: "", tema: "", cuando: "", fecha: "", modoCuando: "fecha", tzBase: "", tzOtros: [], conNombre: true, conQR: true, conFoto: true, foto2: "", f1: null, f2: null, c1: M.C1, c2: M.C2, medir: true, estilo: "original", musica: "auto", red: "todo" }, (() => { try { return JSON.parse(localStorage.getItem(LLAVE) || "{}"); } catch { return {}; } })());
+  // Si las fotos no caben en la memoria del navegador, se guarda todo lo demás y de las fotos solo el recorte.
+  const guardar = () => { try { localStorage.setItem(LLAVE, JSON.stringify(S)); } catch { try { localStorage.setItem(LLAVE, JSON.stringify(Object.assign({}, S, { f1: S.f1 ? Object.assign({}, S.f1, { src: "" }) : null, f2: S.f2 ? Object.assign({}, S.f2, { src: "" }) : null }))); } catch { try { localStorage.setItem(LLAVE, JSON.stringify(Object.assign({}, S, { f1: null, f2: null, foto2: "" }))); } catch {} } } };
+  // foto1 = la principal (la que adjuntas y acomodas; si no, la de tu cuenta de Google); foto2 = la otra, opcional. Máximo dos.
+  // De cada una se guarda el original (S.f1.src), su encuadre (x, y, z) y el recorte ya hecho (S.f1.recorte).
   let me = null, room = null, foto1 = null, foto2 = null, nombreTocado = !!S.nombre;
   if (!Array.isArray(S.tzOtros)) S.tzOtros = [];
-  if (S.musica === "propia") S.musica = "ritmo"; // el audio propio no se guarda entre visitas
+  // El audio va puesto de fábrica, con la música de cada pieza. Lo que hubiera guardado de la música anterior (o «sin audio») vuelve a eso; el audio propio no se guarda entre visitas.
+  if (!V.MUSICAS.some((m) => m.id === S.musica)) S.musica = "auto";
   const fotosActivas = () => [S.conFoto ? foto1 : null, foto2].filter(Boolean);
 
   /* ── fecha, hora y horarios por país ────────────────────────────────── */
@@ -100,7 +103,7 @@
     M.pintarEn(cv, fig._pieza, datos(redDe(fig._pieza)), Math.min(fig._pieza.w || 9999, Math.round(w * Math.min(2, window.devicePixelRatio || 1))));
     fig._sucio = false;
   }
-  function cambio() { ultimoVideo = null; guardar(); pintarZonas(); if (firmaFaltas() !== firmaPintada) construir(); else repintar(); }
+  function cambio() { ultimoVideo = {}; guardar(); pintarZonas(); if (firmaFaltas() !== firmaPintada) construir(); else repintar(); }
   let tRep = 0;
   function repintar() { clearTimeout(tRep); tRep = setTimeout(() => { document.querySelectorAll(".mat-pieza").forEach((f) => { f._sucio = true; }); visibles.forEach((f) => pintarTarjeta(f)); pintarTextos(); if (!$("mat-visor").hidden) pintarVisor(); }, 120); }
   /** Hay piezas que piden algo para tener sentido: los horarios piden fecha; la foto de perfil, una foto. */
@@ -115,7 +118,7 @@
   function resolverFalta(falta) {
     if (falta === "fecha") { if (S.modoCuando !== "fecha") { S.modoCuando = "fecha"; pintarCuando(); } abrirPanel("mat-fecha"); }
     else if (!me) { if (window.VRLogin) VRLogin.entrar(); }
-    else $("foto-2-archivo").click();
+    else editarFoto(1);
   }
   const piezasDeVista = () => (S.red === "textos" ? [] : C.PIEZAS.filter((p) => S.red === "todo" || p.redes.includes(S.red)));
 
@@ -145,6 +148,8 @@
     const nT = textosDeVista().reduce((n, g) => n + g.items.length, 0);
     $("mat-cuenta").textContent = `${piezas.length ? piezas.length + (piezas.length === 1 ? " diseño" : " diseños") : ""}${piezas.length && nT ? " · " : ""}${nT ? nT + " textos" : ""}`;
     $("mat-zip").hidden = !piezas.length;
+    const conVideos = piezas.filter((p) => M.conVideo(p)).length; $("mat-zip-videos").hidden = $("mat-zip-videos-limpios").hidden = !conVideos || !V.puedeHacer();
+    if (conVideos && !enLote) { $("mat-zip-videos").textContent = `Los ${conVideos} videos con música (.zip)`; $("mat-zip-videos-limpios").textContent = `Los ${conVideos} videos sin audio (.zip)`; }
   }
   function pintarChips() {
     const cuenta = (id) => C.PIEZAS.filter((p) => p.redes.includes(id)).length;
@@ -185,7 +190,7 @@
   }
 
   /* ── vista en grande: imagen o video ────────────────────────────────── */
-  let enVisor = null, modoVisor = "imagen", pararVideo = null, grabando = false, ultimoVideo = null;
+  let enVisor = null, modoVisor = "imagen", pararVideo = null, grabando = false, ultimoVideo = {};
   const detener = () => { if (pararVideo) { pararVideo(); pararVideo = null; } };
   function pintarVisor() {
     if (!enVisor || grabando) return; const p = enVisor, F = C.FORMATOS[p.f], cv = $("visor-canvas"), conV = M.conVideo(p) && !leFalta(p);
@@ -198,7 +203,7 @@
     $("visor-modo").hidden = !conV; $("visor-modo").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.m === modoVisor));
     $("visor-imagen-zona").hidden = modoVisor !== "imagen"; $("visor-video-zona").hidden = modoVisor !== "video";
     detener();
-    if (modoVisor === "video") { pintarMusicas(); pararVideo = V.reproducir(cv, p, datos(redDe(p)), { anchoPx: ancho, musica: S.musica === "propia" && !V.audioPropio() ? "" : S.musica, sinSonido: () => notaVideo("Toca un audio para oírlo.") }); }
+    if (modoVisor === "video") { pintarMusicas(); pararVideo = V.reproducir(cv, p, datos(redDe(p)), { anchoPx: ancho, musica: musicaElegida(p), sinSonido: () => notaVideo("Toca una música para oírla.") }); }
     else M.pintarEn(cv, p, datos(redDe(p)), ancho);
   }
   function abrirVisor(p, modo) { enVisor = p; modoVisor = modo === "video" && M.conVideo(p) ? "video" : "imagen"; $("mat-visor").hidden = false; document.body.classList.add("mat-con-visor"); notaVideo(""); pintarVisor(); }
@@ -211,42 +216,49 @@
   $("visor-compartir").hidden = !puedeCompartir; $("visor-imagen").hidden = !puedeCopiarImagen;
   window.addEventListener("resize", () => { if (enVisor) pintarVisor(); });
 
-  /* ── el video: audio, grabar, descargar y compartir ─────────────────── */
-  const notaVideo = (t) => { const n = $("video-nota"); if (n) n.textContent = t || (V.puedeGrabar() ? "Se graba aquí mismo, en tu navegador. Tarda lo que dura el video." : "Este navegador no puede grabar video. Usa Chrome o Safari actualizados."); };
+  /* ── el video: música, hacerlo, descargarlo (con música o limpio) y compartirlo ── */
+  // La música que suena y la que lleva el archivo: la de la pieza, la que eligió la persona o su propio audio.
+  const musicaElegida = (p) => (S.musica === "propia" ? (V.audioPropio() ? "propia" : V.musicaDe(p, "auto")) : V.musicaDe(p, S.musica));
+  const notaVideo = (t) => { const n = $("video-nota"); if (n) n.textContent = t || (V.puedeHacer() ? "Se hace aquí mismo, en tu navegador. Nada se sube." : "Este navegador no puede hacer video. Usa Chrome, Edge o Safari actualizados."); };
   function pintarMusicas() {
-    const propia = V.audioPropio(), c = $("visor-musicas");
-    c.innerHTML = V.MUSICAS.map((m) => `<button type="button" data-m="${m.id}" class="${S.musica === m.id ? "on" : ""}">${esc(m.n)}</button>`).join("") + (propia ? `<button type="button" data-m="propia" class="${S.musica === "propia" ? "on" : ""}" title="${esc(propia.nombre)}">🎵 ${esc(propia.nombre.replace(/\.[a-z0-9]+$/i, "").slice(0, 16))}</button>` : "") + `<button type="button" id="audio-subir" class="subir">${propia ? "Cambiar mi audio" : "＋ Mi audio"}</button>`;
-    c.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { if (grabando) return; S.musica = b.dataset.m; guardar(); ultimoVideo = null; pintarVisor(); }));
+    const propia = V.audioPropio(), c = $("visor-musicas"), suya = enVisor ? V.MUSICAS.find((m) => m.id === V.musicaDe(enVisor, "auto")) : null;
+    c.innerHTML = V.MUSICAS.map((m) => `<button type="button" data-m="${m.id}" class="${S.musica === m.id ? "on" : ""}">${esc(m.id === "auto" && suya ? `La de la pieza · ${suya.n}` : m.n)}</button>`).join("") + (propia ? `<button type="button" data-m="propia" class="${S.musica === "propia" ? "on" : ""}" title="${esc(propia.nombre)}">🎵 ${esc(propia.nombre.replace(/\.[a-z0-9]+$/i, "").slice(0, 16))}</button>` : "") + `<button type="button" id="audio-subir" class="subir">${propia ? "Cambiar mi audio" : "＋ Mi audio"}</button>`;
+    c.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { if (grabando) return; S.musica = b.dataset.m; guardar(); ultimoVideo = {}; pintarVisor(); }));
     $("audio-subir").onclick = () => { if (!grabando) $("audio-propio").click(); };
-    $("video-bajar").disabled = !V.puedeGrabar(); $("video-compartir").hidden = !puedeCompartir || !V.puedeGrabar();
+    const ok = V.puedeHacer(); $("video-bajar").disabled = !ok; $("video-bajar-limpio").disabled = !ok; $("video-compartir").hidden = !puedeCompartir || !ok;
   }
   $("audio-propio").onchange = async (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
-    try { await V.ponerPropia(f); S.musica = "propia"; ultimoVideo = null; toast("Tu audio quedó puesto. Se usa desde el principio."); pintarVisor(); }
+    try { await V.ponerPropia(f); S.musica = "propia"; ultimoVideo = {}; toast("Tu audio quedó puesto. Se usa desde el principio."); pintarVisor(); }
     catch { toast("No se pudo leer ese audio. Prueba con MP3 o M4A."); }
   };
-  const firmaVideo = (p) => p.id + "|" + JSON.stringify(S) + "|" + (room ? room.slug : "") + "|" + (V.audioPropio() ? V.audioPropio().nombre : "") + "|" + redDe(p) + "|" + fotosActivas().length;
-  async function hacerVideo(boton) {
-    const p = enVisor, firma = firmaVideo(p); if (ultimoVideo && ultimoVideo.firma === firma) return ultimoVideo;
-    const cv = $("visor-canvas"), texto = boton.textContent, musica = S.musica === "propia" && !V.audioPropio() ? "" : S.musica;
-    detener(); grabando = true; document.body.classList.add("mat-grabando"); notaVideo("Grabando. No cambies de pestaña.");
+  const firmaVideo = (p, conAudio) => p.id + "|" + (conAudio ? musicaElegida(p) : "limpio") + "|" + JSON.stringify(Object.assign({}, S, { musica: "" })) + "|" + (room ? room.slug : "") + "|" + (V.audioPropio() ? V.audioPropio().nombre : "") + "|" + redDe(p) + "|" + fotosActivas().length;
+  const fallaVideo = (e) => (e && e.message === "audio_bloqueado" ? "El navegador no soltó el audio. Toca otra vez." : e && e.message === "sin_grabadora" ? "Este navegador no puede hacer video." : e && e.message === "no_bajo_la_musica" ? "No bajó la música. Revisa tu conexión." : "No se pudo hacer el video. Intenta de nuevo.");
+  /** Hace el video de la pieza abierta, con su música o limpio. Lo último hecho de cada tipo se guarda para no repetirlo. */
+  async function hacerVideo(boton, conAudio) {
+    const p = enVisor, firma = firmaVideo(p, conAudio), llave = conAudio ? "con" : "sin";
+    ultimoVideo = ultimoVideo || {}; if (ultimoVideo[llave] && ultimoVideo[llave].firma === firma) return ultimoVideo[llave];
+    const cv = $("visor-canvas"), texto = boton.textContent, musica = conAudio ? musicaElegida(p) : "";
+    detener(); grabando = true; document.body.classList.add("mat-grabando"); notaVideo("Haciendo el video. No cierres esta pestaña.");
     try {
-      const r = await V.grabar(cv, p, datos(redDe(p)), { musica, alAvance: (x) => { boton.textContent = `Grabando ${Math.round(x * 100)} %`; } });
-      ultimoVideo = Object.assign({ firma }, r);
-      notaVideo(r.ext === "mp4" ? `Listo: MP4 de ${Math.round(r.segundos)} segundos${musica ? ", con audio" : ", sin audio"}.` : "Tu navegador grabó en WebM. TikTok e Instagram piden MP4: usa Chrome o Safari actualizados.");
-      return ultimoVideo;
+      const r = await V.hacer(cv, p, datos(redDe(p)), { musica, alAvance: (x) => { boton.textContent = `Haciendo ${Math.round(x * 100)} %`; } });
+      ultimoVideo[llave] = Object.assign({ firma }, r);
+      notaVideo(r.ext === "mp4" ? `Listo: MP4 de ${Math.round(r.segundos)} segundos, ${musica ? "con música" : "sin audio"}.` : "Tu navegador grabó en WebM. TikTok e Instagram piden MP4: usa Chrome, Edge o Safari actualizados.");
+      return ultimoVideo[llave];
     } finally { grabando = false; document.body.classList.remove("mat-grabando"); boton.textContent = texto; pintarVisor(); }
   }
-  const nombreVideo = (p, ext) => nombreArchivo(p, ext);
-  $("video-bajar").onclick = async () => {
+  const nombreVideo = (p, ext, conAudio) => nombreArchivo(p, ext).replace(/\.([a-z0-9]+)$/, (conAudio ? "" : "-sin-audio") + ".$1");
+  const bajarVideo = (boton, conAudio) => async () => {
     if (!enVisor || grabando) return; const p = enVisor;
-    try { const v = await hacerVideo($("video-bajar")); descargar(v.blob, nombreVideo(p, v.ext)); toast("Video descargado. El texto para publicarlo está abajo."); }
-    catch (e) { toast(e && e.message === "audio_bloqueado" ? "El navegador no soltó el audio. Toca otra vez." : e && e.message === "sin_grabadora" ? "Este navegador no puede grabar video." : "No se pudo grabar. Intenta de nuevo."); }
+    try { const v = await hacerVideo(boton, conAudio); descargar(v.blob, nombreVideo(p, v.ext, conAudio)); toast(conAudio ? "Video con música descargado. El texto para publicarlo está abajo." : "Video sin audio descargado: limpio, para ponerle el sonido que quieras."); }
+    catch (e) { toast(fallaVideo(e)); }
   };
+  $("video-bajar").onclick = bajarVideo($("video-bajar"), true);
+  $("video-bajar-limpio").onclick = bajarVideo($("video-bajar-limpio"), false);
   $("video-compartir").onclick = async () => {
     if (!enVisor || grabando) return; const p = enVisor;
     try {
-      const v = await hacerVideo($("video-compartir")), file = new File([v.blob], nombreVideo(p, v.ext), { type: v.blob.type });
+      const v = await hacerVideo($("video-compartir"), true), file = new File([v.blob], nombreVideo(p, v.ext, true), { type: v.blob.type });
       if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.clipboard.writeText(captionDe(p)); } catch {} try { await navigator.share({ files: [file], text: captionDe(p) }); toast("El texto quedó copiado: pégalo al publicar.", 3500); } catch (e) { if (e && e.name !== "AbortError") throw e; } }
       else { descargar(v.blob, file.name); toast("Tu navegador no comparte videos: lo descargamos."); }
     } catch (e) { toast("No se pudo. Intenta descargar el video."); }
@@ -270,6 +282,37 @@
     fin.setUint32(0, 0x06054b50, true); fin.setUint16(8, archivos.length, true); fin.setUint16(10, archivos.length, true); fin.setUint32(12, tamCentral, true); fin.setUint32(16, pos, true);
     return new Blob(partes.concat(central, [new Uint8Array(fin.buffer)]), { type: "application/zip" });
   }
+  // Todos los videos de lo que se está viendo, de una sola vez: con música o limpios.
+  let enLote = false;
+  async function zipDeVideos(boton, conAudio) {
+    const piezas = piezasDeVista().filter((p) => M.conVideo(p) && !leFalta(p)), original = boton.textContent;
+    if (enLote || grabando) return; if (!piezas.length) return toast("En esta vista no hay piezas que se hagan video.");
+    if (!V.puedeHacer()) return toast("Este navegador no puede hacer video. Usa Chrome, Edge o Safari actualizados.");
+    const rapido = await V.puedeCodificar(conAudio);
+    if (!rapido && !confirm(`Este navegador graba en tiempo real: ${piezas.length} videos tardan unos ${Math.ceil((piezas.length * 8) / 60)} minutos y no puedes cambiar de pestaña. ¿Seguir?`)) return;
+    enLote = true; grabando = true; detener(); document.querySelectorAll("[data-lote]").forEach((b) => (b.disabled = true));
+    const archivos = [], redTxt = S.red === "todo" ? "todo" : S.red; let fallas = 0;
+    try {
+      for (let i = 0; i < piezas.length; i++) {
+        const p = piezas[i], F = C.FORMATOS[p.f];
+        try {
+          const v = await V.hacer(null, p, datos(redDe(p)), { musica: conAudio ? musicaElegida(p) : "", alAvance: (x) => { boton.textContent = `Video ${i + 1} de ${piezas.length} · ${Math.round(x * 100)} %`; } });
+          archivos.push({ nombre: `${F.n.replace(/[:/]/g, "-")}/${nombreVideo(p, v.ext, conAudio)}`, datos: new Uint8Array(await v.blob.arrayBuffer()) });
+        } catch (e) { fallas++; console.warn("video", p.id, e); }
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      if (!archivos.length) throw new Error("ninguno");
+      const lineas = ["VIDEOS PARA PUBLICAR · VIDEO ROOM", conAudio ? "Con música de la casa." : "Sin audio: limpios, para ponerles el sonido que quieras.", "", "── Texto sugerido para cada video ──", ""];
+      for (const p of piezas) lineas.push(`[${p.id}] ${p.n}`, captionDe(p), "");
+      archivos.push({ nombre: "Textos para publicar.txt", datos: new TextEncoder().encode(lineas.join("\r\n")) });
+      descargar(armarZip(archivos), `VideoRoom-Videos-${conAudio ? "con-musica" : "sin-audio"}-${redTxt}${personal() ? "-" + room.slug : ""}.zip`);
+      toast(`Listo: ${archivos.length - 1} videos ${conAudio ? "con música" : "sin audio"} y sus textos, en un zip.${fallas ? ` ${fallas} no salieron.` : ""}`, 4500);
+    } catch (e) { toast("No se pudieron hacer los videos. Intenta con menos piezas o de una en una."); }
+    enLote = false; grabando = false; boton.textContent = original; document.querySelectorAll("[data-lote]").forEach((b) => (b.disabled = false));
+  }
+  $("mat-zip-videos").onclick = () => zipDeVideos($("mat-zip-videos"), true);
+  $("mat-zip-videos-limpios").onclick = () => zipDeVideos($("mat-zip-videos-limpios"), false);
+
   $("mat-zip").onclick = async () => {
     const b = $("mat-zip"), piezas = piezasDeVista(), original = b.textContent; if (!piezas.length || b.disabled) return;
     b.disabled = true; const archivos = [], redTxt = S.red === "todo" ? "todo" : S.red;
@@ -296,31 +339,48 @@
     const yo = $("mat-yo");
     if (me) {
       const inicial = esc((me.name || "?").trim().charAt(0).toUpperCase());
+      const mini = (f, alt) => `<img src="${f.src}" alt="${alt}">`;
       yo.innerHTML = `<div class="mat-fotos" role="group" aria-label="Fotos (hasta dos)">
-          <button type="button" class="mat-foto${S.conFoto && foto1 ? " on" : ""}" id="foto-1" ${foto1 ? "" : "disabled"} title="${foto1 ? (S.conFoto ? "Tu foto de perfil: toca para no usarla" : "Tu foto de perfil: toca para usarla") : "Tu cuenta no tiene foto de perfil"}" aria-pressed="${S.conFoto && foto1 ? "true" : "false"}">${me.avatar_url && foto1 ? `<img src="${esc(me.avatar_url)}" alt="Tu foto de perfil" referrerpolicy="no-referrer">` : `<span>${inicial}</span>`}</button>
-          <span class="mat-foto-caja"><button type="button" class="mat-foto${foto2 ? " on" : " vacia"}" id="foto-2" title="${foto2 ? "Cambiar la otra foto" : "Agregar otra foto (opcional)"}">${foto2 ? `<img src="${S.foto2}" alt="La otra foto">` : "<span>＋</span>"}</button>${foto2 ? `<button type="button" class="mat-foto-x" id="foto-2-x" aria-label="Quitar la otra foto" title="Quitar la otra foto">✕</button>` : ""}</span>
+          <span class="mat-foto-caja"><button type="button" class="mat-foto${foto1 && S.conFoto ? " on" : foto1 ? "" : " vacia"}" id="foto-1" title="${foto1 ? "Tu foto: toca para acomodarla o cambiarla" : "Toca para adjuntar tu foto"}">${foto1 ? mini(foto1, "Tu foto") : `<span>${inicial}</span>`}<i class="mat-foto-lapiz" aria-hidden="true">${foto1 ? "✎" : "＋"}</i></button></span>
+          <span class="mat-foto-caja"><button type="button" class="mat-foto${foto2 ? " on" : " vacia"}" id="foto-2" title="${foto2 ? "La otra foto: toca para acomodarla o cambiarla" : "Agregar otra foto (opcional)"}">${foto2 ? mini(foto2, "La otra foto") : "<span>＋</span>"}</button>${foto2 ? `<button type="button" class="mat-foto-x" id="foto-2-x" aria-label="Quitar la otra foto" title="Quitar la otra foto">✕</button>` : ""}</span>
         </div>
-        <div class="mat-yo-txt"><b>${esc(me.name || "")}</b><small>${room ? esc(HOST + "/" + room.slug) : "Aún no tienes sala"}</small><small class="mat-nota">${foto2 ? "Toca la foto para cambiarla" : "＋ agrega otra foto, opcional"}</small></div>`;
-      const f1 = $("foto-1"); if (f1) f1.onclick = () => { S.conFoto = !S.conFoto; pintarYo(); cambio(); };
-      $("foto-2").onclick = () => $("foto-2-archivo").click();
-      const fx = $("foto-2-x"); if (fx) fx.onclick = () => { S.foto2 = ""; foto2 = null; pintarYo(); cambio(); toast("Foto quitada."); };
+        <div class="mat-yo-txt"><b>${esc(me.name || "")}</b><small>${room ? esc(HOST + "/" + room.slug) : "Aún no tienes sala"}</small><small class="mat-nota">${foto1 ? (S.conFoto ? "Toca tu foto para acomodarla" : "Tu foto está apagada: tócala") : "Toca el círculo para poner tu foto"}</small></div>`;
+      $("foto-1").onclick = () => editarFoto(1);
+      $("foto-2").onclick = () => editarFoto(2);
+      const fx = $("foto-2-x"); if (fx) fx.onclick = () => { S.foto2 = ""; S.f2 = null; foto2 = null; pintarYo(); cambio(); toast("Foto quitada."); };
     } else {
       yo.innerHTML = `<div class="mat-anon"><b>Ponles tu nombre, tu link y tu QR</b><small>Entra con Google y todos los diseños se personalizan solos.</small><div data-login-ct="ancho" data-texto="Entrar con Google"></div></div>`;
       if (window.LoginCT && LoginCT.montar) { const el = yo.querySelector("[data-login-ct]"); if (el) try { LoginCT.montar(el, "ancho"); } catch {} }
     }
     const sinSala = !room; $("mat-con-nombre").disabled = sinSala; $("mat-con-nombre").closest(".mat-palanca").classList.toggle("apagada", sinSala);
   }
-  // La otra foto: se achica en el navegador y se queda en este aparato (no sube a ningún servidor).
+  /* ── las fotos: adjuntar y acomodar (public/foto-editor.js) ─────────── */
   const cargarImagen = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
-  $("foto-2-archivo").onchange = async (e) => {
-    const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
-    try {
-      const im = await cargarImagen(URL.createObjectURL(f)), lado = Math.min(im.width, im.height), tam = Math.min(640, lado), cv = document.createElement("canvas");
-      cv.width = cv.height = tam; cv.getContext("2d").drawImage(im, (im.width - lado) / 2, (im.height - lado) / 2, lado, lado, 0, 0, tam, tam);
-      S.foto2 = cv.toDataURL("image/jpeg", 0.86); foto2 = await cargarImagen(S.foto2);
-      pintarYo(); cambio(); toast(foto1 && S.conFoto ? "Listo: salen las dos fotos. Toca la de tu perfil si quieres solo la nueva." : "Foto agregada.", 3600);
-    } catch { toast("No se pudo leer esa imagen. Prueba con otra (JPG o PNG)."); }
-  };
+  const aDataURL = (im) => { const cv = document.createElement("canvas"); cv.width = im.naturalWidth || im.width; cv.height = im.naturalHeight || im.height; cv.getContext("2d").drawImage(im, 0, 0); return cv.toDataURL("image/jpeg", 0.92); };
+  let fotoGoogle = null; // la de la cuenta, por si quiere volver a ella
+  // La foto principal también se guarda en su cuenta, para que le salga en cualquier aparato.
+  const subirFoto = async (recorte) => { try { const b = await (await fetch(recorte)).blob(); const r = await fetch("/api/wallet/foto", { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: b }); return r.ok; } catch { return false; } };
+  async function editarFoto(cual) {
+    const E = window.FotoEditor; if (!E) return toast("El editor de fotos no cargó. Recarga la página.");
+    const guardada = cual === 1 ? S.f1 : S.f2, actual = cual === 1 ? foto1 : foto2;
+    // Se abre con el original y su encuadre si los hay; si no, con la foto que se esté usando.
+    const src = guardada && guardada.src ? guardada.src : actual ? aDataURL(actual) : "";
+    const conOriginal = !!(guardada && guardada.src);
+    const extra = cual === 1 ? [].concat(fotoGoogle && guardada ? [{ accion: "google", texto: "Usar la de mi cuenta" }] : [], actual ? [{ accion: "apagar", texto: S.conFoto ? "No usarla en los diseños" : "Usarla en los diseños" }] : []) : [];
+    const r = await E.abrir({ titulo: cual === 1 ? "Tu foto" : "La otra foto", src, x: conOriginal ? guardada.x : 0, y: conOriginal ? guardada.y : 0, z: conOriginal ? guardada.z : 1, conQuitar: cual === 2 ? !!actual : !!guardada, extra });
+    if (!r) return;
+    if (r.accion === "guardar") {
+      const f = { src: r.src, x: r.x, y: r.y, z: r.z, recorte: r.recorte }, im = await cargarImagen(r.recorte);
+      if (cual === 1) { S.f1 = f; foto1 = im; S.conFoto = true; subirFoto(r.recorte).then((ok) => { if (!ok) toast("La foto quedó en este aparato. No se pudo guardar en tu cuenta.", 3600); }); }
+      else { S.f2 = f; S.foto2 = ""; foto2 = im; }
+      pintarYo(); cambio(); toast(cual === 1 ? "Listo: tu foto quedó acomodada en todos los diseños." : foto1 && S.conFoto ? "Listo: salen las dos fotos." : "Foto agregada.", 3200);
+    } else if (r.accion === "quitar") {
+      if (cual === 1) { S.f1 = null; foto1 = fotoGoogle; fetch("/api/wallet/foto", { method: "DELETE" }).catch(() => {}); toast(fotoGoogle ? "Quitada. Vuelve la foto de tu cuenta." : "Foto quitada."); }
+      else { S.f2 = null; S.foto2 = ""; foto2 = null; toast("Foto quitada."); }
+      pintarYo(); cambio();
+    } else if (r.accion === "google") { S.f1 = null; foto1 = fotoGoogle; S.conFoto = true; fetch("/api/wallet/foto", { method: "DELETE" }).catch(() => {}); pintarYo(); cambio(); toast("Vuelve la foto de tu cuenta."); }
+    else if (r.accion === "apagar") { S.conFoto = !S.conFoto; pintarYo(); cambio(); toast(S.conFoto ? "Tu foto vuelve a salir en los diseños." : "Tu foto ya no sale en los diseños."); }
+  }
   function pintarCuando() {
     const conFecha = S.modoCuando === "fecha";
     $("mat-modo").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.m === S.modoCuando));
@@ -358,14 +418,21 @@
     pintarCuando(); pintarZonas(); pintarColores();
   }
   async function cargarSesion() {
-    if (S.foto2) { try { foto2 = await cargarImagen(S.foto2); } catch { S.foto2 = ""; } }
+    if (S.f2 && S.f2.recorte) { try { foto2 = await cargarImagen(S.f2.recorte); } catch { S.f2 = null; } }
+    else if (S.foto2) { try { foto2 = await cargarImagen(S.foto2); S.f2 = { src: "", x: 0, y: 0, z: 1, recorte: S.foto2 }; S.foto2 = ""; } catch { S.foto2 = ""; } } // la que ya tenía de antes
+    if (S.f1 && S.f1.recorte) { try { foto1 = await cargarImagen(S.f1.recorte); } catch { S.f1 = null; } }
     try {
       const r = await fetch("/api/wallet/me"); if (!r.ok) return;
       me = await r.json();
       const rr = await fetch("/api/rooms/mine"); if (rr.ok) room = await rr.json();
       else if (rr.status === 401) { me = null; return; } // la sesión ya no vale (lo de «me» venía de la memoria rápida)
       if (!nombreTocado && me.name) { S.nombre = me.name; $("mat-nombre").value = me.name; }
-      if (me.avatar_url) { try { const b = await (await fetch("/api/wallet/avatar")).blob(); if (b.size > 200) foto1 = await cargarImagen(URL.createObjectURL(b)); } catch {} }
+      if (me.avatar_url) { try { const b = await (await fetch("/api/wallet/avatar")).blob(); if (b.size > 200) fotoGoogle = await cargarImagen(URL.createObjectURL(b)); } catch {} }
+      if (!foto1) {
+        // En este aparato no la ha acomodado: se busca la que guardó en su cuenta; si no hay, la de Google.
+        try { const r = await fetch("/api/wallet/foto"); if (r.status === 200) { const b = await r.blob(); if (b.size > 200) { foto1 = await cargarImagen(URL.createObjectURL(b)); S.f1 = { src: "", x: 0, y: 0, z: 1, recorte: aDataURL(foto1) }; } } } catch {}
+        if (!foto1) foto1 = fotoGoogle;
+      }
     } catch {}
   }
 
@@ -388,12 +455,12 @@
     // La vista (qué red) no se recuerda entre visitas: se llega a «Todo», o a la red del enlace (#tiktok).
     const h = location.hash.replace("#", ""); S.red = h && (h === "textos" || C.REDES.some((r) => r.id === h)) ? h : "todo";
     enlazarControles(); pintarYo();
-    $("mat-sub").textContent = `${C.PIEZAS.length} diseños, ${C.PIEZAS.filter(M.conVideo).length} también en video con audio, y ${C.TEXTOS.reduce((n, g) => n + g.items.length, 0)} textos. Descarga, copia y publica.`;
+    $("mat-sub").textContent = `${C.PIEZAS.length} diseños, ${C.PIEZAS.filter(M.conVideo).length} también en video con música, y ${C.TEXTOS.reduce((n, g) => n + g.items.length, 0)} textos. Descarga, copia y publica.`;
     await M.listo();
     construir();
     await cargarSesion();
     pintarYo(); cambio();
   })();
   // Para probar en consola (por ejemplo, con una foto cualquiera).
-  window.__mat = { S, datos, piezas: piezasDeVista, abrirVisor, repintar, agenda, cambio, ponerFoto: (src, cual) => new Promise((res) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => { if (cual === 2) { foto2 = im; S.foto2 = src; } else foto1 = im; pintarYo(); cambio(); res(true); }; im.onerror = () => res(false); im.src = src; }) };
+  window.__mat = { S, datos, editarFoto, piezas: piezasDeVista, abrirVisor, repintar, agenda, cambio, ponerFoto: (src, cual) => new Promise((res) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => { if (cual === 2) { foto2 = im; S.f2 = { src: "", x: 0, y: 0, z: 1, recorte: src }; } else foto1 = im; pintarYo(); cambio(); res(true); }; im.onerror = () => res(false); im.src = src; }) };
 })();

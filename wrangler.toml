@@ -32,6 +32,19 @@ new_sqlite_classes = ["RoomDurableObject"]
 
 # Id de la versión desplegada: va como ?v= en los scripts de la sala para que
 # un deploy nunca mezcle HTML nuevo con room.js viejo de la caché.
+# Medios de la casa: la música de los videos de Materiales, tal como la entrega
+# ElevenLabs. Lo que suena en la página vive en public/musica/ (ya nivelado).
+[[r2_buckets]]
+binding = "MEDIOS"
+bucket_name = "video-room-medios"
+
+# La llave de ElevenLabs sale de la bóveda de la casa (Secrets Store): no se
+# copia aquí ni en ningún .env.
+[[secrets_store_secrets]]
+binding = "ELEVENLABS_API_KEY"
+store_id = "308dac6355cb4d7a8bef6cc8ef7ee035"
+secret_name = "ELEVENLABS_API_KEY"
+
 [version_metadata]
 binding = "CF_VERSION_METADATA"
 

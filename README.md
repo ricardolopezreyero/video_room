@@ -538,18 +538,48 @@ necesita para publicar su sala o recomendar Video Room: **63 diseños** y
   `{horariosLinea}` y `{horariosLista}`. Países en `ZONAS` del catálogo.
 - Las piezas con `pide: "fecha"` o `pide: "foto"` no se descargan vacías: su
   botón dice «Elegir fecha y hora» o «Agregar mi foto» y lleva al control.
-- **Video con movimiento y audio** (`public/materiales-video.js`, la misma
-  técnica que en Cupido): las piezas vertical, cuadrada y retrato (46) también
-  se hacen video. El motor pinta la pieza en un momento dado (`d.m`, en
-  segundos): abre medio segundo con la pieza completa (sirve de portada) y
-  luego cada elemento entra en su turno, el título palabra por palabra, los
-  números contando, la identidad y el QR al final; el fondo respira y el punto
-  de «en vivo» late. `planDe()` calcula la duración (5.5 a 10 s). Se graba en
-  el navegador tomando el lienzo a 30 cuadros (`captureStream` +
-  `MediaRecorder`), en MP4 donde se puede y si no en WebM, a 1080 px. Audio:
-  cuatro fondos en `public/musica/` (los de Cupido, hechos con ElevenLabs) o
-  un audio propio que la persona sube y no sale de su aparato. En la vista
-  grande: «Imagen | Video», los audios, «Descargar video» y «Compartir video».
+- **Video con movimiento y música** (`public/materiales-video.js`): las piezas
+  vertical, cuadrada y retrato (46) también se hacen video, por completo en el
+  navegador. El motor pinta la pieza en un momento dado (`d.m`, en segundos):
+  abre medio segundo con la pieza completa (sirve de portada) y luego cada
+  elemento entra en su turno; `planDe()` calcula la duración (5.5 a 10 s).
+  - **Cómo se arma el archivo:** cuadro por cuadro con WebCodecs. Cada cuadro
+    se pinta en su instante exacto y se codifica en H.264; la música se mezcla
+    aparte y se codifica en AAC; `public/mp4-muxer.js` (MIT, servido desde la
+    casa) arma el MP4. Sale siempre MP4 a 30 cuadros y 1080 px, sin cuadros
+    perdidos y sin esperar el tiempo real (un video de 6 s sale en menos de
+    uno). Si el navegador no trae ese codificador, se graba el lienzo en vivo
+    con `MediaRecorder`, como antes.
+  - **La música:** seis fondos de 20 s sin voz, hechos con ElevenLabs para
+    Video Room (`src/lib/musica.ts` tiene los pedidos): En vivo, Noche, Aviso,
+    Calma, Fiesta y Acústica. Cada pieza trae el suyo según su tipo
+    (`DE_PIEZA`); la persona puede elegir otro o subir su propio audio, que no
+    sale de su aparato. **El audio va puesto de fábrica.**
+  - **Con música o limpio:** en la vista grande hay dos botones, «Descargar
+    con música» y «Descargar sin audio» (el archivo sale sin pista de audio).
+    En la galería, dos más bajan en un zip todos los videos de la vista, con
+    música o sin audio, con sus textos.
+  - **Rehacer un fondo:** los originales están en R2 (`video-room-medios`,
+    `musica/<id>.mp3`). Se pide con `POST /api/interno/musica/<id>` y el
+    encabezado `x-pase`, que solo funciona si ese mismo pase está guardado en
+    R2 como `musica/_pase.txt` (se pone con `wrangler r2 object put`, se usa y
+    se borra). Luego se baja, se nivela y se deja en `public/musica/`:
+
+    ```bash
+    ffmpeg -i original.mp3 -af "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.02,loudnorm=I=-16:TP=-1.5:LRA=11" -ar 44100 -ac 2 -b:a 160k public/musica/vivo.mp3
+    ```
+
+    La llave de ElevenLabs viene de la bóveda (Secrets Store), ligada en
+    `wrangler.toml`. Cada pedido gasta créditos.
+- **La foto** (`public/foto-editor.js`): tocar el círculo de la foto abre el
+  editor. Ahí se adjunta una foto y se acomoda: arrastrar para moverla; rueda,
+  pellizco, deslizador o botones para acercarla; «Centrar» la regresa. El
+  círculo enseña cómo va a salir. Se guarda el original achicado, su encuadre y
+  el recorte (JPEG cuadrado de 720 px), así que se puede volver a acomodar. La
+  foto principal también se guarda en la cuenta (`PUT /api/wallet/foto`, en R2
+  `fotos/<id>.jpg`) para que salga en cualquier aparato; si no hay, se usa la
+  de la cuenta de Google. La segunda foto vive solo en el navegador. El editor
+  es una pieza suelta: `FotoEditor.abrir({ src, x, y, z })`.
 - **Para agregar una pieza:** una línea en `PIEZAS` (id, formato, arquetipo,
   paleta, redes, contenido, texto sugerido). Para probar en consola:
   `__mat.ponerFoto(url)`, `MaterialesMotor.aBlob(pieza, __mat.datos())`.

@@ -47,6 +47,35 @@ wallet.get("/api/wallet/avatar", async (c) => {
   return new Response(r.body, { headers: { "Content-Type": r.headers.get("Content-Type") || "image/jpeg", "Cache-Control": "private, max-age=3600" } });
 });
 
+// ── La foto para los diseños: la que la persona adjunta y acomoda ────────
+// El recorte ya viene hecho del navegador (JPEG cuadrado). Se guarda en la
+// bodega con el id de la persona para que le salga en cualquier aparato. Solo
+// ella la ve y solo ella la cambia. Sin bodega (pruebas viejas) responde 404.
+const FOTO_MAX = 700 * 1024;
+wallet.get("/api/wallet/foto", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.text("", 401);
+  const obj = c.env.MEDIOS ? await c.env.MEDIOS.get(`fotos/${user.id}.jpg`) : null;
+  if (!obj) return c.body(null, 204); // sin foto guardada: no es un error, así no ensucia la consola
+  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store" } });
+});
+wallet.put("/api/wallet/foto", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  if (!c.env.MEDIOS) return c.json({ error: "sin_bodega" }, 503);
+  const datos = new Uint8Array(await c.req.arrayBuffer());
+  if (datos.length < 200 || datos.length > FOTO_MAX) return c.json({ error: "tamano" }, 413);
+  if (!(datos[0] === 0xff && datos[1] === 0xd8 && datos[2] === 0xff)) return c.json({ error: "solo_jpg" }, 415); // un JPEG de verdad, no lo que diga el encabezado
+  await c.env.MEDIOS.put(`fotos/${user.id}.jpg`, datos, { httpMetadata: { contentType: "image/jpeg" } });
+  return c.json({ ok: true, bytes: datos.length });
+});
+wallet.delete("/api/wallet/foto", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  if (c.env.MEDIOS) await c.env.MEDIOS.delete(`fotos/${user.id}.jpg`);
+  return c.json({ ok: true });
+});
+
 // ── Correos: qué quiere recibir cada quien (ver lib/correos.ts) ──────────
 wallet.get("/api/wallet/correos", async (c) => {
   const user = await currentUser(c);

@@ -26,6 +26,7 @@ import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candid
 import { registrarPuntos } from "./lib/gtm-puntos";
 import { indicadoresGtm } from "./lib/gtm-indicadores";
 import { paginaProyecciones } from "./lib/proyecciones";
+import { asegurarMusica, generarMusica, MUSICA } from "./lib/musica";
 import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
@@ -165,6 +166,18 @@ app.get("/gtm", async (c) => {
   const [estado, real, postulaciones, indicadores] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env), indicadoresGtm(c.env)]);
   await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
   return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, bitacora: estado.bitacora, indicadores, v }), 200, cab);
+});
+
+// ── Música de los videos: pedirle un fondo a ElevenLabs (mantenimiento) ───
+// No tiene botón ni sesión: solo corre si quien llama trae el pase que está
+// guardado en la bodega (musica/_pase.txt), y ese archivo solo lo puede poner
+// quien administra la cuenta de Cloudflare. Sin pase en la bodega, está cerrada.
+app.post("/api/interno/musica/:id", async (c) => {
+  const pase = c.req.header("x-pase") || "", id = c.req.param("id");
+  if (!c.env.MEDIOS || pase.length < 32 || !MUSICA[id]) return c.json({ error: "forbidden" }, 403);
+  const guardado = await c.env.MEDIOS.get("musica/_pase.txt");
+  if (!guardado || (await guardado.text()).trim() !== pase) return c.json({ error: "forbidden" }, 403);
+  return c.json(await generarMusica(c.env, id));
 });
 
 // ── Proyecciones: los próximos 15 años (hermana del Go-to-market) ─────────
@@ -518,6 +531,8 @@ export default {
     }
     else {
       ctx.waitUntil(cleanupStaleLiveSessions(env));
+      // La música de los videos: si falta algún fondo, se le pide a ElevenLabs.
+      ctx.waitUntil(asegurarMusica(env).then((n) => { if (n) console.log("música nueva", n); }).catch((err) => console.error("música", err)));
       // Los puntos de control del plan se cumplen solos: cada media hora se
       // comparan con los números reales y se guarda la fecha del que se alcanza.
       ctx.waitUntil(numerosReales(env).then((real) => registrarPuntos(env, real)).then((n) => { if (n.length) console.log("puntos de control alcanzados", n); }).catch((err) => console.error("puntos gtm", err)));

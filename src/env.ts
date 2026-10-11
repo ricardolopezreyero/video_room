@@ -11,5 +11,9 @@ export interface Env {
   CALLS_APP_ID: string;
   CALLS_APP_TOKEN: string;
   RESEND_API_KEY: string;
+  /** Medios de la casa (R2): los originales de la música. */
+  MEDIOS?: R2Bucket;
+  /** De la bóveda (Secrets Store) llega como objeto con get(); en pruebas puede ser texto o faltar. */
+  ELEVENLABS_API_KEY?: string | { get(): Promise<string> };
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
 }

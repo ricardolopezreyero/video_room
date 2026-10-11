@@ -1863,3 +1863,35 @@ body.mat-grabando .visor-lienzo canvas { box-shadow: 0 0 0 3px #E5484D, 0 20px 6
   .proy-eje { width: 150px; }
   .proy-leyenda em { margin-left: 0; width: 100%; }
 }
+
+/* ── Editor de foto (public/foto-editor.js): adjuntar, mover y acercar ──── */
+body.fe-abierto { overflow: hidden; }
+.fe-fondo { position: fixed; inset: 0; z-index: 400; background: rgba(5,7,10,.78); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px; overscroll-behavior: contain; }
+.fe-hoja { width: min(420px, 100%); max-height: 100%; overflow-y: auto; background: #12151C; border: .5px solid rgba(255,255,255,.14); border-radius: 22px; padding: 16px 18px 18px; color: #e5e7eb; font-family: inherit; box-shadow: 0 30px 80px rgba(0,0,0,.55); }
+.fe-hoja header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.fe-hoja header b { font-size: 18px; font-weight: 800; color: #fff; letter-spacing: -.3px; }
+.fe-x { width: 36px; height: 36px; border-radius: 50%; border: .5px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; font-size: 15px; cursor: pointer; }
+.fe-marco { position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: #161a22; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.fe-marco.moviendo { cursor: grabbing; }
+.fe-marco:focus-visible { outline: 2px solid var(--green, #56EF9F); outline-offset: 2px; }
+.fe-marco canvas { width: 100%; height: 100%; display: block; }
+/* El círculo enseña cómo va a salir; lo de afuera se oscurece pero se ve, para saber cuánto queda. */
+.fe-circulo { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgba(13,17,23,.62); border: 2px solid rgba(255,255,255,.9); pointer-events: none; }
+.fe-vacio { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 30px; margin: 0; color: #9aa1b0; font-size: 14px; pointer-events: none; }
+.fe-vacio[hidden] { display: none; }
+.fe-pista { font-size: 12.5px; color: #9aa1b0; margin: 9px 0 10px; min-height: 18px; text-align: center; }
+.fe-zoom { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.fe-zoom input[type=range] { flex: 1; min-width: 0; accent-color: #56EF9F; height: 30px; }
+.fe-zoom button, .fe-btn { background: rgba(255,255,255,.06); border: .5px solid rgba(255,255,255,.18); color: #fff; font: inherit; font-size: 13.5px; font-weight: 700; border-radius: 999px; padding: 9px 14px; cursor: pointer; white-space: nowrap; }
+.fe-zoom button[data-a="menos"], .fe-zoom button[data-a="mas"] { width: 38px; height: 38px; padding: 0; font-size: 19px; flex-shrink: 0; }
+.fe-zoom button:hover, .fe-btn:hover { border-color: var(--green, #56EF9F); }
+.fe-fila { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 9px; }
+.fe-fila.fe-final { margin: 14px 0 0; padding-top: 13px; border-top: .5px solid rgba(255,255,255,.1); }
+.fe-fila.fe-final .fe-btn { flex: 1; padding: 12px 14px; font-size: 14.5px; }
+.fe-btn.fe-lleno { background: var(--green, #56EF9F); color: var(--navy, #0D1117); border-color: transparent; }
+.fe-btn.fe-lleno:disabled { opacity: .4; cursor: default; }
+.fe-btn.fe-quitar { color: #FF8A7A; }
+.mat-foto { position: relative; }
+.mat-foto-lapiz { position: absolute; right: -3px; bottom: -3px; width: 20px; height: 20px; border-radius: 50%; background: var(--green, #56EF9F); color: var(--navy, #0D1117); font-style: normal; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 2px solid #12151C; pointer-events: none; }
+.mat-foto-caja .mat-foto { overflow: visible; }
+.mat-foto-caja .mat-foto img { border-radius: 50% !important; }

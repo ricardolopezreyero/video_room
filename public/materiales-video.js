@@ -1,16 +1,28 @@
 // RLR · Materiales en video: el mismo diseño, con movimiento y con audio,
-// hecho por completo en el navegador (la misma técnica que en Cupido).
-//  · El motor pinta la pieza en un momento dado (segundos); aquí se corre el
-//    reloj: para verla en bucle o para grabarla.
-//  · Se graba tomando el lienzo cuadro por cuadro (30 por segundo) y
-//    mezclando el audio. Sale en MP4 donde el navegador puede; si no, en WebM.
-//  · El audio: cuatro fondos de la casa (en /musica/) o un audio propio que
-//    la persona sube y que no sale de su aparato.
+// hecho por completo en el navegador. Nada se sube a ningún servidor.
+//
+//  · El motor pinta la pieza en un momento dado (segundos). Aquí se corre el
+//    reloj: para verla en bucle o para convertirla en archivo.
+//  · EL ARCHIVO se arma cuadro por cuadro (WebCodecs): cada cuadro se pinta en
+//    su instante exacto y se codifica en H.264; la música se mezcla aparte, con
+//    su entrada y su salida, y se codifica en AAC. Sale siempre un MP4 de 30
+//    cuadros por segundo, sin cuadros perdidos y sin esperar el tiempo real,
+//    que es lo que piden TikTok, Instagram, Facebook, YouTube y WhatsApp.
+//  · Si el navegador no trae ese codificador, se graba el lienzo en vivo
+//    (MediaRecorder), como antes: tarda lo que dura el video.
+//  · LA MÚSICA es de la casa: seis fondos sin voz hechos con ElevenLabs para
+//    Video Room (src/lib/musica.ts), nivelados y en /musica/. Cada pieza trae
+//    el suyo según lo que dice. También se puede subir un audio propio, que no
+//    sale del aparato, o bajar el video limpio, sin audio.
 (function () {
   "use strict";
   var _k = "eye", _rev = 181218;
   const M = window.MaterialesMotor, C = window.MaterialesCatalogo;
-  const MUSICAS = [{ id: "", n: "Sin audio" }, { id: "ritmo", n: "Ritmo" }, { id: "piano", n: "Piano" }, { id: "guitarra", n: "Guitarra" }, { id: "cuerdas", n: "Cuerdas" }];
+  const MUSICAS = [{ id: "auto", n: "La de la pieza" }, { id: "vivo", n: "En vivo" }, { id: "noche", n: "Noche" }, { id: "aviso", n: "Aviso" }, { id: "calma", n: "Calma" }, { id: "fiesta", n: "Fiesta" }, { id: "acustica", n: "Acústica" }];
+  // Cada tipo de pieza tiene su fondo: el anuncio de hoy no suena igual que una cita o que un horario.
+  const DE_PIEZA = { hero: "vivo", anuncio: "vivo", perfil: "vivo", retrato: "vivo", tipo: "fiesta", bloque: "aviso", precio: "aviso", qrGrande: "aviso", cita: "calma", lista: "noche", horarios: "noche" };
+  /** Qué fondo le toca a esta pieza con lo que eligió la persona ("auto" = el suyo). */
+  const musicaDe = (pieza, eleccion) => (!eleccion || eleccion === "auto" || (eleccion !== "propia" && !MUSICAS.some((m) => m.id === eleccion)) ? DE_PIEZA[pieza.a] || "vivo" : eleccion);
   let ac = null; const contexto = () => (ac = ac || new (window.AudioContext || window.webkitAudioContext)());
   const TONADAS = new Map(); let propia = null; // { nombre, buffer }
   const decodificar = (datos) => new Promise((ok, mal) => contexto().decodeAudioData(datos, ok, mal));
@@ -62,6 +74,85 @@
     return { blob: new Blob(trozos, { type: mp4 ? "video/mp4" : "video/webm" }), ext: mp4 ? "mp4" : "webm", segundos: plan.D };
   }
 
+  /* ── el archivo, cuadro por cuadro (WebCodecs + MP4) ────────────────── */
+  const FPS = 30, SR = 44100, BITS_VIDEO = 5e6, BITS_AUDIO = 160000;
+  const CODECS = ["avc1.640028", "avc1.4d0028", "avc1.42e028", "avc1.640032", "avc1.42001f"];
+  const soporte = new Map();
+  async function configVideo(w, h) {
+    const k = w + "x" + h; if (soporte.has(k)) return soporte.get(k);
+    let ok = null;
+    if (window.VideoEncoder && window.VideoFrame && window.Mp4Muxer) for (const codec of CODECS) { const cfg = { codec, width: w, height: h, bitrate: BITS_VIDEO, framerate: FPS, avc: { format: "avc" } }; try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { ok = cfg; break; } } catch (e) { /* ese no */ } }
+    soporte.set(k, ok); return ok;
+  }
+  let audioCfg; // undefined = sin probar; null = este navegador no codifica AAC
+  async function configAudio() {
+    if (audioCfg !== undefined) return audioCfg;
+    const cfg = { codec: "mp4a.40.2", sampleRate: SR, numberOfChannels: 2, bitrate: BITS_AUDIO };
+    try { audioCfg = window.AudioEncoder && window.AudioData && (await AudioEncoder.isConfigSupported(cfg)).supported ? cfg : null; } catch (e) { audioCfg = null; }
+    return audioCfg;
+  }
+  /** ¿Se puede armar el MP4 cuadro por cuadro en este navegador? (con audio pide además el codificador AAC) */
+  async function puedeCodificar(conAudio) { return !!(await configVideo(1080, 1920)) && (!conAudio || !!(await configAudio())); }
+
+  // La música del video, ya mezclada: entra suave, se sostiene y se va antes del final.
+  async function mezclar(id, segundos) {
+    const buf = await cargarMusica(id), n = Math.ceil(segundos * SR), oc = new OfflineAudioContext(2, n, SR);
+    const fuente = oc.createBufferSource(), vol = oc.createGain(), fin = Math.min(segundos, buf.duration);
+    fuente.buffer = buf; fuente.connect(vol); vol.connect(oc.destination);
+    vol.gain.setValueAtTime(0, 0); vol.gain.linearRampToValueAtTime(0.85, 0.3); vol.gain.setValueAtTime(0.85, Math.max(0.4, fin - 1.4)); vol.gain.linearRampToValueAtTime(0, fin);
+    fuente.start(0);
+    return oc.startRendering();
+  }
+  const ceder = () => new Promise((ok) => setTimeout(ok, 0));
+
+  async function codificar(pieza, d, o) {
+    const musica = o.musica || "", alAvance = o.alAvance || (() => {});
+    const F = C.FORMATOS[pieza.f], W = F.w - (F.w % 2), H = F.h - (F.h % 2);
+    const cfgV = await configVideo(W, H), cfgA = musica ? await configAudio() : null;
+    if (!cfgV || (musica && !cfgA)) throw new Error("sin_codificador");
+    await M.listo();
+    const plan = M.planDe(pieza, d, F.w), dd = Object.assign({}, d, { plan }), total = Math.round(plan.D * FPS);
+    const pista = musica ? await mezclar(musica, total / FPS) : null;
+    const { Muxer, ArrayBufferTarget } = window.Mp4Muxer;
+    const mux = new Muxer({ target: new ArrayBufferTarget(), fastStart: "in-memory", firstTimestampBehavior: "offset", video: { codec: "avc", width: W, height: H, frameRate: FPS }, audio: pista ? { codec: "aac", numberOfChannels: 2, sampleRate: SR } : undefined });
+    let falla = null;
+    const ve = new VideoEncoder({ output: (trozo, meta) => mux.addVideoChunk(trozo, meta), error: (e) => (falla = e) });
+    ve.configure(cfgV);
+    const lienzo = document.createElement("canvas"), us = 1e6 / FPS;
+    for (let i = 0; i < total; i++) {
+      if (falla) throw falla;
+      M.pintarEn(lienzo, pieza, Object.assign({}, dd, { m: Math.min(i / FPS, plan.D) }), F.w);
+      const cuadro = new VideoFrame(lienzo, { timestamp: Math.round(i * us), duration: Math.round(us) });
+      ve.encode(cuadro, { keyFrame: i % (FPS * 2) === 0 }); cuadro.close();
+      if (i % 3 === 0) { alAvance((i / total) * (pista ? 0.92 : 1)); await ceder(); }
+      while (ve.encodeQueueSize > 6) await ceder(); // que el codificador no se atragante
+    }
+    await ve.flush(); ve.close(); if (falla) throw falla;
+    if (pista) {
+      const ae = new AudioEncoder({ output: (trozo, meta) => mux.addAudioChunk(trozo, meta), error: (e) => (falla = e) });
+      ae.configure(cfgA);
+      const izq = pista.getChannelData(0), der = pista.numberOfChannels > 1 ? pista.getChannelData(1) : izq, PASO = 4410;
+      for (let p = 0; p < pista.length; p += PASO) {
+        const n = Math.min(PASO, pista.length - p), datos = new Float32Array(n * 2);
+        datos.set(izq.subarray(p, p + n), 0); datos.set(der.subarray(p, p + n), n);
+        const ad = new AudioData({ format: "f32-planar", sampleRate: SR, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round((p / SR) * 1e6), data: datos });
+        ae.encode(ad); ad.close();
+        if ((p / PASO) % 20 === 0) await ceder();
+      }
+      await ae.flush(); ae.close(); if (falla) throw falla;
+    }
+    mux.finalize(); alAvance(1);
+    return { blob: new Blob([mux.target.buffer], { type: "video/mp4" }), ext: "mp4", segundos: total / FPS, conAudio: !!pista, exacto: true };
+  }
+
+  /** Convierte la pieza en video. Primero cuadro por cuadro; si el navegador no puede, graba el lienzo en vivo. */
+  async function hacer(lienzoDeRespaldo, pieza, d, o) {
+    o = o || {};
+    if (await puedeCodificar(!!o.musica)) { try { return await codificar(pieza, d, o); } catch (e) { if (e && e.message === "no_bajo_la_musica") throw e; console.warn("codificar falló, se graba en vivo", e); soporte.clear(); } }
+    const r = await grabar(lienzoDeRespaldo || document.createElement("canvas"), pieza, d, o);
+    return Object.assign(r, { conAudio: !!o.musica, exacto: false });
+  }
+
   /** La reproduce en bucle sobre el lienzo (para verla antes de bajarla). Devuelve cómo pararla. */
   function reproducir(lienzo, pieza, d, o) {
     o = o || {}; const ancho = o.anchoPx, musica = o.musica || "";
@@ -81,5 +172,7 @@
     return () => { vivo = false; cancelAnimationFrame(raf); clearTimeout(raf); if (callar) callar(); };
   }
 
-  window.MaterialesVideo = { MUSICAS, grabar, reproducir, ponerPropia, audioPropio, cargarMusica, tipoDeVideo, puedeGrabar };
+  /** ¿Este navegador puede hacer videos, de una forma o de la otra? */
+  const puedeHacer = () => !!(window.VideoEncoder && window.Mp4Muxer) || puedeGrabar();
+  window.MaterialesVideo = { MUSICAS, musicaDe, hacer, codificar, puedeCodificar, puedeHacer, grabar, reproducir, ponerPropia, audioPropio, cargarMusica, tipoDeVideo, puedeGrabar };
 })();

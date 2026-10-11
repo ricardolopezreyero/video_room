@@ -66,13 +66,14 @@
         <button type="button" data-e="original" class="on">Original</button><button type="button" data-e="noche">Noche</button><button type="button" data-e="claro">Claro</button><button type="button" data-e="verde">Color</button>
       </div>
     </div>
-    <input type="file" id="foto-2-archivo" accept="image/*" hidden>
   </section>
 
   <nav class="mat-chips" id="mat-chips" aria-label="Para qué red"></nav>
   <div class="mat-barra">
     <span id="mat-cuenta" class="muted"></span>
     <button type="button" class="btn-ghost small" id="mat-zip">Descargar todo lo de esta vista (.zip)</button>
+    <button type="button" class="btn-ghost small" id="mat-zip-videos" data-lote hidden>Los videos con música (.zip)</button>
+    <button type="button" class="btn-ghost small" id="mat-zip-videos-limpios" data-lote hidden>Los videos sin audio (.zip)</button>
   </div>
 
   <div id="mat-grid"></div>
@@ -101,11 +102,12 @@
       </div>
       <!-- El mismo diseño con movimiento y con audio. Se graba aquí, en el navegador. -->
       <div id="visor-video-zona" hidden>
-        <div class="label" style="margin-top:14px">Audio</div>
+        <div class="label" style="margin-top:14px">Música</div>
         <div class="mat-musicas" id="visor-musicas"></div>
         <input type="file" id="audio-propio" accept="audio/*" hidden>
         <div class="visor-btns">
-          <button type="button" class="btn-primary" id="video-bajar">Descargar video</button>
+          <button type="button" class="btn-primary" id="video-bajar">Descargar con música</button>
+          <button type="button" class="btn-ghost" id="video-bajar-limpio">Descargar sin audio</button>
           <button type="button" class="btn-ghost" id="video-compartir" hidden>Compartir video</button>
         </div>
         <p class="mat-nota" id="video-nota"></p>
@@ -121,6 +123,8 @@
 <script src="/qr-lib.js" defer></script>
 <script src="/materiales-catalogo.js" defer></script>
 <script src="/materiales-motor.js" defer></script>
+<script src="/foto-editor.js" defer></script>
+<script src="/mp4-muxer.js" defer></script>
 <script src="/materiales-video.js" defer></script>
 <script src="/materiales.js" defer></script>
 <script src="/puente-login.js"></script>
