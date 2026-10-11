@@ -38,23 +38,23 @@ export const PUNTOS: Punto[] = [
     detalle: "Tres sesiones cobradas por quien fundó, con unas veinte personas pagando. No se le pide a nadie lo que no hemos hecho.",
     metas: { creadores: 1, pagan: 20, puerta: 1500, casa: 300 }, empujan: ["201", "119", "140"],
     si_no: "Si no se llenan tres sesiones propias, el mensaje o el precio están mal. Se corrige antes de invitar a los diez." },
-  { id: "pc03", fase: 2, despues: "214", cuando: "Semana 2", titulo: "Diez creadores con su primer peso",
+  { id: "pc03", fase: 2, despues: "209", cuando: "Semana 2", titulo: "Diez creadores con su primer peso",
     detalle: "Diez creadores cobran su primera sesión: diez personas a $60 cada una. Es la prueba de que le funciona a alguien que no somos nosotros.",
     metas: { creadores: 10, pagan: 100, puerta: 6000, casa: 1200 }, empujan: ["202", "207", "209", "214"],
     si_no: "Si cobran menos de siete, el problema es el montaje de la primera sesión, no el producto. Volver a la tarea 209." },
-  { id: "pc04", fase: 2, despues: "232", cuando: "Semana 3", titulo: "Seis de diez repiten",
+  { id: "pc04", fase: 2, despues: "231", cuando: "Semana 3", titulo: "Seis de diez repiten",
     detalle: "Los diez siguen activos y al menos seis ya dieron su segunda sesión. La puerta sube porque repiten, no porque llegue gente nueva.",
     metas: { creadores: 10, pagan: 140, puerta: 15000, casa: 3000 }, empujan: ["213", "226", "229", "232"],
     si_no: "Sin repetición no hay negocio. Si repiten menos de seis, no se contrata a nadie: primero se averigua por qué." },
 
   // ── Paso 3 · Los primeros 100 ─────────────────────────────────────────
-  { id: "pc05", fase: 3, despues: "313", cuando: "Semana 5", titulo: "25 creadores cobrando",
+  { id: "pc05", fase: 3, despues: "318", cuando: "Semana 5", titulo: "25 creadores cobrando",
     detalle: "La persona intensa ya trae creadores que no conocíamos. Cada uno deja en promedio $3,000 de puerta al mes.",
-    metas: { creadores: 25, pagan: 700, puerta: 75000, casa: 15000 }, empujan: ["309", "311", "313", "317"],
+    metas: { creadores: 25, pagan: 700, puerta: 75000, casa: 15000 }, empujan: ["309", "311", "313", "322"],
     si_no: "Si los mensajes no convierten, se cambia el mensaje y el tipo de creador antes de mandar más." },
-  { id: "pc06", fase: 3, despues: "336", cuando: "Semana 7", titulo: "50 creadores cobrando",
+  { id: "pc06", fase: 3, despues: "358", cuando: "Semana 7", titulo: "50 creadores cobrando",
     detalle: "El contenido diario ya trae salas solas, además de los mensajes. La mitad del paso, a la mitad del tiempo.",
-    metas: { creadores: 50, pagan: 1400, puerta: 150000, casa: 30000 }, empujan: ["323", "325", "315", "322"],
+    metas: { creadores: 50, pagan: 1400, puerta: 150000, casa: 30000 }, empujan: ["323", "325", "315", "320"],
     si_no: "Si la puerta por creador baja de $3,000, hay demasiados creadores chicos: trabajar precio y repetición con la tarea 320." },
   { id: "pc07", fase: 3, despues: "360", cuando: "Semana 10", titulo: "100 creadores y $300,000 de puerta",
     detalle: "Cien creadores cobrando cada mes. La casa recibe $60,000: quitando la tarjeta, casi lo que cuesta operar.",
@@ -62,15 +62,15 @@ export const PUNTOS: Punto[] = [
     si_no: "Una de cada cinco salas nuevas debe cobrar en sus primeros 14 días. Si no, no se abren las palancas del paso 4." },
 
   // ── Paso 4 · Los primeros 1,000 ───────────────────────────────────────
-  { id: "pc08", fase: 4, despues: "403", cuando: "Mes 3", titulo: "La casa se paga sola",
+  { id: "pc08", fase: 4, despues: "420", cuando: "Mes 3", titulo: "La casa se paga sola",
     detalle: "Con $340,000 de puerta la casa recibe $68,000. Quitando cerca de 6 % de tarjeta quedan unos $47,000: lo que cuesta operar cada mes. Desde aquí, crecer ya no sale de la bolsa.",
-    metas: { creadores: 115, pagan: 3100, puerta: 340000, casa: 68000 }, empujan: ["351", "107", "419", "356"],
+    metas: { creadores: 115, pagan: 3100, puerta: 340000, casa: 68000 }, empujan: ["351", "107", "419", "420"],
     si_no: "Si la puerta llega y el dinero no alcanza, el problema es la comisión de tarjeta: empujar recargas grandes y transferencia." },
-  { id: "pc09", fase: 4, despues: "414", cuando: "Mes 4", titulo: "250 creadores cobrando",
+  { id: "pc09", fase: 4, despues: "413", cuando: "Mes 4", titulo: "250 creadores cobrando",
     detalle: "Las agencias y los embajadores ya traen creadores por grupos, no de uno en uno.",
     metas: { creadores: 250, pagan: 6800, puerta: 750000, casa: 150000 }, empujan: ["403", "405", "406", "414"],
     si_no: "Si las agencias no activan a su gente, se revisa la oferta y se capacita a sus managers antes de firmar más." },
-  { id: "pc10", fase: 4, despues: "421", cuando: "Mes 5", titulo: "500 creadores y $1,500,000 de puerta",
+  { id: "pc10", fase: 4, despues: "427", cuando: "Mes 5", titulo: "500 creadores y $1,500,000 de puerta",
     detalle: "Los eventos faro y las cabezas de cartel ya pesan en la puerta. La mitad de los mil.",
     metas: { creadores: 500, pagan: 13600, puerta: 1500000, casa: 300000 }, empujan: ["415", "416", "419", "420"],
     si_no: "Si hay creadores y la puerta no sube, falta precio y membresía: tareas 419 y 420." },
@@ -80,11 +80,11 @@ export const PUNTOS: Punto[] = [
     si_no: "Si casi todos llegan porque los buscamos, el circuito de espectador a creador no prendió: se arregla antes de salir del país." },
 
   // ── Paso 5 · El millón ────────────────────────────────────────────────
-  { id: "pc12", fase: 5, despues: "508", cuando: "Mes 8", titulo: "$4,000,000 de puerta",
+  { id: "pc12", fase: 5, despues: "523", cuando: "Mes 8", titulo: "$4,000,000 de puerta",
     detalle: "Las membresías ya ponen cerca de la tercera parte de la puerta y entran los primeros creadores de otros países.",
     metas: { creadores: 1150, pagan: 36000, puerta: 4000000, casa: 800000 }, empujan: ["501", "506", "507", "508"],
     si_no: "Si la puerta se estanca con mil creadores, toca crecer por creador: cabezas de cartel y membresías." },
-  { id: "pc13", fase: 5, despues: "519", cuando: "Mes 10", titulo: "El millón",
+  { id: "pc13", fase: 5, despues: "518", cuando: "Mes 10", titulo: "El millón",
     detalle: "$5,000,000 de puerta en un mes dejan $1,000,000 a la casa. 1,300 creadores cobrando y 45,000 personas pagando.",
     metas: { creadores: 1300, pagan: 45000, puerta: 5000000, casa: 1000000 }, empujan: ["507", "519", "518", "528"],
     si_no: "Vigilar la mezcla: si crecen los envíos y no la puerta, la casa no gana. Tarea 528." },
@@ -111,7 +111,10 @@ export async function registrarPuntos(env: Env, real: RealPuntos, hechas?: Hecha
   const ya = hechas ?? Object.fromEntries((await env.DB.prepare("SELECT id FROM gtm_tareas WHERE id LIKE 'pc%'").all<{ id: string }>()).results.map((x) => [x.id, true]));
   const nuevos = PUNTOS.filter((p) => !ya[p.id] && puntoAlcanzado(p, real));
   if (!nuevos.length) return [];
-  await env.DB.batch(nuevos.map((p) => env.DB.prepare("INSERT OR IGNORE INTO gtm_tareas (id, hecha_por, hecha_nombre) VALUES (?, 'sistema', 'Números reales')").bind(p.id)));
+  await env.DB.batch(nuevos.flatMap((p) => [
+    env.DB.prepare("INSERT OR IGNORE INTO gtm_tareas (id, hecha_por, hecha_nombre) VALUES (?, 'sistema', 'Números reales')").bind(p.id),
+    env.DB.prepare("INSERT INTO gtm_bitacora (tarea, hecha, por, nombre) VALUES (?, 1, 'sistema', 'Números reales')").bind(p.id),
+  ]));
   if (hechas) { const at = Math.floor(Date.now() / 1000); for (const p of nuevos) hechas[p.id] = { por: "sistema", nombre: "Números reales", at }; }
   return nuevos.map((p) => p.id);
 }

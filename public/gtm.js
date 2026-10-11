@@ -20,6 +20,12 @@
   const RITMO = { u: "", d: "diario", s: "semanal", m: "mensual" };
   const T = G.tareas.map((t) => ({ id: t[0], fase: t[1], area: t[2], quien: t[3], esf: t[4], ritmo: t[5], titulo: t[6], detalle: t[7] }));
   let hechas = G.hechas || {}, real = G.real || {}, equipo = G.equipo || [], postulaciones = G.postulaciones || [];
+  let bitacora = G.bitacora || [];
+  const BLOQUE = Object.fromEntries(G.bloques || []); // primera tarea del bloque → su título
+  const PUEDE = !!G.yo.palomea, YO = String(G.yo.email || "").toLowerCase();
+  const fechaHora = (s) => { try { const d = new Date(s * 1000); return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" }) + " · " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }); } catch { return ""; } };
+  const hace = (s) => { const m = Math.max(0, Math.floor((Date.now() / 1000 - s) / 60)); return m < 1 ? "ahora" : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.floor(m / 60)} h` : m < 2880 ? "ayer" : fecha(s); };
+  const corto = (correo) => String(correo || "").split("@")[0];
   const P = G.puntos || [];
   // Cada meta: cómo se llama, si es dinero y a cuál de las dos preguntas responde (usuarios o ingreso).
   const METAS = { creadores: ["creadores que cobran", "", "u"], pagan: ["personas que pagan", "", "u"], puerta: ["de puerta", "$", "i"], casa: ["para la casa", "$", "i"], casa3: ["para la casa, en cada uno de los últimos tres meses", "$", "i"] };
@@ -138,10 +144,32 @@
   function tarjeta(t) {
     const h = hechas[t.id];
     return `<article class="gtm-tarea${h ? " hecha" : ""}" data-id="${t.id}">
-      <button type="button" class="gtm-palomita" role="checkbox" aria-checked="${h ? "true" : "false"}" aria-label="${h ? "Marcar como pendiente" : "Marcar como hecha"}: ${esc(t.titulo)}">${h ? "✓" : ""}</button>
+      <button type="button" class="gtm-palomita${PUEDE ? "" : " bloqueada"}" role="checkbox" aria-checked="${h ? "true" : "false"}" ${PUEDE ? "" : `aria-disabled="true" title="Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear"`} aria-label="${h ? "Marcar como pendiente" : "Marcar como hecha"}: ${esc(t.titulo)}">${h ? "✓" : ""}</button>
       <div class="gtm-tarea-txt"><b>${esc(t.titulo)}</b><p>${esc(t.detalle)}</p>
-        <div class="gtm-etq"><span class="e-quien v-${t.quien}">${QUIEN[t.quien]}</span><span class="e-area v-${t.area}">${AREAS[t.area]}</span><span>${ESFUERZO[t.esf]}</span>${RITMO[t.ritmo] ? `<span class="e-ritmo">${RITMO[t.ritmo]}</span>` : ""}<span class="e-id">${t.id}</span>${h ? `<small>✓ ${esc((h.nombre || h.por || "").split(" ")[0])} · ${fecha(h.at)}</small>` : ""}</div>
+        <div class="gtm-etq"><span class="e-quien v-${t.quien}">${QUIEN[t.quien]}</span><span class="e-area v-${t.area}">${AREAS[t.area]}</span><span>${ESFUERZO[t.esf]}</span>${RITMO[t.ritmo] ? `<span class="e-ritmo">${RITMO[t.ritmo]}</span>` : ""}<span class="e-id">${t.id}</span></div>
+        ${h ? `<p class="gtm-firma">✓ <b>${esc(h.por || h.nombre || "")}</b> · ${fechaHora(h.at)}</p>` : ""}
       </div></article>`;
+  }
+
+  /* ── marcador: quién ha palomeado y lo último que pasó ──────────────── */
+  function cuentas() {
+    const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0); const tHoy = hoy0.getTime() / 1000, tSem = Date.now() / 1000 - 7 * 86400;
+    const m = {};
+    T.forEach((t) => { const h = hechas[t.id]; if (!h || !h.por) return; const c = (m[h.por] = m[h.por] || { por: h.por, total: 0, semana: 0, hoy: 0, ultima: 0 }); c.total++; if (h.at >= tSem) c.semana++; if (h.at >= tHoy) c.hoy++; if (h.at > c.ultima) c.ultima = h.at; });
+    return Object.values(m).sort((a, b) => b.total - a.total || b.ultima - a.ultima);
+  }
+  function pintarMarcador() {
+    const c = $("gtm-marcador"); if (!c) return;
+    const filas = cuentas(), max = Math.max(1, ...filas.map((f) => f.total)), mio = filas.find((f) => f.por === YO);
+    const tabla = filas.length
+      ? filas.map((f, i) => `<li class="${f.por === YO ? "yo" : ""}"><i>${i + 1}</i><span><b>${esc(f.por)}</b><u><em style="width:${((f.total / max) * 100).toFixed(0)}%"></em></u></span><strong>${f.total}</strong><small>${f.hoy ? `${f.hoy} hoy · ` : ""}${f.semana} esta semana</small></li>`).join("")
+      : `<li class="vacio">Nadie ha palomeado todavía. ${PUEDE ? "La primera es tuya." : ""}</li>`;
+    const nombreDe = (id) => { const t = T.find((x) => x.id === id); if (t) return t.titulo; const p = P.find((x) => x.id === id); return p ? "◆ " + p.titulo : id; };
+    const ult = bitacora.slice(0, 8).map((e) => `<li class="${e.hecha ? "" : "quito"}${e.por === "sistema" ? " punto" : ""}"><b>${e.por === "sistema" ? "Números reales" : esc(corto(e.por))}</b> ${e.por === "sistema" ? "alcanzaron" : e.hecha ? "palomeó" : "desmarcó"} <span>${esc(nombreDe(e.tarea))}</span><em title="${fechaHora(e.at)}">${hace(e.at)}</em></li>`).join("");
+    c.innerHTML = `<div class="gtm-marcador">
+      <div><h4>Marcador${mio ? ` <small>tú llevas ${mio.total}${mio.hoy ? `, ${mio.hoy} hoy` : ""}</small>` : ""}</h4><ol class="gtm-marc-lista">${tabla}</ol></div>
+      <div><h4>Lo último</h4><ul class="gtm-marc-feed">${ult || `<li class="vacio">Aquí va a salir cada palomita, con quién y cuándo.</li>`}</ul></div>
+    </div>`;
   }
   function pintarLista() {
     const lista = T.filter((t) => pasa(t)), puntos = P.filter(pasaPunto), cont = $("gtm-lista");
@@ -150,35 +178,66 @@
       const todas = T.filter((t) => t.fase === f), h = todas.filter((t) => hechas[t.id]).length;
       const pf = P.filter((p) => p.fase === f), ph = pf.filter((p) => hechas[p.id]).length;
       // Cada punto de control va justo después de la tarea de la que cuelga, se vea o no esa tarea.
-      const cuerpo = todas.map((t) => (pasa(t) ? tarjeta(t) : "") + pf.filter((p) => p.despues === t.id && pasaPunto(p)).map(puntoHtml).join("")).join("");
+      // Los bloques: cada subtítulo sale si algo de su bloque se ve.
+      let trozos = [], abierto = null;
+      const cierra = () => { if (abierto && abierto.html) trozos.push(`<h4 class="gtm-bloque"><span>${esc(abierto.titulo)}</span><em>${abierto.h} de ${abierto.n}</em></h4>` + abierto.html); abierto = null; };
+      todas.forEach((t) => {
+        if (BLOQUE[t.id] || !abierto) { cierra(); abierto = { titulo: BLOQUE[t.id] || "", html: "", n: 0, h: 0 }; }
+        abierto.n++; if (hechas[t.id]) abierto.h++;
+        abierto.html += (pasa(t) ? tarjeta(t) : "") + pf.filter((p) => p.despues === t.id && pasaPunto(p)).map(puntoHtml).join("");
+      });
+      cierra();
+      const cuerpo = trozos.join("");
       if (!cuerpo) return "";
       return `<section class="gtm-grupo"><h3><span>Paso ${f}</span> ${FASES[f]} ${pf.length ? `<small class="gtm-grupo-pts">◆ ${ph} de ${pf.length}</small>` : ""}<em>${h} de ${todas.length}</em></h3><div class="gtm-avance"><div style="width:${((h / todas.length) * 100).toFixed(1)}%"></div></div>${cuerpo}</section>`;
     }).join("");
     cont.querySelectorAll(".gtm-palomita").forEach((b) => (b.onclick = () => palomear(b.closest(".gtm-tarea").dataset.id)));
-    enlazarPuntos(cont);
+    enlazarPuntos(cont); pintarMarcador();
   }
   function pintarChecklist() { pintarCarga(); pintarFiltros(); pintarLista(); pintarHoy(); pintarEscalera(); }
   async function palomear(id) {
+    if (!PUEDE) return toast("Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear.");
     const antes = hechas[id], hecha = !antes;
-    if (hecha) hechas[id] = { por: G.yo.email, nombre: G.yo.nombre, at: Math.floor(Date.now() / 1000) }; else delete hechas[id];
-    const art = document.querySelector(`.gtm-tarea[data-id="${id}"]`); if (art) art.outerHTML = tarjeta(T.find((t) => t.id === id));
-    const nuevo = document.querySelector(`.gtm-tarea[data-id="${id}"] .gtm-palomita`); if (nuevo) nuevo.onclick = () => palomear(id);
-    pintarCarga(); pintarHoy(); actualizarGrupos(); repintarPuntos();
+    if (hecha) hechas[id] = { por: YO, nombre: G.yo.nombre, at: Math.floor(Date.now() / 1000) }; else delete hechas[id];
+    const repinta = (clase) => {
+      const art = document.querySelector(`.gtm-tarea[data-id="${id}"]`); if (art) art.outerHTML = tarjeta(T.find((t) => t.id === id));
+      const n = document.querySelector(`.gtm-tarea[data-id="${id}"]`); if (!n) return;
+      n.querySelector(".gtm-palomita").onclick = () => palomear(id); if (clase) n.classList.add(clase);
+    };
+    repinta(hecha ? "recien" : ""); pintarCarga(); pintarHoy(); actualizarGrupos(); repintarPuntos(); pintarMarcador();
     try {
       const r = await fetch("/api/gtm/tarea", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hecha }) });
-      if (!r.ok) throw new Error(String(r.status));
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || String(r.status));
+      bitacora.unshift({ tarea: id, hecha, por: j.por, nombre: j.nombre, at: j.at }); bitacora = bitacora.slice(0, 25);
+      if (hecha) {
+        hechas[id] = { por: j.por, nombre: j.nombre, at: j.at };
+        const cs = cuentas(), lugar = cs.findIndex((f) => f.por === YO) + 1, mio = cs[lugar - 1] || { total: 1, hoy: 1 };
+        toast(`✓ Hecha. Llevas ${mio.hoy} hoy y ${mio.total} en total${cs.length > 1 ? ` · vas en el lugar ${lugar}` : ""}.`);
+      }
+      pintarMarcador();
     } catch (e) {
       if (antes) hechas[id] = antes; else delete hechas[id];
-      pintarChecklist(); toast("No se guardó. Revisa tu conexión e intenta de nuevo.");
+      pintarChecklist(); toast(String(e.message) === "solo_correos_de_la_casa" ? "Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear." : "No se guardó. Revisa tu conexión e intenta de nuevo.");
     }
   }
+  function actualizarBloques() {
+    document.querySelectorAll("#gtm-lista .gtm-grupo").forEach((g) => {
+      let h4 = null, n = 0, h = 0; const cierra = () => { if (h4) h4.querySelector("em").textContent = `${h} de ${n}`; };
+      const f = +(g.querySelector("h3 span").textContent.replace(/\D/g, "")); const ids = T.filter((t) => t.fase === f); let k = -1;
+      const tits = [...g.querySelectorAll(".gtm-bloque")];
+      ids.forEach((t) => { if (BLOQUE[t.id]) { cierra(); k = tits.findIndex((x) => x.querySelector("span").textContent === BLOQUE[t.id]); h4 = k >= 0 ? tits[k] : null; n = 0; h = 0; } n++; if (hechas[t.id]) h++; });
+      cierra();
+    });
+  }
   function actualizarGrupos() {
+    actualizarBloques();
     document.querySelectorAll(".gtm-grupo").forEach((g) => { const f = +(g.querySelector("h3 span").textContent.replace(/\D/g, "")), todas = T.filter((t) => t.fase === f), h = todas.filter((t) => hechas[t.id]).length; g.querySelector("h3 em").textContent = `${h} de ${todas.length}`; g.querySelector(".gtm-avance div").style.width = ((h / todas.length) * 100).toFixed(1) + "%"; });
   }
   // Lo que palomea otra persona del equipo aparece solo.
   setInterval(async () => {
     if (document.hidden) return;
-    try { const r = await fetch("/api/gtm"); if (!r.ok) return; const j = await r.json(); const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas), cambioReal = JSON.stringify(j.real) !== JSON.stringify(real); hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo; if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); } if (cambio) pintarChecklist(); else { pintarHoy(); if (cambioReal) repintarPuntos(); } } catch {}
+    try { const r = await fetch("/api/gtm"); if (!r.ok) return; const j = await r.json(); const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas), cambioReal = JSON.stringify(j.real) !== JSON.stringify(real); hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo; if (j.bitacora) { const cb = JSON.stringify(j.bitacora) !== JSON.stringify(bitacora); bitacora = j.bitacora; if (cb && !cambio) pintarMarcador(); } if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); } if (cambio) pintarChecklist(); else { pintarHoy(); if (cambioReal) repintarPuntos(); } } catch {}
   }, 45000);
 
   /* ── calculadora hacia el millón ────────────────────────────────────── */

@@ -21,7 +21,7 @@ import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { TIP_OPTIONS_CENTS } from "./lib/pricing";
 import { enviarCortesSemanales } from "./lib/corte-semanal";
 import { rescatar, esRuido } from "./lib/rescate";
-import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm } from "./lib/gtm";
+import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm, puedePalomear } from "./lib/gtm";
 import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candidatos";
 import { registrarPuntos } from "./lib/gtm-puntos";
 import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
@@ -162,7 +162,7 @@ app.get("/gtm", async (c) => {
   if (!a.ok || !a.user) return c.html(paginaGtmCerrada({ conSesion: !!a.user, email: a.user?.email, v }), a.user ? 403 : 401, cab);
   const [estado, real, postulaciones] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env)]);
   await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
-  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, v }), 200, cab);
+  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, bitacora: estado.bitacora, v }), 200, cab);
 });
 
 app.get("/api/gtm", async (c) => {
@@ -173,15 +173,23 @@ app.get("/api/gtm", async (c) => {
   return c.json({ ...estado, real, postulaciones }, 200, { "Cache-Control": "no-store" });
 });
 
-// Palomear o despalomear una tarea: queda quién y cuándo.
+// Palomear o despalomear una tarea: queda quién (su correo) y a qué hora, en
+// la tarea y en la bitácora. Es administrativo: solo correos de la casa.
 app.post("/api/gtm/tarea", async (c) => {
   const a = await accesoGtm(c);
   if (!a.ok || !a.user) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
+  const por = a.user.email.trim().toLowerCase();
+  if (!puedePalomear(por)) return c.json({ error: "solo_correos_de_la_casa" }, 403);
   const { id, hecha } = await c.req.json<{ id: string; hecha: boolean }>().catch(() => ({ id: "", hecha: false }));
   if (!esTareaGtm(id)) return c.json({ error: "tarea_desconocida" }, 400);
-  if (hecha) await c.env.DB.prepare("INSERT OR REPLACE INTO gtm_tareas (id, hecha_por, hecha_nombre) VALUES (?, ?, ?)").bind(id, a.user.email.toLowerCase(), a.user.name).run();
-  else await c.env.DB.prepare("DELETE FROM gtm_tareas WHERE id = ?").bind(id).run();
-  return c.json({ ok: true, id, hecha: !!hecha, por: a.user.email.toLowerCase(), nombre: a.user.name, at: Math.floor(Date.now() / 1000) });
+  const at = Math.floor(Date.now() / 1000);
+  await c.env.DB.batch([
+    hecha
+      ? c.env.DB.prepare("INSERT OR REPLACE INTO gtm_tareas (id, hecha_por, hecha_nombre, hecha_at) VALUES (?, ?, ?, ?)").bind(id, por, a.user.name, at)
+      : c.env.DB.prepare("DELETE FROM gtm_tareas WHERE id = ?").bind(id),
+    c.env.DB.prepare("INSERT INTO gtm_bitacora (tarea, hecha, por, nombre, at) VALUES (?, ?, ?, ?, ?)").bind(id, hecha ? 1 : 0, por, a.user.name, at),
+  ]);
+  return c.json({ ok: true, id, hecha: !!hecha, por, nombre: a.user.name, at });
 });
 
 // Dar o quitar acceso a una persona (solo quien administra).

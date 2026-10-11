@@ -591,6 +591,16 @@ checklist compartido de 214 tareas.
   el cron de cada media hora. También salen arriba («siguiente punto de
   control»), en cada paso del Resumen y como escalera completa en Números.
   Para mover una meta: cambiar el número en el archivo (no el `id`).
+- **El orden:** el checklist sale en el orden del archivo. Cada paso va en
+  bloques con subtítulo (`BLOQUES`), de lo que destraba a lo que sigue, y casi
+  todos los bloques desembocan en un punto de control. Para mover una tarea se
+  mueve su línea; el id nunca cambia.
+- **Quién palomea:** ver el plan lo decide la lista del equipo; palomear es
+  administrativo y solo lo hacen correos `@superleads.mx` o
+  `@ingenieriadigital.mx` (`puedePalomear`). Cada palomita guarda el correo y
+  la hora y se ven en la tarjeta. Todo movimiento, también desmarcar, queda en
+  `gtm_bitacora` (migración 0019). Con eso se arma el marcador (quién lleva
+  cuántas, hoy y en la semana) y «lo último».
 - API: `GET /api/gtm`, `POST /api/gtm/tarea`, `POST /api/gtm/equipo`.
   Migración 0016. Pruebas: `test/gtm.spec.ts`.
 

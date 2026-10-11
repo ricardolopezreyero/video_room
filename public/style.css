@@ -1699,3 +1699,41 @@ body.mat-grabando .visor-lienzo canvas { box-shadow: 0 0 0 3px #E5484D, 0 20px 6
   .gtm-meta-num b { font-size: 20px; }
   .gtm-punto-cab i { margin-left: 0; }
 }
+
+/* ── GTM: firma de la palomita, marcador y bloques ────────────────────── */
+.gtm-firma { margin: 8px 0 0 !important; font-size: 12.5px !important; color: var(--green, #56EF9F) !important; font-weight: 600; max-width: none !important; }
+.gtm-firma b { font-weight: 800; }
+.gtm-tarea.hecha .gtm-tarea-txt > p.gtm-firma { color: var(--green, #56EF9F) !important; }
+.gtm-palomita.bloqueada { cursor: not-allowed; opacity: .45; }
+.gtm-palomita.bloqueada:hover { border-color: rgba(255,255,255,.3); }
+.gtm-tarea.recien { animation: gtm-recien .9s cubic-bezier(.2,.8,.2,1); }
+.gtm-tarea.recien .gtm-palomita { animation: gtm-brinco .5s cubic-bezier(.3,1.6,.5,1); }
+@keyframes gtm-recien { 0% { box-shadow: 0 0 0 0 rgba(86,239,159,.7); transform: scale(1); } 30% { transform: scale(1.012); } 100% { box-shadow: 0 0 0 14px rgba(86,239,159,0); transform: scale(1); } }
+@keyframes gtm-brinco { 0% { transform: scale(.4); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.gtm-bloque { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 8px; padding-top: 2px; font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #cdd3de; }
+.gtm-bloque span::before { content: "▸ "; color: var(--green, #56EF9F); }
+.gtm-bloque em { margin-left: auto; font-style: normal; font-weight: 700; color: #7c8696; letter-spacing: 0; }
+.gtm-grupo > .gtm-avance + .gtm-bloque { margin-top: 12px; }
+.gtm-marcador { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 6px 0 16px; }
+.gtm-marcador > div { background: rgba(255,255,255,.035); border: .5px solid rgba(255,255,255,.09); border-radius: 14px; padding: 12px 14px 10px; min-width: 0; }
+.gtm-marcador h4 { margin: 0 0 9px; font-size: 11px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; color: #9aa1b0; }
+.gtm-marcador h4 small { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--green, #56EF9F); margin-left: 6px; }
+.gtm-marc-lista, .gtm-marc-feed { list-style: none; margin: 0; padding: 0; }
+.gtm-marc-lista li { display: grid; grid-template-columns: 20px 1fr auto; column-gap: 9px; align-items: center; padding: 5px 0; }
+.gtm-marc-lista li > i { font-style: normal; font-weight: 800; font-size: 13px; color: #7c8696; text-align: center; }
+.gtm-marc-lista li:first-child > i { color: #F5C542; }
+.gtm-marc-lista span { min-width: 0; }
+.gtm-marc-lista span b { display: block; font-size: 13px; color: #fff; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gtm-marc-lista span u { display: block; height: 4px; border-radius: 999px; background: rgba(255,255,255,.08); margin-top: 4px; text-decoration: none; overflow: hidden; }
+.gtm-marc-lista span u em { display: block; height: 100%; border-radius: 999px; background: var(--green, #56EF9F); transition: width .5s cubic-bezier(.2,.8,.2,1); }
+.gtm-marc-lista strong { font-size: 19px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -.4px; }
+.gtm-marc-lista small { grid-column: 2 / -1; font-size: 11.5px; color: #7c8696; }
+.gtm-marc-lista li.yo span b { color: var(--green, #56EF9F); }
+.gtm-marc-lista li.vacio, .gtm-marc-feed li.vacio { display: block; color: #7c8696; font-size: 13px; padding: 6px 0; }
+.gtm-marc-feed li { font-size: 13px; color: #b6bdc9; padding: 4px 0; line-height: 1.4; display: flex; gap: 5px; flex-wrap: wrap; align-items: baseline; }
+.gtm-marc-feed li b { color: #fff; }
+.gtm-marc-feed li span { color: #e5e7eb; flex: 1 1 140px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gtm-marc-feed li em { font-style: normal; font-size: 11.5px; color: #7c8696; white-space: nowrap; }
+.gtm-marc-feed li.quito b, .gtm-marc-feed li.quito span { color: #7c8696; }
+.gtm-marc-feed li.punto b { color: #F5C542; }
+@media (max-width: 720px) { .gtm-marcador { grid-template-columns: 1fr; } }

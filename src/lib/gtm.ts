@@ -7,7 +7,7 @@ import type { Env } from "../env";
 import type { User } from "./db";
 import { currentUser } from "./current-user";
 import { ADMIN_EMAIL, escapeHtml } from "./email";
-import { TAREAS } from "./gtm-tareas";
+import { TAREAS, BLOQUES } from "./gtm-tareas";
 import { PUNTOS } from "./gtm-puntos";
 
 type Ctx = Context<{ Bindings: Env }>;
@@ -16,6 +16,14 @@ type Ctx = Context<{ Bindings: Env }>;
 const ADMINS = new Set([ADMIN_EMAIL.toLowerCase(), "reyero.ricardo@gmail.com"]);
 const EQUIPO_BASE = new Set([...ADMINS, "yudiel@superleads.mx", "victor@superleads.mx", "enrique@superleads.mx"]);
 
+/** Ver el plan es una cosa; palomear es administrativo: solo correos de la casa. */
+const DOMINIOS_PALOMITA = ["superleads.mx", "ingenieriadigital.mx"];
+export const puedePalomear = (email: string | null | undefined): boolean => {
+  const e = String(email || "").trim().toLowerCase(), arroba = e.lastIndexOf("@");
+  return arroba > 0 && DOMINIOS_PALOMITA.includes(e.slice(arroba + 1));
+};
+
+export interface EventoGtm { tarea: string; hecha: boolean; por: string; nombre: string; at: number }
 export interface AccesoGtm { user: User | null; ok: boolean; admin: boolean }
 export async function accesoGtm(c: Ctx): Promise<AccesoGtm> {
   const user = await currentUser(c).catch(() => null);
@@ -26,15 +34,17 @@ export async function accesoGtm(c: Ctx): Promise<AccesoGtm> {
   return { user, ok: !!fila, admin: false };
 }
 
-export async function estadoGtm(env: Env): Promise<{ hechas: Record<string, { por: string; nombre: string; at: number }>; equipo: { email: string; fijo: boolean }[] }> {
-  const [t, e] = await Promise.all([
+export async function estadoGtm(env: Env): Promise<{ hechas: Record<string, { por: string; nombre: string; at: number }>; equipo: { email: string; fijo: boolean }[]; bitacora: EventoGtm[] }> {
+  const [t, e, b] = await Promise.all([
     env.DB.prepare("SELECT id, hecha_por, hecha_nombre, hecha_at FROM gtm_tareas").all<{ id: string; hecha_por: string; hecha_nombre: string; hecha_at: number }>(),
     env.DB.prepare("SELECT email FROM gtm_equipo ORDER BY at").all<{ email: string }>(),
+    env.DB.prepare("SELECT tarea, hecha, por, nombre, at FROM gtm_bitacora ORDER BY id DESC LIMIT 25").all<{ tarea: string; hecha: number; por: string; nombre: string; at: number }>().catch(() => ({ results: [] as { tarea: string; hecha: number; por: string; nombre: string; at: number }[] })),
   ]);
   const hechas: Record<string, { por: string; nombre: string; at: number }> = {};
   for (const r of t.results) hechas[r.id] = { por: r.hecha_por, nombre: r.hecha_nombre, at: r.hecha_at };
   // fijo = equipo de base (no se quita desde la página)
-  return { hechas, equipo: [...EQUIPO_BASE].map((email) => ({ email, fijo: true })).concat(e.results.filter((x) => !EQUIPO_BASE.has(x.email)).map((x) => ({ email: x.email, fijo: false }))) };
+  const bitacora = b.results.map((x) => ({ tarea: x.tarea, hecha: !!x.hecha, por: x.por, nombre: x.nombre, at: x.at }));
+  return { bitacora, hechas, equipo: [...EQUIPO_BASE].map((email) => ({ email, fijo: true })).concat(e.results.filter((x) => !EQUIPO_BASE.has(x.email)).map((x) => ({ email: x.email, fijo: false }))) };
 }
 
 const GANANCIAS = "('ganancia_entrada','propina_recibida','destacado_recibido','ganancia_membresia')";
@@ -383,8 +393,8 @@ const EQUIPO = `
   <div id="gtm-equipo-lista"></div>
 </section>`;
 
-export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; v: string }): string {
-  const datos = JSON.stringify({ yo: { email: o.user.email, nombre: o.user.name, admin: o.admin }, tareas: TAREAS, puntos: PUNTOS, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
+export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; bitacora?: unknown; v: string }): string {
+  const datos = JSON.stringify({ yo: { email: o.user.email.toLowerCase(), nombre: o.user.name, admin: o.admin, palomea: puedePalomear(o.user.email) }, tareas: TAREAS, bloques: BLOQUES, puntos: PUNTOS, bitacora: o.bitacora || [], hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
   const v = `?v=${encodeURIComponent(o.v)}`;
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -415,7 +425,9 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
       <section class="gtm-sec">
         <p class="gtm-ceja">Lo que hay que hacer</p>
         <h2>Checklist</h2>
-        <p>Cada palomita se guarda sola y la ve todo el equipo. Las tareas con ritmo se palomean cuando la costumbre ya quedó instalada.</p>
+        <p>Cada palomita se guarda sola y la ve todo el equipo, con el correo de quien la puso y la hora. Las tareas con ritmo se palomean cuando la costumbre ya quedó instalada.</p>
+        ${puedePalomear(o.user.email) ? "" : `<p class="gtm-alerta"><b>Tu correo puede ver el plan, no palomear.</b> Las palomitas son administrativas: solo las ponen correos @superleads.mx o @ingenieriadigital.mx.</p>`}
+        <div id="gtm-marcador"></div>
         <p class="gtm-nota gtm-nota-oro"><b>Los puntos de control</b> van mezclados entre las tareas y no se palomean. Son los números a los que hay que llegar: usuarios al mes e ingreso al mes. Se cumplen solos cuando los datos reales llegan, y queda la fecha.</p>
         <div class="gtm-carga" id="gtm-carga"></div>
         <div class="gtm-filtros" id="gtm-filtros"></div>

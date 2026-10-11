@@ -4,6 +4,8 @@ import { app } from "../src/index";
 import { cookieFor, createUser, createRoom, createLiveSession } from "./helpers";
 import { TAREAS } from "../src/lib/gtm-tareas";
 import { PUNTOS, puntoAlcanzado } from "../src/lib/gtm-puntos";
+import { BLOQUES } from "../src/lib/gtm-tareas";
+import { puedePalomear } from "../src/lib/gtm";
 
 const conCorreo = async (email: string) => { const id = await createUser(); await env.DB.prepare("UPDATE users SET email = ?, name = ? WHERE id = ?").bind(email, email.split("@")[0], id).run(); return id; };
 const pedir = async (path: string, uid?: string, body?: unknown) => app.request(path, { method: body ? "POST" : "GET", headers: Object.assign({ "Content-Type": "application/json" }, uid ? { Cookie: await cookieFor(uid) } : {}), body: body ? JSON.stringify(body) : undefined }, env);
@@ -69,7 +71,10 @@ describe("go-to-market", () => {
     const r = await pedir("/api/gtm/equipo", ricardo, { email: " Intensa@Ejemplo.mx " });
     expect(((await r.json()) as { equipo: { email: string; fijo: boolean }[] }).equipo.some((p) => p.email === "intensa@ejemplo.mx" && !p.fijo)).toBe(true);
     expect((await pedir("/gtm", nueva)).status).toBe(200);
-    expect((await pedir("/api/gtm/tarea", nueva, { id: "202", hecha: true })).status).toBe(200);
+    // Ver sí; palomear no: su correo no es de la casa.
+    const no = await pedir("/api/gtm/tarea", nueva, { id: "202", hecha: true });
+    expect(no.status).toBe(403);
+    expect(await no.json()).toMatchObject({ error: "solo_correos_de_la_casa" });
     await pedir("/api/gtm/equipo", ricardo, { email: "intensa@ejemplo.mx", quitar: true });
     expect((await pedir("/gtm", nueva)).status).toBe(403);
   });
@@ -134,5 +139,43 @@ describe("go-to-market", () => {
     expect(luego.hechas.pc01.at).toBe(j.hechas.pc01.at);
     // Y nadie lo puede despalomear.
     expect((await pedir("/api/gtm/tarea", ricardo, { id: "pc01", hecha: false })).status).toBe(400);
+  });
+
+  it("palomear es de la casa: solo @superleads.mx y @ingenieriadigital.mx, y queda el correo y la hora", async () => {
+    expect(puedePalomear("Ricardo@SuperLeads.mx")).toBe(true);
+    expect(puedePalomear("contacto@ingenieriadigital.mx")).toBe(true);
+    for (const c of ["reyero.ricardo@gmail.com", "x@superleads.mx.evil.com", "x@notsuperleads.mx", "superleads.mx", "", null]) expect(puedePalomear(c)).toBe(false);
+
+    const ricardo = await conCorreo("ricardo@superleads.mx"), inge = await conCorreo("contacto@ingenieriadigital.mx"), gmail = await conCorreo("reyero.ricardo@gmail.com");
+    await env.DB.prepare("INSERT OR IGNORE INTO gtm_equipo (email, agregado_por) VALUES ('contacto@ingenieriadigital.mx', 'ricardo@superleads.mx')").run();
+    // El correo personal del fundador ve el plan, pero no palomea.
+    expect((await pedir("/gtm", gmail)).status).toBe(200);
+    expect((await pedir("/api/gtm/tarea", gmail, { id: "105", hecha: true })).status).toBe(403);
+    expect(await (await pedir("/gtm", gmail)).text()).toContain("puede ver el plan, no palomear");
+
+    const antes = Math.floor(Date.now() / 1000);
+    const r = (await (await pedir("/api/gtm/tarea", inge, { id: "105", hecha: true })).json()) as { por: string; at: number };
+    expect(r.por).toBe("contacto@ingenieriadigital.mx");
+    expect(r.at).toBeGreaterThanOrEqual(antes);
+    await pedir("/api/gtm/tarea", ricardo, { id: "106", hecha: true });
+    await pedir("/api/gtm/tarea", ricardo, { id: "106", hecha: false });
+    const j = (await (await pedir("/api/gtm", gmail)).json()) as { hechas: Record<string, { por: string; at: number }>; bitacora: { tarea: string; hecha: boolean; por: string; at: number }[] };
+    expect(j.hechas["105"]).toMatchObject({ por: "contacto@ingenieriadigital.mx", at: r.at });
+    expect(j.hechas["106"]).toBeUndefined();
+    // La bitácora guarda todo, lo más nuevo primero: quién, qué y cuándo, también lo desmarcado.
+    expect(j.bitacora.slice(0, 3).map((e) => `${e.tarea}:${e.hecha}:${e.por}`)).toEqual(["106:false:ricardo@superleads.mx", "106:true:ricardo@superleads.mx", "105:true:contacto@ingenieriadigital.mx"]);
+  });
+
+  it("el checklist va en bloques: cada bloque empieza en una tarea real y ninguna queda fuera de orden de paso", () => {
+    expect(BLOQUES.length).toBeGreaterThanOrEqual(25);
+    const ids = TAREAS.map((t) => t[0]);
+    for (const [primera, titulo] of BLOQUES) { expect(ids).toContain(primera); expect(titulo.length).toBeGreaterThan(5); }
+    expect(new Set(BLOQUES.map((b) => b[0])).size).toBe(BLOQUES.length);
+    // Los pasos van corridos: 1, luego 2… y la primera tarea de cada paso abre bloque.
+    const fases = TAREAS.map((t) => t[1]);
+    expect([...fases].sort((a, b) => a - b)).toEqual(fases);
+    for (const f of [1, 2, 3, 4, 5]) expect(BLOQUES.some((b) => b[0] === TAREAS.find((t) => t[1] === f)![0])).toBe(true);
+    // Cada punto de control cierra un bloque: la tarea siguiente abre otro (o se acaba el paso).
+    for (const p of PUNTOS) { const sig = TAREAS[ids.indexOf(p.despues) + 1]; expect(!sig || sig[1] !== p.fase || BLOQUES.some((b) => b[0] === sig[0]), `${p.id} tras ${p.despues}`).toBe(true); }
   });
 });
