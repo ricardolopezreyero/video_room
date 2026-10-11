@@ -24,6 +24,7 @@ import { rescatar, esRuido } from "./lib/rescate";
 import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm, puedePalomear } from "./lib/gtm";
 import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candidatos";
 import { registrarPuntos } from "./lib/gtm-puntos";
+import { indicadoresGtm } from "./lib/gtm-indicadores";
 import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
@@ -160,17 +161,17 @@ app.get("/gtm", async (c) => {
   const a = await accesoGtm(c);
   const cab = { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" };
   if (!a.ok || !a.user) return c.html(paginaGtmCerrada({ conSesion: !!a.user, email: a.user?.email, v }), a.user ? 403 : 401, cab);
-  const [estado, real, postulaciones] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env)]);
+  const [estado, real, postulaciones, indicadores] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env), indicadoresGtm(c.env)]);
   await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
-  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, bitacora: estado.bitacora, v }), 200, cab);
+  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, bitacora: estado.bitacora, indicadores, v }), 200, cab);
 });
 
 app.get("/api/gtm", async (c) => {
   const a = await accesoGtm(c);
   if (!a.ok) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
-  const [estado, real, postulaciones] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env)]);
+  const [estado, real, postulaciones, indicadores] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env), indicadoresGtm(c.env, c.req.query("fresco") === "1")]);
   await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
-  return c.json({ ...estado, real, postulaciones }, 200, { "Cache-Control": "no-store" });
+  return c.json({ ...estado, real, postulaciones, indicadores }, 200, { "Cache-Control": "no-store" });
 });
 
 // Palomear o despalomear una tarea: queda quién (su correo) y a qué hora, en

@@ -601,6 +601,15 @@ checklist compartido de 214 tareas.
   la hora y se ven en la tarjeta. Todo movimiento, también desmarcar, queda en
   `gtm_bitacora` (migración 0019). Con eso se arma el marcador (quién lleva
   cuántas, hoy y en la semana) y «lo último».
+- **Indicadores en vivo** (pestaña Indicadores, `src/lib/gtm-indicadores.ts`):
+  es lo que se revisa en la junta del mes. Nadie captura nada: todo se calcula
+  al momento con lo que pasó en la aplicación (registros, salas, sesiones,
+  entradas, membresías, envíos, recargas y retiros). Trae los cuatro números
+  del mes contra el anterior y contra el siguiente punto de control, la tabla
+  completa mes contra mes, seis meses de tendencia, los supuestos del plan
+  contra la realidad, el embudo, de dónde llega la gente, quién pone la puerta
+  y el avance de tareas. La página lo vuelve a pedir sola cada 45 segundos
+  (`GET /api/gtm`; con `?fresco=1` se salta el caché de 20 segundos).
 - API: `GET /api/gtm`, `POST /api/gtm/tarea`, `POST /api/gtm/equipo`.
   Migración 0016. Pruebas: `test/gtm.spec.ts`.
 

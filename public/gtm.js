@@ -204,7 +204,7 @@
       const n = document.querySelector(`.gtm-tarea[data-id="${id}"]`); if (!n) return;
       n.querySelector(".gtm-palomita").onclick = () => palomear(id); if (clase) n.classList.add(clase);
     };
-    repinta(hecha ? "recien" : ""); pintarCarga(); pintarHoy(); actualizarGrupos(); repintarPuntos(); pintarMarcador();
+    repinta(hecha ? "recien" : ""); pintarCarga(); pintarHoy(); actualizarGrupos(); repintarPuntos(); pintarMarcador(); pintarIndicadores();
     try {
       const r = await fetch("/api/gtm/tarea", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hecha }) });
       const j = await r.json().catch(() => ({}));
@@ -234,11 +234,136 @@
     actualizarBloques();
     document.querySelectorAll(".gtm-grupo").forEach((g) => { const f = +(g.querySelector("h3 span").textContent.replace(/\D/g, "")), todas = T.filter((t) => t.fase === f), h = todas.filter((t) => hechas[t.id]).length; g.querySelector("h3 em").textContent = `${h} de ${todas.length}`; g.querySelector(".gtm-avance div").style.width = ((h / todas.length) * 100).toFixed(1) + "%"; });
   }
-  // Lo que palomea otra persona del equipo aparece solo.
-  setInterval(async () => {
-    if (document.hidden) return;
-    try { const r = await fetch("/api/gtm"); if (!r.ok) return; const j = await r.json(); const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas), cambioReal = JSON.stringify(j.real) !== JSON.stringify(real); hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo; if (j.bitacora) { const cb = JSON.stringify(j.bitacora) !== JSON.stringify(bitacora); bitacora = j.bitacora; if (cb && !cambio) pintarMarcador(); } if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); } if (cambio) pintarChecklist(); else { pintarHoy(); if (cambioReal) repintarPuntos(); } } catch {}
-  }, 45000);
+  // Lo que pasa en la aplicación y lo que palomea el equipo llega solo, cada 45 segundos.
+  let refrescando = false;
+  async function refrescar(aMano) {
+    if (refrescando) return; refrescando = true;
+    const boton = $("gtm-ind-ya"); if (aMano && boton) boton.disabled = true;
+    try {
+      const r = await fetch("/api/gtm" + (aMano ? "?fresco=1" : "")); if (!r.ok) throw new Error(String(r.status));
+      const j = await r.json();
+      const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas), cambioReal = JSON.stringify(j.real) !== JSON.stringify(real);
+      hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo;
+      if (j.bitacora) { const cb = JSON.stringify(j.bitacora) !== JSON.stringify(bitacora); bitacora = j.bitacora; if (cb && !cambio) pintarMarcador(); }
+      if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); }
+      if (cambio) pintarChecklist(); else { pintarHoy(); if (cambioReal) repintarPuntos(); }
+      if (j.indicadores) { ind = j.indicadores; indAt = Date.now(); pintarIndicadores(); }
+      if (aMano) toast("Datos al momento.");
+    } catch (e) { if (aMano) toast("No se pudo actualizar. Revisa tu conexión."); }
+    refrescando = false; const b2 = $("gtm-ind-ya"); if (b2) b2.disabled = false;
+  }
+  setInterval(() => { if (!document.hidden) refrescar(false); }, 45000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - indAt > 45000) refrescar(false); });
+
+  /* ── indicadores en vivo: lo que se revisa en la junta del mes ───────── */
+  // Nada de esto se captura: sale de lo que pasó en la aplicación. El servidor
+  // lo recalcula y esta página lo vuelve a pedir sola cada 45 segundos.
+  let ind = G.indicadores || null, indAt = Date.now();
+  const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"], MESES_L = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  const nomMes = (m, largo) => { const p = String(m).split("-"); return (largo ? MESES_L : MESES)[+p[1] - 1] + (largo ? " de " + p[0] : ""); };
+  const dec = (n) => (Math.round(n * 10) / 10).toLocaleString("es-MX");
+  function cambio(a, b, alReves) {
+    if (!b) return a > 0 ? `<i class="sube">nuevo</i>` : `<i>sin cambio</i>`;
+    const p = ((a - b) / b) * 100; if (Math.abs(p) < 0.5) return `<i>igual</i>`;
+    return `<i class="${(p > 0) !== !!alReves ? "sube" : "baja"}">${p > 0 ? "▲" : "▼"} ${Math.abs(p) >= 1000 ? "×" + dec(a / b) : Math.round(Math.abs(p)) + " %"}</i>`;
+  }
+  function pintarIndicadores() {
+    const c = $("gtm-indicadores"); if (!c) return;
+    if (!ind || !ind.meses || ind.meses.length < 2) { c.innerHTML = `<section class="gtm-sec"><p class="gtm-vacio">Todavía no hay datos para mostrar.</p></section>`; return; }
+    const A = ind.meses[ind.meses.length - 1], B = ind.meses[ind.meses.length - 2], fr = Math.max(ind.dia / ind.dias_mes, 1 / ind.dias_mes);
+    const $$ = (cents) => pesos((cents || 0) / 100), sig = siguientePunto();
+    const meta = (k) => (sig && sig.metas[k] != null ? `meta del punto ${P.indexOf(sig) + 1}: ${cifra(k, sig.metas[k])}` : "");
+    const gordo = (valor, antes, etiqueta, cierre, nota, pct) => `<div class="gtm-ind-gordo"><span>${etiqueta}</span><b>${valor}</b><p>${antes}</p>${pct == null ? "" : `<div class="gtm-avance"><div style="width:${Math.min(100, Math.max(pct > 0 ? 2 : 0, pct)).toFixed(1)}%"></div></div>`}<small>${[cierre, nota].filter(Boolean).join(" · ")}</small></div>`;
+    const pctMeta = (k, v) => (sig && sig.metas[k] ? (v / sig.metas[k]) * 100 : null);
+
+    // 1 · los cuatro números del mes
+    const cuatro =
+      gordo(num(A.creadores), `${cambio(A.creadores, B.creadores)} contra ${nomMes(B.mes)} (${num(B.creadores)})`, "Creadores que cobraron", "", meta("creadores"), pctMeta("creadores", A.creadores)) +
+      gordo(num(A.pagan), `${cambio(A.pagan, B.pagan)} contra ${nomMes(B.mes)} (${num(B.pagan)})`, "Personas que pagaron", "", meta("pagan"), pctMeta("pagan", A.pagan)) +
+      gordo($$(A.puerta_cents), `${cambio(A.puerta_cents, B.puerta_cents)} contra ${nomMes(B.mes)} (${$$(B.puerta_cents)})`, "Puerta del mes", `a este paso cierra en ${$$(A.puerta_cents / fr)}`, meta("puerta"), pctMeta("puerta", A.puerta_cents / 100)) +
+      gordo($$(A.casa_cents), `${cambio(A.casa_cents, B.casa_cents)} contra ${nomMes(B.mes)} (${$$(B.casa_cents)})`, "Para la casa", `a este paso cierra en ${$$(A.casa_cents / fr)}`, meta("casa"), pctMeta("casa", A.casa_cents / 100));
+
+    // 2 · este mes contra el anterior, renglón por renglón
+    const fila = (nombre, a, b, f, alReves) => `<tr><td>${nombre}</td><td><b>${f(a)}</b></td><td>${f(b)}</td><td>${cambio(a, b, alReves)}</td></tr>`;
+    const div = (a, b) => (b ? a / b : 0), o1 = (v) => (v ? dec(v) : "—"), od = (v) => (v ? pesos(v) : "—");
+    const tabla = `<div class="gtm-tabla-caja"><table class="gtm-tabla gtm-ind-tabla"><thead><tr><th>Indicador</th><th>${nomMes(A.mes)} (día ${ind.dia} de ${ind.dias_mes})</th><th>${nomMes(B.mes)} completo</th><th>Cambio</th></tr></thead><tbody>
+      <tr class="sep"><td colspan="4">Usuarios</td></tr>
+      ${fila("Registros nuevos", A.registros, B.registros, num)}${fila("Salas nuevas", A.salas_nuevas, B.salas_nuevas, num)}${fila("Salas que transmitieron", A.salas_transmitieron, B.salas_transmitieron, num)}${fila("Creadores que cobraron", A.creadores, B.creadores, num)}${fila("Personas que pagaron", A.pagan, B.pagan, num)}
+      <tr class="sep"><td colspan="4">Actividad</td></tr>
+      ${fila("Sesiones", A.sesiones, B.sesiones, num)}${fila("Sesiones con entradas pagadas", A.sesiones_pagadas, B.sesiones_pagadas, num)}${fila("Entradas pagadas", A.entradas, B.entradas, num)}${fila("Membresías vendidas", A.membresias, B.membresias, num)}
+      <tr class="sep"><td colspan="4">Dinero</td></tr>
+      ${fila("Puerta (entradas y membresías)", A.puerta_cents, B.puerta_cents, $$)}${fila("Para la casa", A.casa_cents, B.casa_cents, $$)}${fila("Envíos dentro de las salas", A.envios_cents, B.envios_cents, $$)}${fila("Recargas de saldo", A.recargas_cents, B.recargas_cents, $$)}${fila("Retiros de creadores", A.retiros_cents, B.retiros_cents, $$)}
+    </tbody></table></div>`;
+
+    // 3 · seis meses
+    const maxP = Math.max(1, ...ind.meses.map((m) => m.puerta_cents)), maxC = Math.max(1, ...ind.meses.map((m) => m.creadores));
+    const barras = (campo, max, f) => `<div class="gtm-ind-barras">${ind.meses.map((m, i) => `<div class="${i === ind.meses.length - 1 ? "hoy" : ""}"><em>${f(m[campo])}</em><u><b style="height:${Math.max(m[campo] > 0 ? 3 : 0, (m[campo] / max) * 100).toFixed(1)}%"></b></u><span>${nomMes(m.mes)}</span></div>`).join("")}</div>`;
+
+    // 4 · los supuestos del plan contra lo que de verdad pasa
+    const sup = [
+      ["Precio promedio de la entrada", div(A.puerta_cents / 100, A.entradas + A.membresias), 60, od],
+      ["Personas que pagan por sesión", div(A.entradas, A.sesiones_pagadas), 12, o1],
+      ["Sesiones por creador al mes", div(A.sesiones, A.salas_transmitieron) / fr, 8, o1],
+      ["Lo que gasta cada persona en la puerta al mes", div(A.puerta_cents / 100, A.pagan), 110, od],
+      ["Puerta por creador al mes", div(A.puerta_cents / 100, A.creadores) / fr, 3000, od],
+    ].map((x) => `<tr><td>${x[0]}</td><td>${x[3](x[2])}</td><td><b>${x[3](x[1])}</b></td><td>${x[1] ? `<i class="${x[1] >= x[2] ? "sube" : "baja"}">${x[1] >= x[2] ? "arriba del plan" : "abajo del plan"}</i>` : "<i>sin datos</i>"}</td></tr>`).join("");
+
+    // 5 · el embudo
+    const e = ind.embudo, pc = (a, b) => (b ? Math.round((a / b) * 100) + " %" : "—");
+    const paso = (n, etiqueta, de) => `<div class="gtm-ind-paso"><b>${num(n)}</b><span>${etiqueta}</span>${de == null ? "" : `<small>${pc(n, de)} del paso anterior</small>`}</div>`;
+    const tasa = (valor, etiqueta, nota, meta) => `<div class="gtm-ind-tasa"><b>${valor}</b><span>${etiqueta}</span><small>${nota}${meta ? ` · meta: ${meta}` : ""}</small></div>`;
+
+    // 6 · de dónde llega la gente y quién pone la puerta
+    const fuentes = ind.fuentes.length ? ind.fuentes.map((f) => `<tr><td>${esc(f.fuente)}</td><td>${num(f.total)}</td><td>${num(f.mes)}</td><td><b>${num(f.cobran)}</b></td></tr>`).join("") : `<tr><td colspan="4">Sin registros todavía.</td></tr>`;
+    const top = ind.top.length ? ind.top.map((t, i) => `<tr><td>${i + 1}</td><td><b>${esc(t.titulo)}</b><small>/${esc(t.slug)}</small></td><td>${$$(t.puerta_cents)}</td><td>${num(t.entradas)}</td><td>${num(t.sesiones)}</td><td>${pc(t.puerta_cents, A.puerta_cents)}</td></tr>`).join("") : `<tr><td colspan="6">Nadie ha cobrado entradas este mes.</td></tr>`;
+
+    // 7 · las tareas
+    const ini = new Date(); ini.setDate(1); ini.setHours(0, 0, 0, 0); const tMes = ini.getTime() / 1000;
+    const delMes = T.filter((t) => hechas[t.id] && hechas[t.id].at >= tMes), nH = T.filter((t) => hechas[t.id]).length;
+    const porPersona = {}; delMes.forEach((t) => { const k = hechas[t.id].por; porPersona[k] = (porPersona[k] || 0) + 1; });
+    const pasos = [1, 2, 3, 4, 5].map((f) => { const tot = T.filter((t) => t.fase === f), h = tot.filter((t) => hechas[t.id]).length, pf = P.filter((p) => p.fase === f), ph = pf.filter((p) => hechas[p.id]).length; return `<div class="gtm-ind-fase"><span>Paso ${f} · ${FASES[f]}</span><div class="gtm-avance"><div style="width:${((h / tot.length) * 100).toFixed(1)}%"></div></div><small>${h} de ${tot.length} tareas · ◆ ${ph} de ${pf.length}</small></div>`; }).join("");
+    const listos = P.filter((p) => hechas[p.id]);
+
+    c.innerHTML = `
+    <section class="gtm-sec">
+      <div class="gtm-ind-cab"><div><p class="gtm-ceja">La junta del mes</p><h2>Cómo vamos en ${nomMes(A.mes, true)}</h2></div>
+        <div class="gtm-ind-vivo"><span><u class="gtm-vivo"></u>En vivo · <em id="gtm-ind-hace">actualizado ahora</em></span><button type="button" class="btn-ghost small" id="gtm-ind-ya">Actualizar</button></div></div>
+      <p>Todo sale de lo que pasó en la aplicación. Nadie lo captura. Vamos en el día ${ind.dia} de ${ind.dias_mes}.</p>
+      <div class="gtm-ind-cuatro">${cuatro}</div>
+      ${sig ? `<p class="gtm-nota gtm-nota-oro"><b>Siguiente punto de control:</b> ${esc(sig.titulo)} (${esc(sig.cuando)}). ${listos.length} de ${P.length} alcanzados.</p>` : ""}
+    </section>
+    <section class="gtm-sec"><h3>Este mes contra el anterior</h3>${tabla}</section>
+    <section class="gtm-sec"><h3>Seis meses</h3><div class="gtm-ind-dos"><div><h4>Puerta</h4>${barras("puerta_cents", maxP, (v) => $$(v))}</div><div><h4>Creadores que cobraron</h4>${barras("creadores", maxC, num)}</div></div></section>
+    <section class="gtm-sec"><h3>El plan contra la realidad</h3><p>La cuenta del millón descansa en estos supuestos. Aquí está lo que de verdad pasa este mes.</p>
+      <div class="gtm-tabla-caja"><table class="gtm-tabla gtm-ind-tabla"><thead><tr><th>Supuesto</th><th>El plan dice</th><th>Este mes</th><th></th></tr></thead><tbody>${sup}</tbody></table></div>
+      <p class="gtm-nota">Las sesiones y la puerta por creador se proyectan al mes completo con lo que va del mes.</p></section>
+    <section class="gtm-sec"><h3>El embudo, desde el primer día</h3>
+      <div class="gtm-ind-embudo">${paso(e.registros, "personas registradas")}${paso(e.salas, "salas creadas", e.registros)}${paso(e.transmitieron, "salas que transmitieron", e.salas)}${paso(e.cobraron, "salas que cobraron", e.transmitieron)}</div>
+      <div class="gtm-ind-tasas">
+        ${tasa(pc(e.si7, e.base7), "transmite en sus primeros 7 días", `${num(e.si7)} de ${num(e.base7)} salas de los últimos 90 días`, "30 %")}
+        ${tasa(pc(e.si30, e.base30), "repite antes de 30 días", `${num(e.si30)} de ${num(e.base30)} salas`, "60 %")}
+        ${tasa(e.primer_peso_dias == null ? "—" : dec(e.primer_peso_dias) + " días", "de crear la sala al primer peso", `promedio de ${num(e.primer_peso_n)} salas`, "")}
+        ${tasa(num(e.espectador_a_creador), "espectadores que se volvieron creadores", "entraron a una sala antes de abrir la suya", "")}
+      </div></section>
+    <section class="gtm-sec"><div class="gtm-ind-dos">
+      <div><h3>De dónde llega la gente</h3><div class="gtm-tabla-caja"><table class="gtm-tabla gtm-ind-tabla"><thead><tr><th>Fuente</th><th>Registros</th><th>Este mes</th><th>Ya cobran</th></tr></thead><tbody>${fuentes}</tbody></table></div></div>
+      <div><h3>Quién pone la puerta este mes</h3><div class="gtm-tabla-caja"><table class="gtm-tabla gtm-ind-tabla"><thead><tr><th>#</th><th>Sala</th><th>Puerta</th><th>Entradas</th><th>Sesiones</th><th>Del total</th></tr></thead><tbody>${top}</tbody></table></div></div>
+    </div></section>
+    <section class="gtm-sec"><h3>Las tareas</h3>
+      <div class="gtm-ind-cuatro tres">
+        ${gordo(`${nH} de ${T.length}`, `${Math.round((nH / T.length) * 100)} % del plan`, "Tareas hechas", "", "", (nH / T.length) * 100)}
+        ${gordo(num(delMes.length), Object.keys(porPersona).length ? Object.entries(porPersona).sort((a, b) => b[1] - a[1]).map((x) => `${esc(corto(x[0]))} ${x[1]}`).join(" · ") : "nadie ha palomeado este mes", "Palomeadas este mes", "", "", null)}
+        ${gordo(`${listos.length} de ${P.length}`, listos.length ? `último: ${esc(listos[listos.length - 1].titulo)}` : "ninguno todavía", "Puntos de control alcanzados", "", "", (listos.length / Math.max(1, P.length)) * 100)}
+      </div>
+      <div class="gtm-ind-fases">${pasos}</div>
+      <p><button type="button" class="gtm-liga" data-ir-tab="checklist">Abrir el checklist</button></p>
+    </section>`;
+    c.querySelectorAll("[data-ir-tab]").forEach((b) => (b.onclick = () => verTab(b.dataset.irTab, true)));
+    $("gtm-ind-ya").onclick = () => refrescar(true);
+    pintarHace();
+  }
+  function pintarHace() { const e = $("gtm-ind-hace"); if (!e) return; const s = Math.floor((Date.now() - indAt) / 1000); e.textContent = s < 5 ? "actualizado ahora" : s < 60 ? `actualizado hace ${s} s` : `actualizado hace ${Math.floor(s / 60)} min`; }
+  setInterval(pintarHace, 5000);
 
   /* ── calculadora hacia el millón ────────────────────────────────────── */
   const CALC = [
@@ -307,6 +432,6 @@
   }
   document.querySelectorAll("[data-ir-tab]").forEach((b) => (b.onclick = () => verTab(b.dataset.irTab, true)));
 
-  pintarChecklist(); armarCalc(); pintarEquipo(); pintarPostulaciones();
+  pintarChecklist(); armarCalc(); pintarEquipo(); pintarPostulaciones(); pintarIndicadores();
   verTab((location.hash || "").replace("#", "") || "resumen", false);
 })();

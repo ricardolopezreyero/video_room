@@ -393,8 +393,8 @@ const EQUIPO = `
   <div id="gtm-equipo-lista"></div>
 </section>`;
 
-export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; bitacora?: unknown; v: string }): string {
-  const datos = JSON.stringify({ yo: { email: o.user.email.toLowerCase(), nombre: o.user.name, admin: o.admin, palomea: puedePalomear(o.user.email) }, tareas: TAREAS, bloques: BLOQUES, puntos: PUNTOS, bitacora: o.bitacora || [], hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
+export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; bitacora?: unknown; indicadores?: unknown; v: string }): string {
+  const datos = JSON.stringify({ yo: { email: o.user.email.toLowerCase(), nombre: o.user.name, admin: o.admin, palomea: puedePalomear(o.user.email) }, tareas: TAREAS, bloques: BLOQUES, puntos: PUNTOS, bitacora: o.bitacora || [], indicadores: o.indicadores || null, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
   const v = `?v=${encodeURIComponent(o.v)}`;
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -412,6 +412,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
   <div id="gtm-siguiente"></div>
   <nav class="gtm-tabs" id="gtm-tabs" role="tablist">
     <button type="button" data-tab="resumen" class="on">Resumen</button>
+    <button type="button" data-tab="indicadores"><u class="gtm-vivo"></u>Indicadores</button>
     <button type="button" data-tab="numeros">Números</button>
     <button type="button" data-tab="checklist">Checklist <i id="gtm-cuenta-tab"></i></button>
     <button type="button" data-tab="ritmo">Ritmo</button>
@@ -420,6 +421,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
   </nav>
   <main>
     <div class="gtm-tab" id="tab-resumen">${RESUMEN}</div>
+    <div class="gtm-tab" id="tab-indicadores" hidden><div id="gtm-indicadores"></div></div>
     <div class="gtm-tab" id="tab-numeros" hidden>${NUMEROS}</div>
     <div class="gtm-tab" id="tab-checklist" hidden>
       <section class="gtm-sec">

@@ -178,4 +178,48 @@ describe("go-to-market", () => {
     // Cada punto de control cierra un bloque: la tarea siguiente abre otro (o se acaba el paso).
     for (const p of PUNTOS) { const sig = TAREAS[ids.indexOf(p.despues) + 1]; expect(!sig || sig[1] !== p.fase || BLOQUES.some((b) => b[0] === sig[0]), `${p.id} tras ${p.despues}`).toBe(true); }
   });
+
+  it("los indicadores salen en vivo de lo que pasa en la aplicación, mes por mes", async () => {
+    const ricardo = await conCorreo("ricardo@superleads.mx");
+    type Ind = { mes: string; dia: number; dias_mes: number; meses: { mes: string; creadores: number; pagan: number; puerta_cents: number; casa_cents: number; entradas: number; sesiones: number; sesiones_pagadas: number; salas_nuevas: number; registros: number; envios_cents: number; recargas_cents: number }[]; embudo: { registros: number; salas: number; transmitieron: number; cobraron: number; primer_peso_n: number; espectador_a_creador: number }; fuentes: { fuente: string; total: number; cobran: number }[]; top: { slug: string; puerta_cents: number; entradas: number }[] };
+    const pedirInd = async () => ((await (await pedir("/api/gtm?fresco=1", ricardo)).json()) as { indicadores: Ind }).indicadores;
+    const a = await pedirInd();
+    expect(a.meses.length).toBe(6);
+    expect(a.meses[5].mes).toBe(a.mes);
+    expect(a.dia).toBeGreaterThanOrEqual(1);
+    expect(a.dias_mes).toBeGreaterThanOrEqual(28);
+    const base = a.meses[5];
+
+    // Pasa algo en la aplicación: una creadora que llegó por TikTok abre sala, transmite y cobra tres entradas de $60.
+    const creadora = await createUser();
+    await env.DB.prepare("UPDATE users SET signup_utm_source = 'tiktok' WHERE id = ?").bind(creadora).run();
+    const sala = await createRoom(creadora, "sala-ind"), sesion = await createLiveSession(sala.id);
+    const publico = [await createUser(), await createUser()];
+    for (const [i, u] of [publico[0], publico[1], publico[0]].entries()) await env.DB.prepare("INSERT INTO passes (id, session_id, user_id, expires_at, device_id, amount_cents, creator_cents) VALUES (?, ?, ?, unixepoch() + 3600, 'd', 6000, 4800)").bind(`pase_ind_${i}`, sesion, u).run();
+    await env.DB.prepare("INSERT INTO ledger (id, user_id, amount_cents, type, ref_id, idem_key) VALUES ('ldg_ind_1', ?, 14400, 'ganancia_entrada', 'x', 'idem_ind_1'), ('ldg_ind_2', ?, 20000, 'recarga', 'x', 'idem_ind_2')").bind(creadora, publico[0]).run();
+    await env.DB.prepare("INSERT INTO tips (id, session_id, from_user, to_user, amount_cents) VALUES ('tip_ind_1', ?, ?, ?, 5000)").bind(sesion, publico[1], creadora).run();
+
+    const b = await pedirInd(), mes = b.meses[5];
+    expect(mes.creadores - base.creadores).toBe(1);
+    expect(mes.pagan - base.pagan).toBe(2); // dos personas distintas, aunque una pagó dos veces
+    expect(mes.entradas - base.entradas).toBe(3);
+    expect(mes.puerta_cents - base.puerta_cents).toBe(18000);
+    expect(mes.casa_cents - base.casa_cents).toBe(3600);
+    expect(mes.sesiones - base.sesiones).toBe(1);
+    expect(mes.sesiones_pagadas - base.sesiones_pagadas).toBe(1);
+    expect(mes.salas_nuevas - base.salas_nuevas).toBe(1);
+    expect(mes.envios_cents - base.envios_cents).toBe(5000);
+    expect(mes.recargas_cents - base.recargas_cents).toBe(20000);
+    expect(b.embudo.cobraron - a.embudo.cobraron).toBe(1);
+    expect(b.embudo.transmitieron - a.embudo.transmitieron).toBe(1);
+    expect(b.embudo.primer_peso_n - a.embudo.primer_peso_n).toBe(1);
+    expect(b.fuentes.find((f) => f.fuente === "tiktok")).toMatchObject({ total: 1, cobran: 1 });
+    expect(b.top.find((t) => t.slug === "sala-ind")).toMatchObject({ puerta_cents: 18000, entradas: 3 });
+    // La página los trae desde el primer momento y la pestaña existe.
+    const html = await (await pedir("/gtm", ricardo)).text();
+    expect(html).toContain('data-tab="indicadores"');
+    expect(html).toContain('"indicadores":{');
+    // Y sin acceso no salen.
+    expect((await pedir("/api/gtm?fresco=1", await createUser())).status).toBe(403);
+  });
 });

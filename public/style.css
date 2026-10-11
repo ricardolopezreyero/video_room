@@ -1737,3 +1737,58 @@ body.mat-grabando .visor-lienzo canvas { box-shadow: 0 0 0 3px #E5484D, 0 20px 6
 .gtm-marc-feed li.quito b, .gtm-marc-feed li.quito span { color: #7c8696; }
 .gtm-marc-feed li.punto b { color: #F5C542; }
 @media (max-width: 720px) { .gtm-marcador { grid-template-columns: 1fr; } }
+
+/* ── GTM: indicadores en vivo (la junta del mes) ──────────────────────── */
+.gtm-vivo { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green, #56EF9F); margin-right: 7px; vertical-align: middle; box-shadow: 0 0 0 0 rgba(86,239,159,.6); animation: gtm-latido 2s infinite; text-decoration: none; }
+.gtm-tabs button.on .gtm-vivo { background: var(--navy, #0D1117); animation: none; }
+@keyframes gtm-latido { 0% { box-shadow: 0 0 0 0 rgba(86,239,159,.6); } 70% { box-shadow: 0 0 0 7px rgba(86,239,159,0); } 100% { box-shadow: 0 0 0 0 rgba(86,239,159,0); } }
+.gtm-ind-cab { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+.gtm-ind-cab h2 { margin-bottom: 4px; }
+.gtm-ind-vivo { display: flex; align-items: center; gap: 12px; font-size: 13px; color: #cdd3de; padding-bottom: 8px; }
+.gtm-ind-vivo em { font-style: normal; color: #9aa1b0; }
+.gtm-ind-cuatro { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0 12px; }
+.gtm-ind-cuatro.tres { grid-template-columns: repeat(3, 1fr); }
+.gtm-ind-gordo { background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.1); border-radius: 16px; padding: 14px 15px 12px; display: flex; flex-direction: column; min-width: 0; }
+.gtm-ind-gordo > span { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #9aa1b0; }
+.gtm-ind-gordo > b { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: #fff; font-variant-numeric: tabular-nums; line-height: 1.15; margin: 3px 0 2px; overflow: hidden; text-overflow: ellipsis; }
+.gtm-ind-gordo > p { font-size: 12.5px !important; color: #b6bdc9 !important; margin: 0 0 6px !important; line-height: 1.4 !important; }
+.gtm-ind-gordo > small { font-size: 11.5px; color: #7c8696; line-height: 1.4; margin-top: auto; }
+.gtm-ind-gordo .gtm-avance > div { background: #F5C542; }
+.gtm-hoja i.sube, .gtm-hoja i.baja { font-style: normal; font-weight: 800; white-space: nowrap; }
+.gtm-hoja i.sube { color: var(--green, #56EF9F); }
+.gtm-hoja i.baja { color: #FF8A7A; }
+.gtm-ind-gordo p i, .gtm-ind-tabla td i { font-style: normal; color: #9aa1b0; font-weight: 700; }
+.gtm-ind-tabla td:first-child { color: #e5e7eb; }
+.gtm-ind-tabla td b { color: #fff; font-variant-numeric: tabular-nums; }
+.gtm-ind-tabla td small { display: block; color: #7c8696; font-size: 11.5px; }
+.gtm-ind-tabla tr.sep td { font-size: 10.5px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; color: var(--green, #56EF9F); background: rgba(255,255,255,.03); padding-top: 9px; padding-bottom: 7px; }
+.gtm-ind-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.gtm-ind-dos h4 { margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; color: #9aa1b0; }
+.gtm-ind-dos > div { min-width: 0; }
+.gtm-ind-barras { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; align-items: end; background: rgba(255,255,255,.035); border: .5px solid rgba(255,255,255,.09); border-radius: 14px; padding: 14px 12px 10px; }
+.gtm-ind-barras > div { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.gtm-ind-barras em { font-style: normal; font-size: 11.5px; font-weight: 700; color: #cdd3de; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gtm-ind-barras u { display: flex; align-items: flex-end; width: 100%; max-width: 46px; height: 110px; background: rgba(255,255,255,.05); border-radius: 8px; overflow: hidden; text-decoration: none; }
+.gtm-ind-barras u b { display: block; width: 100%; background: rgba(86,239,159,.45); border-radius: 8px 8px 0 0; transition: height .6s cubic-bezier(.2,.8,.2,1); }
+.gtm-ind-barras .hoy u b { background: var(--green, #56EF9F); }
+.gtm-ind-barras span { font-size: 11.5px; color: #9aa1b0; text-transform: capitalize; }
+.gtm-ind-barras .hoy span, .gtm-ind-barras .hoy em { color: #fff; font-weight: 800; }
+.gtm-ind-embudo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+.gtm-ind-paso { position: relative; background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.1); border-radius: 14px; padding: 13px 14px; display: flex; flex-direction: column; gap: 2px; }
+.gtm-ind-paso + .gtm-ind-paso::before { content: "›"; position: absolute; left: -9px; top: 50%; transform: translate(-50%, -50%); color: #586170; font-size: 20px; font-weight: 800; }
+.gtm-ind-paso b, .gtm-ind-tasa b { font-size: 24px; font-weight: 800; color: #fff; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
+.gtm-ind-paso span, .gtm-ind-tasa span { font-size: 12.5px; color: #cdd3de; line-height: 1.3; }
+.gtm-ind-paso small, .gtm-ind-tasa small { font-size: 11.5px; color: #7c8696; }
+.gtm-ind-tasas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.gtm-ind-tasa { border: .5px dashed rgba(255,255,255,.16); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.gtm-ind-fases { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 4px 0 12px; }
+.gtm-ind-fase { background: rgba(255,255,255,.035); border: .5px solid rgba(255,255,255,.09); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.gtm-ind-fase span { font-size: 12px; font-weight: 700; color: #e5e7eb; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gtm-ind-fase small { font-size: 11.5px; color: #7c8696; }
+@media (max-width: 860px) {
+  .gtm-ind-cuatro, .gtm-ind-cuatro.tres, .gtm-ind-embudo, .gtm-ind-tasas { grid-template-columns: 1fr 1fr; }
+  .gtm-ind-dos { grid-template-columns: 1fr; }
+  .gtm-ind-fases { grid-template-columns: 1fr 1fr; }
+  .gtm-ind-paso + .gtm-ind-paso::before { display: none; }
+  .gtm-ind-gordo > b { font-size: 25px; }
+}
