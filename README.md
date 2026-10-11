@@ -671,26 +671,34 @@ checklist compartido de 214 tareas.
 - API: `GET /api/gtm`, `POST /api/gtm/tarea`, `POST /api/gtm/equipo`.
   Migración 0016. Pruebas: `test/gtm.spec.ts`.
 
-## Proyecciones (`/proyecciones`): los próximos 15 años
+## Proyecciones (`/gtm#proyecciones`): los próximos 18 años
 
-Página interna, hermana del Go-to-market: mismo acceso y liga de ida y vuelta
-entre las dos. Arriba la gráfica con la curva de ingresos y la de gastos; abajo
-la tabla con las mismas columnas (usuarios, ingresos, gastos y resultado). Todo
-corre de izquierda a derecha en un solo carril: mes por mes son 180 columnas,
-o año por año son 15.
+Es la última pestaña del Go-to-market, después de Candidatos: mismo acceso y
+misma página (`/proyecciones` redirige ahí). Arriba la gráfica con la curva de
+ingresos y la de gastos; abajo la tabla con las mismas columnas (dónde se abre,
+usuarios, ingresos, gastos y resultado). Todo corre de izquierda a derecha en
+un solo carril: año por año son 18 columnas, o mes por mes son 216.
 
+- **La ruta:** una etapa por año, en cuatro tramos. Ciudades (México), países
+  (el mundo que habla español y Brasil), continentes (del inglés a África) y
+  a fondo. Cada etapa dice a dónde se abre, qué pasa y cuánto se multiplica la
+  puerta contra el año anterior. Se editan en `ETAPAS` y `TRAMOS`.
 - **El modelo** vive en `src/lib/proyecciones.ts` (`MODELO`) y solo viaja a
   quien tiene acceso; `public/proyecciones.js` hace la cuenta y el dibujo. El
-  año 1 sigue los puntos de control del plan; del año 2 al 15 la puerta crece
-  cada año menos que el anterior. El ingreso es la comisión sobre la puerta.
-  Los gastos tienen un piso y una parte proporcional al tamaño.
-- **Tres escenarios** (prudente, el plan, ambicioso) y **doce supuestos** que
-  se mueven en la página y se guardan en el navegador.
+  año 1 sigue los puntos de control del plan; del año 2 al 18 la puerta crece
+  cada año menos que el anterior (×3, ×2.2, ×1.8 y así hasta ×1.08). El ingreso
+  es la comisión sobre la puerta. Los gastos tienen un piso y una parte
+  proporcional al tamaño; abrir lugares nuevos cuesta desde el año 2.
+- **Tres escenarios** (prudente, el plan, ambicioso) y **catorce supuestos**
+  que se mueven en la página y se guardan en el navegador.
 - **Lo real** de cada mes transcurrido sale de los indicadores en vivo y se
   pinta sobre la curva y en su renglón de la tabla.
-- Resumen arriba: punto de equilibrio, cuánto hay que poner antes de que se
-  pague sola, primer millón al mes, ingreso de los años 1, 5 y 15, y utilidad
-  acumulada. Es antes de impuestos y en pesos de hoy.
+- Resumen arriba: cuánto hay que poner antes de que se pague sola, punto de
+  equilibrio e ingreso de los años 1, 5, 10 y 18. Abajo: por qué no deja de
+  crecer, en qué se va el dinero y los supuestos, con una comparación contra
+  una plataforma que ya existe. Es antes de impuestos y en pesos de hoy.
+- La pestaña nace escondida, así que se pinta al abrirla
+  (`Proyecciones.ver()`, llamada desde `verTab` en `gtm.js`).
 - Pruebas: `test/proyecciones.spec.ts`.
 
 ## Dirección: el perfil de quien va a dirigir (`/ceo`)

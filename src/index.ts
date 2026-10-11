@@ -25,7 +25,6 @@ import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTar
 import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candidatos";
 import { registrarPuntos } from "./lib/gtm-puntos";
 import { indicadoresGtm } from "./lib/gtm-indicadores";
-import { paginaProyecciones } from "./lib/proyecciones";
 import { asegurarMusica, generarMusica, MUSICA } from "./lib/musica";
 import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
 import { entradaGratis } from "./lib/cortesia";
@@ -165,7 +164,9 @@ app.get("/gtm", async (c) => {
   if (!a.ok || !a.user) return c.html(paginaGtmCerrada({ conSesion: !!a.user, email: a.user?.email, v }), a.user ? 403 : 401, cab);
   const [estado, real, postulaciones, indicadores] = await Promise.all([estadoGtm(c.env), numerosReales(c.env), listarPostulaciones(c.env), indicadoresGtm(c.env)]);
   await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
-  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, bitacora: estado.bitacora, indicadores, v }), 200, cab);
+  // Lo real de cada mes transcurrido, para ponerlo sobre la curva de Proyecciones.
+  const proyReal = indicadores.meses.map((m) => ({ mes: m.mes, puerta: m.puerta_cents / 100, casa: m.casa_cents / 100, creadores: m.creadores, pagan: m.pagan }));
+  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, bitacora: estado.bitacora, indicadores, proyReal, v }), 200, cab);
 });
 
 // ── Música de los videos: pedirle un fondo a ElevenLabs (mantenimiento) ───
@@ -180,19 +181,10 @@ app.post("/api/interno/musica/:id", async (c) => {
   return c.json(await generarMusica(c.env, id));
 });
 
-// ── Proyecciones: los próximos 15 años (hermana del Go-to-market) ─────────
-// Mismo acceso que el plan. El modelo viaja en la página; lo real de cada mes
-// transcurrido sale de los indicadores en vivo.
-app.get("/proyecciones", async (c) => {
-  const v = (c.env.CF_VERSION_METADATA?.id ?? "").slice(0, 8) || String(Math.floor(Date.now() / 10000));
-  const a = await accesoGtm(c);
-  const cab = { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" };
-  if (!a.ok || !a.user) return c.html(paginaGtmCerrada({ conSesion: !!a.user, email: a.user?.email, v }), a.user ? 403 : 401, cab);
-  const ind = await indicadoresGtm(c.env);
-  const real = ind.meses.map((m) => ({ mes: m.mes, puerta: m.puerta_cents / 100, casa: m.casa_cents / 100, creadores: m.creadores, pagan: m.pagan }));
-  return c.html(paginaProyecciones({ user: a.user, real, v }), 200, cab);
-});
-for (const alias of ["/proyeccion", "/gtm/proyecciones"]) app.get(alias, (c) => c.redirect("/proyecciones", 302));
+// ── Proyecciones: los próximos 18 años ───────────────────────────────────
+// Ya no es una página aparte: es la última pestaña del Go-to-market. Las ligas
+// viejas llegan ahí, y el candado es el del plan.
+for (const alias of ["/proyecciones", "/proyeccion", "/gtm/proyecciones"]) app.get(alias, (c) => c.redirect("/gtm#proyecciones", 302));
 
 app.get("/api/gtm", async (c) => {
   const a = await accesoGtm(c);

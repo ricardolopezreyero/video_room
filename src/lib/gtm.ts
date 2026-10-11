@@ -9,6 +9,7 @@ import { currentUser } from "./current-user";
 import { ADMIN_EMAIL, escapeHtml } from "./email";
 import { TAREAS, BLOQUES } from "./gtm-tareas";
 import { PUNTOS } from "./gtm-puntos";
+import { MODELO, seccionProyecciones } from "./proyecciones";
 
 type Ctx = Context<{ Bindings: Env }>;
 
@@ -393,7 +394,8 @@ const EQUIPO = `
   <div id="gtm-equipo-lista"></div>
 </section>`;
 
-export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; bitacora?: unknown; indicadores?: unknown; v: string }): string {
+export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; bitacora?: unknown; indicadores?: unknown; proyReal?: unknown; v: string }): string {
+  const proy = JSON.stringify({ modelo: MODELO, real: o.proyReal || [] }).replace(/</g, "\\u003c");
   const datos = JSON.stringify({ yo: { email: o.user.email.toLowerCase(), nombre: o.user.name, admin: o.admin, palomea: puedePalomear(o.user.email) }, tareas: TAREAS, bloques: BLOQUES, puntos: PUNTOS, bitacora: o.bitacora || [], indicadores: o.indicadores || null, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
   const v = `?v=${encodeURIComponent(o.v)}`;
   return `<!DOCTYPE html>
@@ -405,7 +407,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
 <body class="app-shell gtm-cuerpo">
 <div class="gtm-hoja">
   <header class="gtm-cab">
-    <div><p class="gtm-ceja">Video Room · plan interno del equipo</p><h1>Go-to-market</h1><p class="muted">De cero a $1,000,000 al mes: la estrategia, la cuenta, las ${TAREAS.length} tareas y ${PUNTOS.length} puntos de control.</p></div>
+    <div><p class="gtm-ceja">Video Room · plan interno del equipo</p><h1>Go-to-market</h1><p class="muted">De cero a $1,000,000 al mes: la estrategia, la cuenta, las ${TAREAS.length} tareas, ${PUNTOS.length} puntos de control y los próximos ${MODELO.anios} años.</p></div>
     <a class="gtm-salir" href="/app/monedero" title="Volver al monedero" aria-label="Volver al monedero">✕</a>
   </header>
   <div class="gtm-hoy" id="gtm-hoy" aria-label="Dónde vamos hoy"></div>
@@ -418,7 +420,7 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
     <button type="button" data-tab="ritmo">Ritmo</button>
     <button type="button" data-tab="equipo">Equipo</button>
     <button type="button" data-tab="candidatos">Candidatos <i id="gtm-cand-tab"></i></button>
-    <a class="gtm-tab-liga" href="/proyecciones">Proyecciones →</a>
+    <button type="button" data-tab="proyecciones">Proyecciones</button>
   </nav>
   <main>
     <div class="gtm-tab" id="tab-resumen">${RESUMEN}</div>
@@ -440,12 +442,14 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
     <div class="gtm-tab" id="tab-ritmo" hidden>${RITMO}</div>
     <div class="gtm-tab" id="tab-equipo" hidden>${EQUIPO}</div>
     <div class="gtm-tab" id="tab-candidatos" hidden><div id="gtm-candidatos"></div></div>
+    <div class="gtm-tab" id="tab-proyecciones" hidden>${seccionProyecciones()}</div>
   </main>
   <p class="muted gtm-pie">Plan interno. Sesión de ${escapeHtml(o.user.name)} · ${escapeHtml(o.user.email)}</p>
 </div>
 <div class="app-toast" id="gtm-toast"></div>
-<script>window.__GTM = ${datos};</script>
+<script>window.__GTM = ${datos}; window.__PROY = ${proy};</script>
 <script src="/candidatos.js${v}" defer></script>
+<script src="/proyecciones.js${v}" defer></script>
 <script src="/gtm.js${v}" defer></script>
 </body></html>`;
 }

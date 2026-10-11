@@ -46,6 +46,8 @@
     $("gtm-tabs").querySelectorAll("button").forEach((b) => { const on = b.dataset.tab === nombre; b.classList.toggle("on", on); if (on && b.scrollIntoView) b.scrollIntoView({ inline: "center", block: "nearest" }); });
     if (mover) { history.replaceState(null, "", nombre === "resumen" ? location.pathname : "#" + nombre); window.scrollTo({ top: 0 }); }
     if (nombre === "candidatos" && typeof montarCandidatos === "function") montarCandidatos();
+    // Proyecciones se pinta al abrirse: escondida no tiene ancho para medir sus columnas.
+    if (nombre === "proyecciones" && window.Proyecciones) window.Proyecciones.ver();
   }
   $("gtm-tabs").querySelectorAll("button").forEach((b) => (b.onclick = () => verTab(b.dataset.tab, true)));
 
