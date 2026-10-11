@@ -155,10 +155,47 @@
     { id: "I02", n: "Letrero de mostrador", f: "IC", a: "impreso", p: "papel", redes: ["imprimir"], tx: "pregunta", c: { k: "¿TIENES UNA DUDA?", t: "Entra en vivo conmigo", s: "Escanea el código y platicamos por video. Nada se graba." } },
     { id: "I03", n: "Tarjeta de presentación", f: "IT", a: "tarjeta", p: "noche", redes: ["imprimir"], tx: "bio", c: { s: "En vivo, en mi sala privada de video" } },
     { id: "I04", n: "Calcomanía", f: "IS", a: "sticker", p: "papel", redes: ["imprimir"], tx: "qr", c: { t: "ESCANEA Y ENTRA EN VIVO" } },
+    // ── CAMPAÑA «Aquí todos ganan» ────────────────────────────────────────
+    // Quince publicaciones, una por día, sobre el valor de Video Room para las
+    // dos partes: quien transmite cobra por su tiempo; quien entra se lleva
+    // conocimiento o un momento en vivo que no vuelve a existir. Todas en
+    // vertical (también salen en video). `camp` las junta arriba de la galería
+    // y `dia` es el orden sugerido.
+    { id: "K01", dia: 1, camp: "ganan", n: "Aquí todos ganan", f: "V", a: "tipo", p: "noche", vr: true, redes: VERT, tx: "ca01", c: { t: "AQUÍ\nTODOS\n*GANAN.*" } },
+    { id: "K02", dia: 2, camp: "ganan", n: "Tu tiempo ya vale", f: "V", a: "hero", p: "verde", vr: true, redes: VERT, tx: "ca02", c: { k: "VIDEO ROOM", t: "Tu tiempo ya vale. Ahora *te lo pagan*", s: "Una sala de video en vivo donde cada persona que entra te paga." } },
+    { id: "K03", dia: 3, camp: "ganan", n: "Una sala, dos ganancias", f: "V", a: "lista", p: "claro", vr: true, redes: VERT, tx: "ca03", c: { k: "UNA SALA, DOS GANANCIAS", t: "Uno cobra. El otro se lleva lo que vino a buscar", b: ["Quien transmite cobra por su hora", "Quien entra recibe respuesta a su caso", "O vive un momento que no se repite"] } },
+    { id: "K04", dia: 4, camp: "ganan", n: "Lo que sabes", f: "V", a: "cita", p: "noche", vr: true, redes: VERT, tx: "ca04", c: { t: "Lo que sabes le resuelve el mes a alguien. *Y a ti también.*", firma: "Video Room" } },
+    { id: "K05", dia: 5, camp: "ganan", n: "Más que cien videos", f: "V", a: "hero", p: "noche", vr: true, redes: VERT, tx: "ca05", c: { k: "PARA QUIEN ENTRA", t: "Una hora con quien ya lo resolvió vale más que *cien videos*", s: "Preguntas tu caso y te contestan a ti." } },
+    { id: "K06", dia: 6, camp: "ganan", n: "No va a existir otra vez", f: "V", a: "cita", p: "oro", vr: true, redes: VERT, tx: "ca06", c: { t: "Hay en vivos que no van a existir otra vez. *Este es uno.*", firma: "Video Room" } },
+    { id: "K07", dia: 7, camp: "ganan", n: "Haz la cuenta", f: "V", a: "precio", p: "noche", vr: true, redes: VERT, tx: "ca07", c: { k: "HAZ LA CUENTA", n: "$800", t: "para ti, con diez personas a $100", s: "Una hora de tu tiempo. Tú pones el precio." } },
+    { id: "K08", dia: 8, camp: "ganan", n: "No necesitas seguidores", f: "V", a: "bloque", p: "verde", vr: true, redes: VERT, tx: "ca08", c: { k: "SIN REQUISITOS", t: "No necesitas seguidores. Necesitas saber algo", s: "O cantar, o enseñar, o acompañar. Con eso alcanza." } },
+    { id: "K09", dia: 9, camp: "ganan", n: "Ya pueden cobrar", f: "V", a: "lista", p: "noche", vr: true, redes: VERT, tx: "ca09", c: { k: "YA PUEDEN COBRAR POR SU TIEMPO", t: "El contador. La maestra. El músico.", b: ["Quien resuelve dudas de impuestos", "Quien da la clase de zumba", "Quien canta los viernes"] } },
+    { id: "K10", dia: 10, camp: "ganan", n: "Tu sala es el negocio", f: "V", a: "hero", p: "vivo", vr: true, redes: VERT, tx: "ca10", c: { k: "PARA QUIEN YA TRANSMITE", t: "Tu en vivo gratis es el anuncio. *Tu sala es el negocio*", s: "Al terminar, invita a los que quieran seguir." } },
+    { id: "K11", dia: 11, camp: "ganan", n: "Tu caso, no el de todos", f: "V", a: "bloque", p: "claro", vr: true, redes: VERT, tx: "ca11", c: { k: "PARA QUIEN ENTRA", t: "Pregunta tu caso. No el de todos", s: "En una sala chica sí te alcanzan a contestar. Y nada se graba." } },
+    { id: "K12", dia: 12, camp: "ganan", n: "Estuviste o no estuviste", f: "V", a: "tipo", p: "vivo", vr: true, redes: VERT, tx: "ca12", c: { t: "ESTUVISTE\nO NO\n*ESTUVISTE.*" } },
+    { id: "K13", dia: 13, camp: "ganan", n: "Un ingreso que no tenías", f: "V", a: "hero", p: "oro", vr: true, redes: VERT, tx: "ca13", c: { k: "TU CALIDAD DE VIDA", t: "Una hora a la semana. Un ingreso que *no tenías*", s: "Con lo que ya sabes hacer, desde tu teléfono." } },
+    { id: "K14", dia: 14, camp: "ganan", n: "No existía. Ya existe.", f: "V", a: "cita", p: "verde", vr: true, redes: VERT, tx: "ca14", c: { t: "No existía una puerta para cobrar tu en vivo. *Ya existe.*", firma: "Video Room" } },
+    { id: "K15", dia: 15, camp: "ganan", n: "Abre tu sala", f: "V", a: "bloque", p: "noche", vr: true, redes: VERT, tx: "ca15", c: { k: "GRATIS", t: "Abre tu sala en 30 segundos", s: "O entra a la de alguien que admiras. Aquí todos ganan." } },
   ];
 
   // ── Textos sugeridos para publicar cada pieza (clave tx) ────────────────
   const CAPTIONS = {
+    // Campaña «Aquí todos ganan»: el texto de cada día.
+    ca01: "Aquí todos ganan. 🔴\n\nQuien transmite cobra por su tiempo. Quien entra se lleva lo que vino a buscar: una respuesta, una clase o un momento en vivo que no se repite.\n\nEso es Video Room 👉 {link}",
+    ca02: "Tu tiempo ya valía. Lo que no había era una forma sencilla de que te lo pagaran.\n\nVideo Room es una sala de video en vivo: compartes tu link, la gente entra y cada entrada te paga a ti.\n\n👉 {link}",
+    ca03: "Una sala, dos ganancias.\n\n· Quien transmite cobra por su hora.\n· Quien entra recibe respuesta a su caso, o vive algo que no va a pasar otra vez.\n\nNadie pierde su tiempo 👉 {link}",
+    ca04: "Eso que tú ya sabes hacer le resuelve el mes a alguien. Y cobrarlo te lo resuelve a ti.\n\nPon tu sala en Video Room y cobra por tu tiempo en vivo.\n\n👉 {link}",
+    ca05: "Puedes ver cien videos sobre tu problema. O puedes pasar una hora con alguien que ya lo resolvió y preguntarle tu caso.\n\nPara eso es Video Room.\n\n👉 {link}",
+    ca06: "Hay en vivos que no van a existir otra vez: nada se graba, no hay repetición y no hay resumen.\n\nO estás, o te lo cuentan.\n\n👉 {link}",
+    ca07: "Haz la cuenta: diez personas a $100 la entrada son $1,000. De cada 5 pesos, 4 son tuyos: $800 por una hora de tu tiempo. Y lo que te manden adentro te llega completo.\n\nTú pones el precio 👉 {link}",
+    ca08: "No necesitas miles de seguidores. Necesitas saber algo que a otra persona le sirve: enseñar, cantar, asesorar, acompañar.\n\nCon eso alcanza para abrir tu sala.\n\n👉 {link}",
+    ca09: "El contador que resuelve dudas. La maestra de zumba. El músico de los viernes.\n\nLos tres ya pueden cobrar por su tiempo en vivo, con su propio link.\n\n👉 {link}",
+    ca10: "Si ya haces en vivos gratis, ya tienes lo más difícil: gente que te ve.\n\nTu en vivo es el anuncio. Al terminar, invita a los que quieran seguir a tu sala. Ahí es donde cobras.\n\n👉 {link}",
+    ca11: "En un en vivo con mil personas nadie contesta tu pregunta.\n\nEn una sala chica sí: preguntas tu caso, no el de todos. Y nada se graba, así que se puede hablar en confianza.\n\n👉 {link}",
+    ca12: "Estuviste o no estuviste.\n\nEn Video Room nada se graba. Lo que pasa en la sala pasa una vez, con quienes entraron.\n\n👉 {link}",
+    ca13: "Una hora a la semana, con lo que ya sabes hacer, desde tu teléfono.\n\nNo cambia tu vida de un día para otro. Sí te da un ingreso que no tenías, y es tuyo.\n\n👉 {link}",
+    ca14: "Había redes para que te vieran. No había una puerta para cobrar tu tiempo en vivo, con tu precio y tu link.\n\nYa existe 👉 {link}",
+    ca15: "Abrir tu sala toma 30 segundos y es gratis. Entrar a la de alguien que admiras, también es un toque.\n\nDe un lado o del otro, aquí todos ganan 👉 {link}",
     vivo: "🔴 Estoy en vivo ahora mismo en mi sala privada. Entra, platicamos y nada se graba.\n\n👉 {link}",
     anuncio: "📅 {cuando}: nos vemos en vivo en mi sala{temaDe}. Entra con un toque; nada se graba.{horariosLinea}\n\nActiva «Avísame» y te llega un correo cuando abra 👉 {link}",
     horarios: "🕗 ¿A qué hora en tu país?\n\n{horariosLista}\n\nNos vemos en vivo en mi sala{temaDe}. Nada se graba.\n\n👉 {link}",
@@ -188,6 +225,13 @@
 
   // ── Textos para copiar, por red ─────────────────────────────────────────
   const TEXTOS = [
+    { red: "todas", camp: "ganan", grupo: "Campaña «Aquí todos ganan»", items: [
+      { t: "Video Room · El manifiesto", x: "Aquí todos ganan.\n\nQuien sabe algo, lo comparte en vivo y cobra por su tiempo.\nQuien necesita algo, entra, pregunta su caso y se lleva la respuesta.\nY hay momentos que solo existen una vez: nada se graba.\n\nNo es otra red. Es una sala con puerta: tú pones el precio, tú compartes el link, y de cada 5 pesos de la entrada 4 son tuyos.\n\nSe llama Video Room 👉 {link}" },
+      { t: "Video Room · Para quien transmite", x: "Si enseñas, asesoras, cantas o entrenas, tu tiempo en vivo ya vale.\n\n· Abres tu sala en 30 segundos, gratis\n· Tú pones el precio de la entrada\n· De cada 5 pesos, 4 son tuyos\n· Lo que te mandan adentro te llega completo\n· Retiras a tu banco\n\nNo necesitas seguidores mínimos ni esperar a fin de mes 👉 {link}" },
+      { t: "Video Room · Para quien entra", x: "¿Por qué pagar por entrar a una sala?\n\n· Porque ahí sí contestan tu pregunta, no la de todos\n· Porque estás con la persona, en vivo, no con un video grabado\n· Porque nada se graba y puedes hablar en confianza\n· Porque hay momentos que no se repiten\n\nEntras con un toque y sales cuando quieras 👉 {link}" },
+      { t: "Video Room · Guion de 30 segundos", x: "(A cámara, de pie, sin música)\n\nTe voy a decir algo que nadie te había dicho: tu tiempo en vivo se puede cobrar.\n\nYo abrí una sala en Video Room. Comparto mi link, la gente entra y cada entrada me paga a mí. De cada 5 pesos, 4 son míos.\n\nY quien entra no pierde: pregunta su caso y se lleva su respuesta. Nada se graba.\n\nAquí todos ganan. El link está en mi perfil.\n\n{link}" },
+      { t: "Video Room · Calendario de 15 días", x: "Una publicación al día, en este orden:\n\n1. Aquí todos ganan\n2. Tu tiempo ya vale\n3. Una sala, dos ganancias\n4. Lo que sabes\n5. Más que cien videos\n6. No va a existir otra vez\n7. Haz la cuenta\n8. No necesitas seguidores\n9. Ya pueden cobrar\n10. Tu sala es el negocio\n11. Tu caso, no el de todos\n12. Estuviste o no estuviste\n13. Un ingreso que no tenías\n14. No existía. Ya existe.\n15. Abre tu sala\n\nDías 1 a 3: la idea. Días 4 a 9: para quien transmite. Días 5, 6, 11 y 12: para quien entra. Días 13 a 15: el cierre y la invitación." },
+    ] },
     { red: "todas", grupo: "Para tu biografía", items: [
       { t: "Bio corta", x: "🔴 En vivo en mi sala privada\nNada se graba\n👇 Entra aquí" },
       { t: "Bio con precio", x: "🔴 En vivo, uno a uno · {precio} la hora\nNada se graba\n👇 Mi sala" },
@@ -256,5 +300,9 @@
     ] },
   ];
 
-  window.MaterialesCatalogo = { FORMATOS, REDES, PIEZAS, CAPTIONS, TEXTOS, ZONAS, ZONA_DE_TZ };
+  // Las campañas: grupos de piezas con una sola idea, que la galería enseña arriba de todo.
+  const CAMPANAS = {
+    ganan: { n: "Aquí todos ganan", ceja: "Campaña · 15 días", idea: "Quien transmite cobra por su tiempo. Quien entra se lleva conocimiento, o un momento en vivo que no va a existir otra vez.", uso: "Una publicación al día, en este orden. Todas salen también en video, con música." },
+  };
+  window.MaterialesCatalogo = { FORMATOS, REDES, PIEZAS, CAPTIONS, TEXTOS, ZONAS, ZONA_DE_TZ, CAMPANAS };
 })();

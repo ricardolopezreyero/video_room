@@ -571,6 +571,18 @@ necesita para publicar su sala o recomendar Video Room: **63 diseños** y
 
     La llave de ElevenLabs viene de la bóveda (Secrets Store), ligada en
     `wrangler.toml`. Cada pedido gasta créditos.
+- **La campaña «Aquí todos ganan»:** quince publicaciones verticales (ids
+  `K01` a `K15`), una por día, sobre el valor de Video Room para las dos
+  partes: quien transmite cobra por su tiempo; quien entra se lleva
+  conocimiento o un momento en vivo que no vuelve a existir. Van arriba de la
+  galería en todas las vistas y tienen su propia pestaña (`#campana`), con sus
+  cinco textos largos (manifiesto, para quien transmite, para quien entra,
+  guion de 30 segundos y calendario) y sus zips de video. En el catálogo se
+  marcan con `camp` y `dia`; la campaña se describe en `CAMPANAS` y la que
+  está al aire es `CAMP` en `materiales.js`. Para otra campaña: piezas nuevas
+  con otro `camp`, su entrada en `CAMPANAS` y cambiar `CAMP`. Regla del
+  texto: nada de prometer ingresos; se dice lo que la persona cobra y la
+  cuenta se hace con un ejemplo.
 - **La foto** (`public/foto-editor.js`): tocar el círculo de la foto abre el
   editor. Ahí se adjunta una foto y se acomoda: arrastrar para moverla; rueda,
   pellizco, deslizador o botones para acercarla; «Centrar» la regresa. El

@@ -91,7 +91,9 @@
       .replace(/\{nombreO\}/g, nombre || "En vivo")
       .replace(/\{nombre\}/g, nombre);
   }
-  const redDe = (pieza) => (S.red !== "todo" && S.red !== "textos" ? S.red : pieza.redes[0]);
+  // La campaña es una vista, no una red: para medir y para escribir cuenta como «todo».
+  const redVista = () => (S.red === "campana" ? "todo" : S.red);
+  const redDe = (pieza) => (redVista() !== "todo" && S.red !== "textos" ? S.red : pieza.redes[0]);
   const captionDe = (pieza) => escribir(C.CAPTIONS[pieza.tx] || "", redDe(pieza), !!pieza.vr);
   const nombreArchivo = (pieza, ext) => `VideoRoom-${pieza.id}-${pieza.n.normalize("NFD").replace(/\p{M}/gu, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}${personal() && !pieza.vr ? "-" + room.slug : ""}.${ext}`;
 
@@ -120,28 +122,41 @@
     else if (!me) { if (window.VRLogin) VRLogin.entrar(); }
     else editarFoto(1);
   }
-  const piezasDeVista = () => (S.red === "textos" ? [] : C.PIEZAS.filter((p) => S.red === "todo" || p.redes.includes(S.red)));
+  const CAMP = "ganan"; // la campaña que está al aire
+  // En la vista de la campaña van solo sus piezas, en su orden; en las demás, la campaña va primero.
+  const piezasDeVista = () => (S.red === "textos" ? [] : S.red === "campana" ? C.PIEZAS.filter((p) => p.camp === CAMP).sort((a, b) => a.dia - b.dia) : C.PIEZAS.filter((p) => S.red === "todo" || p.redes.includes(S.red)).sort((a, b) => (a.camp ? a.dia : 99) - (b.camp ? b.dia : 99)));
 
   function construir() {
     const grid = $("mat-grid"); obs.disconnect(); visibles.clear(); grid.textContent = ""; firmaPintada = firmaFaltas();
     const piezas = piezasDeVista();
+    const figura = (p) => {
+      const F = C.FORMATOS[p.f];
+      const fig = document.createElement("figure"), falta = leFalta(p), movil = puedeCompartir && matchMedia("(pointer:coarse)").matches, conV = M.conVideo(p);
+      fig.className = "mat-pieza" + (falta ? " falta" : ""); fig._pieza = p; fig._sucio = true; fig.dataset.id = p.id;
+      fig.innerHTML = `<button type="button" class="mat-lienzo" style="aspect-ratio:${F.w}/${F.h}" aria-label="Ver ${esc(p.n)} en grande"><canvas></canvas></button>
+        <figcaption><b>${esc(p.n)}</b><small>${p.camp ? `Día ${p.dia}` : p.vr ? "Video Room" : "Tu sala"} · ${p.id}</small></figcaption>
+        <div class="mat-btns">${falta ? `<button type="button" class="btn-ghost small" data-falta="${falta}">${falta === "fecha" ? "Elegir fecha y hora" : "Agregar mi foto"}</button>` : movil ? `<button type="button" class="btn-primary small" data-a="compartir">Compartir</button>${conV ? `<button type="button" class="btn-ghost small" data-video="1">▶ Video</button>` : `<button type="button" class="btn-ghost small" data-a="bajar">Bajar</button>`}` : `<button type="button" class="btn-primary small" data-a="bajar">Descargar</button>${conV ? `<button type="button" class="btn-ghost small" data-video="1">▶ Video</button>` : `<button type="button" class="btn-ghost small" data-a="texto">Texto</button>`}`}</div>`;
+      fig.querySelectorAll("[data-video]").forEach((b) => (b.onclick = () => abrirVisor(p, "video")));
+      fig.querySelectorAll("[data-falta]").forEach((b) => (b.onclick = () => resolverFalta(b.dataset.falta)));
+      fig.querySelector(".mat-lienzo").onclick = () => abrirVisor(p);
+      fig.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => accion(b.dataset.a, p, b)));
+      obs.observe(fig); return fig;
+    };
+    // La campaña al aire va arriba de todo, con su idea y su orden.
+    const deCamp = piezas.filter((p) => p.camp === CAMP), K = C.CAMPANAS[CAMP];
+    if (deCamp.length && K) {
+      const sec = document.createElement("section"); sec.className = "mat-grupo mat-campana";
+      sec.innerHTML = `<div class="mat-camp-cab"><p>${esc(K.ceja)}</p><h2>${esc(K.n)} <span>${deCamp.length}</span></h2><p class="mat-camp-idea">${esc(K.idea)}</p><p class="mat-camp-uso">${esc(K.uso)}${S.red === "campana" ? "" : ` <button type="button" class="mat-camp-ver" data-ver-camp>Ver solo la campaña</button>`}</p></div><div class="mat-fila"></div>`;
+      const fila = sec.querySelector(".mat-fila"); for (const p of deCamp) fila.appendChild(figura(p));
+      const ver = sec.querySelector("[data-ver-camp]"); if (ver) ver.onclick = () => { S.red = "campana"; guardar(); history.replaceState(null, "", "#campana"); construir(); window.scrollTo({ top: $("mat-chips").getBoundingClientRect().top + scrollY - 10, behavior: "smooth" }); };
+      grid.appendChild(sec);
+    }
     for (const f of Object.keys(C.FORMATOS)) {
-      const grupo = piezas.filter((p) => p.f === f); if (!grupo.length) continue;
+      const grupo = piezas.filter((p) => p.f === f && !p.camp); if (!grupo.length) continue;
       const F = C.FORMATOS[f], sec = document.createElement("section"); sec.className = "mat-grupo f-" + f;
       sec.innerHTML = `<h2>${esc(F.n)} <small>${F.w}×${F.h} · ${esc(F.para)}</small><span>${grupo.length}</span></h2><div class="mat-fila"></div>`;
       const fila = sec.querySelector(".mat-fila");
-      for (const p of grupo) {
-        const fig = document.createElement("figure"), falta = leFalta(p), movil = puedeCompartir && matchMedia("(pointer:coarse)").matches, conV = M.conVideo(p);
-        fig.className = "mat-pieza" + (falta ? " falta" : ""); fig._pieza = p; fig._sucio = true; fig.dataset.id = p.id;
-        fig.innerHTML = `<button type="button" class="mat-lienzo" style="aspect-ratio:${F.w}/${F.h}" aria-label="Ver ${esc(p.n)} en grande"><canvas></canvas></button>
-          <figcaption><b>${esc(p.n)}</b><small>${p.vr ? "Video Room" : "Tu sala"} · ${p.id}</small></figcaption>
-          <div class="mat-btns">${falta ? `<button type="button" class="btn-ghost small" data-falta="${falta}">${falta === "fecha" ? "Elegir fecha y hora" : "Agregar mi foto"}</button>` : movil ? `<button type="button" class="btn-primary small" data-a="compartir">Compartir</button>${conV ? `<button type="button" class="btn-ghost small" data-video="1">▶ Video</button>` : `<button type="button" class="btn-ghost small" data-a="bajar">Bajar</button>`}` : `<button type="button" class="btn-primary small" data-a="bajar">Descargar</button>${conV ? `<button type="button" class="btn-ghost small" data-video="1">▶ Video</button>` : `<button type="button" class="btn-ghost small" data-a="texto">Texto</button>`}`}</div>`;
-        fig.querySelectorAll("[data-video]").forEach((b) => (b.onclick = () => abrirVisor(p, "video")));
-        fig.querySelectorAll("[data-falta]").forEach((b) => (b.onclick = () => resolverFalta(b.dataset.falta)));
-        fig.querySelector(".mat-lienzo").onclick = () => abrirVisor(p);
-        fig.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => accion(b.dataset.a, p, b)));
-        fila.appendChild(fig); obs.observe(fig);
-      }
+      for (const p of grupo) fila.appendChild(figura(p));
       grid.appendChild(sec);
     }
     pintarTextos(); pintarChips();
@@ -153,18 +168,18 @@
   }
   function pintarChips() {
     const cuenta = (id) => C.PIEZAS.filter((p) => p.redes.includes(id)).length;
-    const chips = [{ id: "todo", n: "Todo", c: C.PIEZAS.length }].concat(C.REDES.map((r) => ({ id: r.id, n: r.n, c: cuenta(r.id) })), [{ id: "textos", n: "Textos", c: C.TEXTOS.reduce((n, g) => n + g.items.length, 0) }]);
+    const chips = [{ id: "todo", n: "Todo", c: C.PIEZAS.length }, { id: "campana", n: "★ Campaña", c: C.PIEZAS.filter((p) => p.camp === CAMP).length }].concat(C.REDES.map((r) => ({ id: r.id, n: r.n, c: cuenta(r.id) })), [{ id: "textos", n: "Textos", c: C.TEXTOS.reduce((n, g) => n + g.items.length, 0) }]);
     $("mat-chips").innerHTML = chips.map((c) => `<button type="button" data-red="${c.id}" class="${c.id === S.red ? "on" : ""}">${esc(c.n)} <i>${c.c}</i></button>`).join("");
     $("mat-chips").querySelectorAll("button").forEach((b) => (b.onclick = () => { S.red = b.dataset.red; guardar(); history.replaceState(null, "", S.red === "todo" ? location.pathname : "#" + S.red); construir(); $("mat-chips").scrollIntoView({ block: "start", behavior: "smooth" }); }));
     const activo = $("mat-chips").querySelector("button.on"); if (activo) $("mat-chips").scrollLeft = Math.max(0, activo.offsetLeft - 16);
   }
 
   /* ── textos para copiar ─────────────────────────────────────────────── */
-  const textosDeVista = () => C.TEXTOS.filter((g) => S.red === "todo" || S.red === "textos" || g.red === S.red || (g.red === "todas" && S.red !== "imprimir"));
+  const textosDeVista = () => (S.red === "campana" ? C.TEXTOS.filter((g) => g.camp === CAMP) : C.TEXTOS.filter((g) => S.red === "todo" || S.red === "textos" || g.red === S.red || (g.red === "todas" && S.red !== "imprimir")));
   function pintarTextos() {
     const cont = $("mat-textos"), grupos = textosDeVista();
-    cont.innerHTML = grupos.length ? `<h2 class="mat-h2">Textos para copiar</h2>` + grupos.map((g, gi) => `<div class="mat-tgrupo"><h3>${esc(g.grupo)}</h3><div class="mat-tfila">${g.items.map((it, ii) => `<article class="mat-tcard"><header><b>${esc(it.t)}</b><button type="button" class="btn-ghost small" data-g="${gi}" data-i="${ii}">Copiar</button></header><pre class="mat-texto">${esc(escribir(it.x, g.red === "todas" ? S.red : g.red, /Video Room/.test(it.t)))}</pre></article>`).join("")}</div></div>`).join("") : "";
-    cont.querySelectorAll("button[data-g]").forEach((b) => (b.onclick = () => { const g = grupos[+b.dataset.g], it = g.items[+b.dataset.i]; copiar(escribir(it.x, g.red === "todas" ? S.red : g.red, /Video Room/.test(it.t)), b); }));
+    cont.innerHTML = grupos.length ? `<h2 class="mat-h2">Textos para copiar</h2>` + grupos.map((g, gi) => `<div class="mat-tgrupo"><h3>${esc(g.grupo)}</h3><div class="mat-tfila">${g.items.map((it, ii) => `<article class="mat-tcard"><header><b>${esc(it.t)}</b><button type="button" class="btn-ghost small" data-g="${gi}" data-i="${ii}">Copiar</button></header><pre class="mat-texto">${esc(escribir(it.x, g.red === "todas" ? redVista() : g.red, /Video Room/.test(it.t)))}</pre></article>`).join("")}</div></div>`).join("") : "";
+    cont.querySelectorAll("button[data-g]").forEach((b) => (b.onclick = () => { const g = grupos[+b.dataset.g], it = g.items[+b.dataset.i]; copiar(escribir(it.x, g.red === "todas" ? redVista() : g.red, /Video Room/.test(it.t)), b); }));
   }
   function copiar(txt, boton) {
     const ok = () => { toast("Copiado."); if (boton) { const t = boton.textContent; boton.textContent = "Copiado ✓"; setTimeout(() => (boton.textContent = t), 1400); } };
@@ -326,7 +341,7 @@
       const lineas = ["MATERIALES PARA COMPARTIR · VIDEO ROOM", "", "── Texto sugerido para cada imagen ──", ""];
       for (const p of piezas) lineas.push(`[${p.id}] ${p.n}`, captionDe(p), "");
       lineas.push("── Más textos para copiar ──", "");
-      for (const g of textosDeVista()) { lineas.push(`▸ ${g.grupo}`, ""); for (const it of g.items) lineas.push(`· ${it.t}`, escribir(it.x, g.red === "todas" ? S.red : g.red, /Video Room/.test(it.t)), ""); }
+      for (const g of textosDeVista()) { lineas.push(`▸ ${g.grupo}`, ""); for (const it of g.items) lineas.push(`· ${it.t}`, escribir(it.x, g.red === "todas" ? redVista() : g.red, /Video Room/.test(it.t)), ""); }
       archivos.push({ nombre: "Textos para publicar.txt", datos: new TextEncoder().encode(lineas.join("\r\n")) });
       descargar(armarZip(archivos), `VideoRoom-Materiales-${redTxt}${personal() ? "-" + room.slug : ""}.zip`);
       toast(`Listo: ${piezas.length} imágenes y los textos, en un zip.`, 3500);
@@ -453,7 +468,7 @@
   /* ── arranque ───────────────────────────────────────────────────────── */
   (async function () {
     // La vista (qué red) no se recuerda entre visitas: se llega a «Todo», o a la red del enlace (#tiktok).
-    const h = location.hash.replace("#", ""); S.red = h && (h === "textos" || C.REDES.some((r) => r.id === h)) ? h : "todo";
+    const h = location.hash.replace("#", ""); S.red = h && (h === "textos" || h === "campana" || C.REDES.some((r) => r.id === h)) ? h : "todo";
     enlazarControles(); pintarYo();
     $("mat-sub").textContent = `${C.PIEZAS.length} diseños, ${C.PIEZAS.filter(M.conVideo).length} también en video con música, y ${C.TEXTOS.reduce((n, g) => n + g.items.length, 0)} textos. Descarga, copia y publica.`;
     await M.listo();
