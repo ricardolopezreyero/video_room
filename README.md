@@ -659,6 +659,22 @@ checklist compartido de 214 tareas.
   la hora y se ven en la tarjeta. Todo movimiento, también desmarcar, queda en
   `gtm_bitacora` (migración 0019). Con eso se arma el marcador (quién lleva
   cuántas, hoy y en la semana) y «lo último».
+- **Editar, archivar y mover tareas** (`src/lib/gtm-ediciones.ts`, migración
+  0020): quien dirige manda sobre la lista sin tocar el plan del código. Lo
+  que le hace a una tarea se guarda aparte en `gtm_ediciones` (una fila por
+  tarea tocada) y se pone encima al pintar. **Editar** cambia nombre,
+  descripción, quién, área, esfuerzo y ritmo, en su lugar; «Volver al texto
+  del plan» lo deshace. **Archivar** deja la tarea en su sitio, apagada: no se
+  palomea y deja de contar en avances y totales; «Regresar al plan» la prende.
+  **Mover** es con flechas, arrastrando del agarre o eligiendo bloque; el
+  punto de control sigue a la tarea de la que cuelga. Mismo candado que las
+  palomitas (correos de la casa) y todo queda en la bitácora con correo, hora
+  y nota (`accion`: hecha, deshecha, editada, original, archivada, restaurada,
+  movida, lugar, punto). API: `POST /api/gtm/tarea/:id/editar|original|archivar|mover`.
+- **Buscar y filtrar:** el buscador queda pegado arriba (la tecla `/` lleva a
+  él; Esc lo limpia) y busca en nombre, descripción, número, área y quién.
+  Filtros por tipo: paso, quién, ritmo y área. Por estado: todas, pendientes,
+  hechas, archivadas, editadas o movidas, y solo puntos de control.
 - **Indicadores en vivo** (pestaña Indicadores, `src/lib/gtm-indicadores.ts`):
   es lo que se revisa en la junta del mes. Nadie captura nada: todo se calcula
   al momento con lo que pasó en la aplicación (registros, salas, sesiones,

@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { app } from "../src/index";
 import { cookieFor, createUser, createRoom, createLiveSession } from "./helpers";
 import { TAREAS } from "../src/lib/gtm-tareas";
+import { edicionesGtm, tareasDelBloque, BLOQUES_GTM, BLOQUE_DE } from "../src/lib/gtm-ediciones";
 import { PUNTOS, puntoAlcanzado } from "../src/lib/gtm-puntos";
 import { BLOQUES } from "../src/lib/gtm-tareas";
 import { puedePalomear } from "../src/lib/gtm";
@@ -221,5 +222,116 @@ describe("go-to-market", () => {
     expect(html).toContain('"indicadores":{');
     // Y sin acceso no salen.
     expect((await pedir("/api/gtm?fresco=1", await createUser())).status).toBe(403);
+  });
+
+  it("quien dirige edita una tarea sin tocar el plan: queda encima, con correo y hora, y se puede regresar", async () => {
+    const ricardo = await conCorreo("ricardo@superleads.mx"), gmail = await conCorreo("reyero.ricardo@gmail.com");
+    const plan = TAREAS.find((t) => t[0] === "107")!;
+    const cuerpo = { titulo: "Decidir la recarga mínima: $100", detalle: "Quitar la de $50 y resaltar $200. Hecho cuando la recarga promedio pasa de $150.", area: plan[2], quien: "P", esfuerzo: 1, ritmo: plan[5] };
+    // Es administrativo: mismo candado que las palomitas.
+    expect((await pedir("/api/gtm/tarea/107/editar", gmail, cuerpo)).status).toBe(403);
+    expect((await pedir("/api/gtm/tarea/107/editar", undefined, cuerpo)).status).toBe(401);
+    expect((await pedir("/api/gtm/tarea/no-existe/editar", ricardo, cuerpo)).status).toBe(400);
+    expect((await pedir("/api/gtm/tarea/107/editar", ricardo, { ...cuerpo, titulo: "x" })).status).toBe(400);
+    expect((await pedir("/api/gtm/tarea/107/editar", ricardo, { ...cuerpo, area: "XXX" })).status).toBe(400);
+    expect((await pedir("/api/gtm/tarea/107/borrar", ricardo, {})).status).toBe(400);
+
+    const r = await pedir("/api/gtm/tarea/107/editar", ricardo, cuerpo);
+    expect(r.status).toBe(200);
+    const j = (await (await pedir("/api/gtm", gmail)).json()) as { ediciones: Record<string, { titulo?: string; detalle?: string; quien?: string; esfuerzo?: number; area?: string; editada_por?: string; editada_at?: number }>; bitacora: { tarea: string; accion: string; por: string; nota: string }[] };
+    // Solo se guarda lo que cambió: el área quedó igual al plan y no viaja.
+    expect(j.ediciones["107"]).toMatchObject({ titulo: cuerpo.titulo, detalle: cuerpo.detalle, quien: "P", esfuerzo: 1, editada_por: "ricardo@superleads.mx" });
+    expect(j.ediciones["107"].area).toBeUndefined();
+    expect(j.ediciones["107"].editada_at).toBeGreaterThan(0);
+    expect(j.bitacora[0]).toMatchObject({ tarea: "107", accion: "editada", por: "ricardo@superleads.mx" });
+    expect(j.bitacora[0].nota).toContain("titulo");
+    // El plan escrito no cambió.
+    expect(TAREAS.find((t) => t[0] === "107")![6]).toBe(plan[6]);
+    // Y se regresa al texto del plan.
+    expect((await pedir("/api/gtm/tarea/107/original", ricardo, {})).status).toBe(200);
+    const d = (await (await pedir("/api/gtm", ricardo)).json()) as { ediciones: Record<string, unknown>; bitacora: { accion: string }[] };
+    expect(d.ediciones["107"]).toBeUndefined();
+    expect(d.bitacora[0].accion).toBe("original");
+  });
+
+  it("archivar apaga la tarea sin borrarla: no se palomea, queda quién y cuándo, y se regresa", async () => {
+    const ricardo = await conCorreo("ricardo@superleads.mx"), inge = await conCorreo("contacto@ingenieriadigital.mx");
+    await env.DB.prepare("INSERT OR IGNORE INTO gtm_equipo (email, agregado_por) VALUES ('contacto@ingenieriadigital.mx', 'ricardo@superleads.mx')").run();
+    await pedir("/api/gtm/tarea", ricardo, { id: "110", hecha: true });
+    const a = await pedir("/api/gtm/tarea/110/archivar", inge, { archivada: true, motivo: "La marca ya está registrada" });
+    expect(a.status).toBe(200);
+    const j = (await (await pedir("/api/gtm", ricardo)).json()) as { hechas: Record<string, unknown>; ediciones: Record<string, { archivada?: boolean; archivada_por?: string; archivada_at?: number; motivo?: string }>; bitacora: { tarea: string; accion: string; por: string; nota: string }[] };
+    expect(j.ediciones["110"]).toMatchObject({ archivada: true, archivada_por: "contacto@ingenieriadigital.mx", motivo: "La marca ya está registrada" });
+    expect(j.ediciones["110"].archivada_at).toBeGreaterThan(0);
+    expect(j.bitacora[0]).toMatchObject({ tarea: "110", accion: "archivada", por: "contacto@ingenieriadigital.mx", nota: "La marca ya está registrada" });
+    // Lo que ya estaba hecho se queda hecho; lo que cambia es que ya no se puede palomear ni despalomear.
+    expect(j.hechas["110"]).toBeDefined();
+    expect((await pedir("/api/gtm/tarea", ricardo, { id: "110", hecha: false })).status).toBe(409);
+    // Regresarla la prende otra vez.
+    expect((await pedir("/api/gtm/tarea/110/archivar", ricardo, { archivada: false })).status).toBe(200);
+    const d = (await (await pedir("/api/gtm", ricardo)).json()) as { ediciones: Record<string, unknown>; bitacora: { accion: string; por: string }[] };
+    expect(d.ediciones["110"]).toBeUndefined();
+    expect(d.bitacora[0]).toMatchObject({ accion: "restaurada", por: "ricardo@superleads.mx" });
+    expect((await pedir("/api/gtm/tarea", ricardo, { id: "110", hecha: false })).status).toBe(200);
+  });
+
+  it("mover cambia el lugar o el bloque de una tarea, el resto del bloque conserva su orden y se puede regresar", async () => {
+    const ricardo = await conCorreo("ricardo@superleads.mx");
+    const b1 = BLOQUES_GTM[0], b2 = BLOQUES_GTM[1];
+    const antes = tareasDelBloque(b1.llave, {});
+    expect(antes[0]).toBe(b1.llave);
+    expect(antes.length).toBeGreaterThanOrEqual(2);
+    const [primera, segunda] = antes;
+    expect((await pedir("/api/gtm/tarea/" + segunda + "/mover", ricardo, { bloque: "no-existe" })).status).toBe(400);
+    expect((await pedir("/api/gtm/tarea/" + segunda + "/mover", ricardo, { bloque: b1.llave, antes_de: "999" })).status).toBe(400);
+    // La segunda sube al primer lugar de su bloque.
+    expect((await pedir("/api/gtm/tarea/" + segunda + "/mover", ricardo, { bloque: b1.llave, antes_de: primera })).status).toBe(200);
+    let ed = await edicionesGtm(env);
+    expect(tareasDelBloque(b1.llave, ed)).toEqual([segunda, primera, ...antes.slice(2)]);
+    // Luego se va al final de otro bloque: sale del primero y entra al segundo.
+    const destino = tareasDelBloque(b2.llave, ed);
+    expect((await pedir("/api/gtm/tarea/" + segunda + "/mover", ricardo, { bloque: b2.llave })).status).toBe(200);
+    ed = await edicionesGtm(env);
+    expect(tareasDelBloque(b1.llave, ed)).toEqual([primera, ...antes.slice(2)]);
+    expect(tareasDelBloque(b2.llave, ed)).toEqual([...destino, segunda]);
+    expect(ed[segunda]).toMatchObject({ bloque: b2.llave, movida_por: "ricardo@superleads.mx" });
+    const j = (await (await pedir("/api/gtm", ricardo)).json()) as { bitacora: { tarea: string; accion: string; nota: string }[] };
+    expect(j.bitacora[0]).toMatchObject({ tarea: segunda, accion: "movida" });
+    expect(j.bitacora[0].nota).toContain(b2.titulo);
+    // Ninguna tarea se pierde ni se repite al mover.
+    const todas = BLOQUES_GTM.flatMap((b) => tareasDelBloque(b.llave, ed));
+    expect(todas.length).toBe(TAREAS.length);
+    expect(new Set(todas).size).toBe(TAREAS.length);
+    // Y regresa a su lugar del plan.
+    expect((await pedir("/api/gtm/tarea/" + segunda + "/mover", ricardo, { original: true })).status).toBe(200);
+    ed = await edicionesGtm(env);
+    expect(ed[segunda]?.bloque).toBeUndefined();
+    expect(tareasDelBloque(b2.llave, ed)).toEqual(destino);
+    // Vuelve a su lugar exacto, no al final del bloque, y no queda rastro de orden escrito.
+    expect(tareasDelBloque(b1.llave, ed)).toEqual(antes);
+    expect(Object.values(ed).some((e) => e.bloque === b1.llave)).toBe(false);
+    // También dentro de un bloque: sube un lugar, regresa, y el bloque queda como el plan.
+    const tercera = antes[2] ?? segunda;
+    await pedir("/api/gtm/tarea/" + tercera + "/mover", ricardo, { bloque: b1.llave, antes_de: primera });
+    expect(tareasDelBloque(b1.llave, await edicionesGtm(env))[0]).toBe(tercera);
+    await pedir("/api/gtm/tarea/" + tercera + "/mover", ricardo, { original: true });
+    expect(tareasDelBloque(b1.llave, await edicionesGtm(env))).toEqual(antes);
+  });
+
+  it("la página trae buscador, filtros por tipo y lo que hace falta para editar, archivar y mover", async () => {
+    const ricardo = await conCorreo("ricardo@superleads.mx");
+    await pedir("/api/gtm/tarea/106/archivar", ricardo, { archivada: true });
+    const html = await (await pedir("/gtm", ricardo)).text();
+    expect(html).toContain('id="gtm-tipos"');
+    expect(html).toContain('id="gtm-filtros"');
+    expect(html).toContain('"bloquesOrden":[');
+    expect(html).toContain('"bloqueDe":{');
+    expect(html).toContain('"ediciones":{');
+    expect(html).toMatch(/"106":\{[^}]*"archivada":true/);
+    expect(html).toContain("Quien dirige manda sobre la lista");
+    // Los bloques cubren todas las tareas, en el orden del plan.
+    expect(BLOQUES_GTM.length).toBe(BLOQUES.length);
+    for (const t of TAREAS) expect(BLOQUES_GTM.some((b) => b.llave === BLOQUE_DE[t[0]])).toBe(true);
+    await pedir("/api/gtm/tarea/106/archivar", ricardo, { archivada: false });
   });
 });

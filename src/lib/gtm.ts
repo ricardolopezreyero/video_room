@@ -10,6 +10,7 @@ import { ADMIN_EMAIL, escapeHtml } from "./email";
 import { TAREAS, BLOQUES } from "./gtm-tareas";
 import { PUNTOS } from "./gtm-puntos";
 import { MODELO, seccionProyecciones } from "./proyecciones";
+import { edicionesGtm, BLOQUE_DE, BLOQUES_GTM, type Edicion } from "./gtm-ediciones";
 
 type Ctx = Context<{ Bindings: Env }>;
 
@@ -24,7 +25,7 @@ export const puedePalomear = (email: string | null | undefined): boolean => {
   return arroba > 0 && DOMINIOS_PALOMITA.includes(e.slice(arroba + 1));
 };
 
-export interface EventoGtm { tarea: string; hecha: boolean; por: string; nombre: string; at: number }
+export interface EventoGtm { tarea: string; hecha: boolean; por: string; nombre: string; at: number; accion: string; nota: string }
 export interface AccesoGtm { user: User | null; ok: boolean; admin: boolean }
 export async function accesoGtm(c: Ctx): Promise<AccesoGtm> {
   const user = await currentUser(c).catch(() => null);
@@ -35,17 +36,19 @@ export async function accesoGtm(c: Ctx): Promise<AccesoGtm> {
   return { user, ok: !!fila, admin: false };
 }
 
-export async function estadoGtm(env: Env): Promise<{ hechas: Record<string, { por: string; nombre: string; at: number }>; equipo: { email: string; fijo: boolean }[]; bitacora: EventoGtm[] }> {
-  const [t, e, b] = await Promise.all([
+export async function estadoGtm(env: Env): Promise<{ hechas: Record<string, { por: string; nombre: string; at: number }>; equipo: { email: string; fijo: boolean }[]; bitacora: EventoGtm[]; ediciones: Record<string, Edicion> }> {
+  const [t, e, b, ediciones] = await Promise.all([
     env.DB.prepare("SELECT id, hecha_por, hecha_nombre, hecha_at FROM gtm_tareas").all<{ id: string; hecha_por: string; hecha_nombre: string; hecha_at: number }>(),
     env.DB.prepare("SELECT email FROM gtm_equipo ORDER BY at").all<{ email: string }>(),
-    env.DB.prepare("SELECT tarea, hecha, por, nombre, at FROM gtm_bitacora ORDER BY id DESC LIMIT 25").all<{ tarea: string; hecha: number; por: string; nombre: string; at: number }>().catch(() => ({ results: [] as { tarea: string; hecha: number; por: string; nombre: string; at: number }[] })),
+    env.DB.prepare("SELECT tarea, hecha, por, nombre, at, accion, nota FROM gtm_bitacora ORDER BY id DESC LIMIT 80").all<{ tarea: string; hecha: number; por: string; nombre: string; at: number; accion: string | null; nota: string | null }>().catch(() => ({ results: [] as { tarea: string; hecha: number; por: string; nombre: string; at: number; accion: string | null; nota: string | null }[] })),
+    edicionesGtm(env),
   ]);
   const hechas: Record<string, { por: string; nombre: string; at: number }> = {};
   for (const r of t.results) hechas[r.id] = { por: r.hecha_por, nombre: r.hecha_nombre, at: r.hecha_at };
   // fijo = equipo de base (no se quita desde la página)
-  const bitacora = b.results.map((x) => ({ tarea: x.tarea, hecha: !!x.hecha, por: x.por, nombre: x.nombre, at: x.at }));
-  return { bitacora, hechas, equipo: [...EQUIPO_BASE].map((email) => ({ email, fijo: true })).concat(e.results.filter((x) => !EQUIPO_BASE.has(x.email)).map((x) => ({ email: x.email, fijo: false }))) };
+  // Las filas viejas no traen acción: se lee de la palomita (o del sistema, si fue un punto de control).
+  const bitacora = b.results.map((x) => ({ tarea: x.tarea, hecha: !!x.hecha, por: x.por, nombre: x.nombre, at: x.at, accion: x.accion || (x.por === "sistema" ? "punto" : x.hecha ? "hecha" : "deshecha"), nota: x.nota || "" }));
+  return { bitacora, ediciones, hechas, equipo: [...EQUIPO_BASE].map((email) => ({ email, fijo: true })).concat(e.results.filter((x) => !EQUIPO_BASE.has(x.email)).map((x) => ({ email: x.email, fijo: false }))) };
 }
 
 const GANANCIAS = "('ganancia_entrada','propina_recibida','destacado_recibido','ganancia_membresia')";
@@ -394,9 +397,9 @@ const EQUIPO = `
   <div id="gtm-equipo-lista"></div>
 </section>`;
 
-export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; postulaciones?: unknown; bitacora?: unknown; indicadores?: unknown; proyReal?: unknown; v: string }): string {
+export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equipo: unknown; real: unknown; ediciones?: unknown; postulaciones?: unknown; bitacora?: unknown; indicadores?: unknown; proyReal?: unknown; v: string }): string {
   const proy = JSON.stringify({ modelo: MODELO, real: o.proyReal || [] }).replace(/</g, "\\u003c");
-  const datos = JSON.stringify({ yo: { email: o.user.email.toLowerCase(), nombre: o.user.name, admin: o.admin, palomea: puedePalomear(o.user.email) }, tareas: TAREAS, bloques: BLOQUES, puntos: PUNTOS, bitacora: o.bitacora || [], indicadores: o.indicadores || null, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
+  const datos = JSON.stringify({ yo: { email: o.user.email.toLowerCase(), nombre: o.user.name, admin: o.admin, palomea: puedePalomear(o.user.email) }, tareas: TAREAS, bloques: BLOQUES, bloquesOrden: BLOQUES_GTM, bloqueDe: BLOQUE_DE, ediciones: o.ediciones || {}, puntos: PUNTOS, bitacora: o.bitacora || [], indicadores: o.indicadores || null, hechas: o.hechas, equipo: o.equipo, real: o.real, postulaciones: o.postulaciones || [] }).replace(/</g, "\\u003c");
   const v = `?v=${encodeURIComponent(o.v)}`;
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -431,10 +434,12 @@ export function paginaGtm(o: { user: User; admin: boolean; hechas: unknown; equi
         <p class="gtm-ceja">Lo que hay que hacer</p>
         <h2>Checklist</h2>
         <p>Cada palomita se guarda sola y la ve todo el equipo, con el correo de quien la puso y la hora. Las tareas con ritmo se palomean cuando la costumbre ya quedó instalada.</p>
-        ${puedePalomear(o.user.email) ? "" : `<p class="gtm-alerta"><b>Tu correo puede ver el plan, no palomear.</b> Las palomitas son administrativas: solo las ponen correos @superleads.mx o @ingenieriadigital.mx.</p>`}
+        <p class="gtm-nota"><b>Quien dirige manda sobre la lista.</b> Cada tarea se puede editar, mover de lugar o archivar. Una tarea archivada se queda aquí, apagada, y deja de contar; se regresa con un toque. El plan original no se pierde, y todo queda en la bitácora con correo y hora.</p>
+        ${puedePalomear(o.user.email) ? "" : `<p class="gtm-alerta"><b>Tu correo puede ver el plan, no palomear.</b> Palomear, editar, archivar y mover son administrativos: solo lo hacen correos @superleads.mx o @ingenieriadigital.mx.</p>`}
         <div id="gtm-marcador"></div>
         <p class="gtm-nota gtm-nota-oro"><b>Los puntos de control</b> van mezclados entre las tareas y no se palomean. Son los números a los que hay que llegar: usuarios al mes e ingreso al mes. Se cumplen solos cuando los datos reales llegan, y queda la fecha.</p>
         <div class="gtm-carga" id="gtm-carga"></div>
+        <div class="gtm-tipos" id="gtm-tipos" aria-label="Filtrar por tipo"></div>
         <div class="gtm-filtros" id="gtm-filtros"></div>
         <div id="gtm-lista"></div>
       </section>

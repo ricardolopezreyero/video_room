@@ -26,6 +26,7 @@ import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candid
 import { registrarPuntos } from "./lib/gtm-puntos";
 import { indicadoresGtm } from "./lib/gtm-indicadores";
 import { asegurarMusica, generarMusica, MUSICA } from "./lib/musica";
+import { edicionesGtm, apuntaPalomita, editarTarea, tareaOriginal, archivarTarea, moverTarea } from "./lib/gtm-ediciones";
 import { paginaCeo, guardarPostulacion, listarPostulaciones, avisarPostulacion } from "./lib/ceo";
 import { entradaGratis } from "./lib/cortesia";
 import type { Room, Session } from "./lib/db";
@@ -166,7 +167,7 @@ app.get("/gtm", async (c) => {
   await registrarPuntos(c.env, real, estado.hechas).catch((err) => console.error("puntos gtm", err));
   // Lo real de cada mes transcurrido, para ponerlo sobre la curva de Proyecciones.
   const proyReal = indicadores.meses.map((m) => ({ mes: m.mes, puerta: m.puerta_cents / 100, casa: m.casa_cents / 100, creadores: m.creadores, pagan: m.pagan }));
-  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, real, postulaciones, bitacora: estado.bitacora, indicadores, proyReal, v }), 200, cab);
+  return c.html(paginaGtm({ user: a.user, admin: a.admin, hechas: estado.hechas, equipo: estado.equipo, ediciones: estado.ediciones, real, postulaciones, bitacora: estado.bitacora, indicadores, proyReal, v }), 200, cab);
 });
 
 // ── Música de los videos: pedirle un fondo a ElevenLabs (mantenimiento) ───
@@ -203,14 +204,36 @@ app.post("/api/gtm/tarea", async (c) => {
   if (!puedePalomear(por)) return c.json({ error: "solo_correos_de_la_casa" }, 403);
   const { id, hecha } = await c.req.json<{ id: string; hecha: boolean }>().catch(() => ({ id: "", hecha: false }));
   if (!esTareaGtm(id)) return c.json({ error: "tarea_desconocida" }, 400);
+  // Una tarea archivada está apagada: primero se regresa.
+  if ((await edicionesGtm(c.env))[id]?.archivada) return c.json({ error: "tarea_archivada" }, 409);
   const at = Math.floor(Date.now() / 1000);
   await c.env.DB.batch([
     hecha
       ? c.env.DB.prepare("INSERT OR REPLACE INTO gtm_tareas (id, hecha_por, hecha_nombre, hecha_at) VALUES (?, ?, ?, ?)").bind(id, por, a.user.name, at)
       : c.env.DB.prepare("DELETE FROM gtm_tareas WHERE id = ?").bind(id),
-    c.env.DB.prepare("INSERT INTO gtm_bitacora (tarea, hecha, por, nombre, at) VALUES (?, ?, ?, ?, ?)").bind(id, hecha ? 1 : 0, por, a.user.name, at),
+    apuntaPalomita(c.env, id, !!hecha, por, a.user.name, at),
   ]);
   return c.json({ ok: true, id, hecha: !!hecha, por, nombre: a.user.name, at });
+});
+
+// Editar, archivar o mover una tarea. El plan del código no cambia: lo que
+// quien dirige le hace a una tarea se guarda aparte y se pone encima. Todo va
+// a la bitácora. Mismo candado que las palomitas: solo correos de la casa.
+app.post("/api/gtm/tarea/:id/:accion", async (c) => {
+  const a = await accesoGtm(c);
+  if (!a.ok || !a.user) return c.json({ error: "forbidden" }, a.user ? 403 : 401);
+  const por = a.user.email.trim().toLowerCase();
+  if (!puedePalomear(por)) return c.json({ error: "solo_correos_de_la_casa" }, 403);
+  const id = c.req.param("id"), accion = c.req.param("accion"), q = { por, nombre: a.user.name };
+  if (!esTareaGtm(id)) return c.json({ error: "tarea_desconocida" }, 400);
+  const cuerpo = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const r = accion === "editar" ? await editarTarea(c.env, id, cuerpo, q)
+    : accion === "original" ? await tareaOriginal(c.env, id, q)
+    : accion === "archivar" ? await archivarTarea(c.env, id, cuerpo.archivada !== false, cuerpo.motivo, q)
+    : accion === "mover" ? await moverTarea(c.env, id, cuerpo, q)
+    : { error: "accion_desconocida" };
+  if ("error" in r) return c.json(r, 400);
+  return c.json({ ...r, id, por, nombre: a.user.name }, 200, { "Cache-Control": "no-store" });
 });
 
 // Dar o quitar acceso a una persona (solo quien administra).

@@ -18,10 +18,25 @@
   const FASES = { 1: "Cimientos", 2: "Los primeros 10", 3: "Los primeros 100", 4: "Los primeros 1,000", 5: "El millón" };
   const ESFUERZO = { 1: "media hora", 2: "unas horas", 3: "un día", 4: "varios días" }, HORAS = { 1: 0.5, 2: 2, 3: 8, 4: 24 };
   const RITMO = { u: "", d: "diario", s: "semanal", m: "mensual" };
-  const T = G.tareas.map((t) => ({ id: t[0], fase: t[1], area: t[2], quien: t[3], esf: t[4], ritmo: t[5], titulo: t[6], detalle: t[7] }));
+  // El plan tal como viene escrito. Nunca cambia: lo que quien dirige le hace a una tarea
+  // (editarla, archivarla, moverla) llega aparte en «ediciones» y se pone encima.
+  const PLAN = G.tareas.map((t) => ({ id: t[0], fase: t[1], area: t[2], quien: t[3], esf: t[4], ritmo: t[5], titulo: t[6], detalle: t[7] }));
+  const LUGAR = Object.fromEntries(PLAN.map((t, i) => [t.id, i]));
+  const BLQ = G.bloquesOrden || [], BLQ_DE = G.bloqueDe || {}, BLQ_N = Object.fromEntries(BLQ.map((b, i) => [b.llave, i]));
+  let ediciones = G.ediciones || {};
+  // TT = todas las tareas como se ven hoy, en su orden. T = las que cuentan (sin las archivadas).
+  let TT = [], T = [];
+  function armar() {
+    TT = PLAN.map((o) => {
+      const e = ediciones[o.id] || {}, llave = e.bloque != null && BLQ_N[e.bloque] != null ? e.bloque : BLQ_DE[o.id], b = BLQ[BLQ_N[llave]] || { fase: o.fase };
+      return { id: o.id, fase: b.fase, area: e.area || o.area, quien: e.quien || o.quien, esf: e.esfuerzo || o.esf, ritmo: e.ritmo || o.ritmo, titulo: e.titulo || o.titulo, detalle: e.detalle || o.detalle,
+        bloque: llave, pos: e.bloque != null ? e.pos || 0 : 1e6 + LUGAR[o.id], plan: o, ed: e, editada: !!e.editada_at, archivada: !!e.archivada, movida: llave !== BLQ_DE[o.id] };
+    }).sort((a, b) => BLQ_N[a.bloque] - BLQ_N[b.bloque] || a.pos - b.pos);
+    T = TT.filter((t) => !t.archivada);
+  }
+  armar();
   let hechas = G.hechas || {}, real = G.real || {}, equipo = G.equipo || [], postulaciones = G.postulaciones || [];
   let bitacora = G.bitacora || [];
-  const BLOQUE = Object.fromEntries(G.bloques || []); // primera tarea del bloque → su título
   const PUEDE = !!G.yo.palomea, YO = String(G.yo.email || "").toLowerCase();
   const fechaHora = (s) => { try { const d = new Date(s * 1000); return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" }) + " · " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }); } catch { return ""; } };
   const hace = (s) => { const m = Math.max(0, Math.floor((Date.now() / 1000 - s) / 60)); return m < 1 ? "ahora" : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.floor(m / 60)} h` : m < 2880 ? "ayer" : fecha(s); };
@@ -33,7 +48,7 @@
   const cifra = (k, v) => (METAS[k][1] === "$" ? pesos(v) : num(v));
   const avancePunto = (p) => Math.min(...Object.keys(p.metas).map((k) => Math.min(1, realDe(k) / p.metas[k])));
   const siguientePunto = () => P.find((p) => !hechas[p.id]);
-  const F = Object.assign({ fase: 0, area: "", quien: "", estado: "todas", q: "" }, (() => { try { return JSON.parse(localStorage.getItem("vr_gtm_filtros") || "{}"); } catch { return {}; } })());
+  const F = Object.assign({ fase: 0, area: "", quien: "", ritmo: "", estado: "todas", q: "" }, (() => { try { return JSON.parse(localStorage.getItem("vr_gtm_filtros") || "{}"); } catch { return {}; } })());
   const recordar = () => { try { localStorage.setItem("vr_gtm_filtros", JSON.stringify(F)); } catch {} };
   function toast(msg) { const t = $("gtm-toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2400); }
   const fecha = (s) => { try { return new Date(s * 1000).toLocaleDateString("es-MX", { day: "numeric", month: "short" }); } catch { return ""; } };
@@ -66,7 +81,7 @@
       const f = +a.dataset.fase, tot = T.filter((t) => t.fase === f), h = tot.filter((t) => hechas[t.id]).length;
       a.querySelector(".gtm-avance div").style.width = (tot.length ? (h / tot.length) * 100 : 0) + "%";
       a.querySelector("small").textContent = `${h} de ${tot.length} tareas`;
-      a.onclick = () => { F.fase = f; F.area = ""; F.quien = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist(); verTab("checklist", true); };
+      a.onclick = () => { F.fase = f; F.area = ""; F.quien = ""; F.ritmo = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist(); verTab("checklist", true); };
       // La meta económica del paso: su último punto de control con puerta.
       const ult = P.filter((p) => p.fase === f && p.metas.puerta).pop();
       if (ult) { let e = a.querySelector(".gtm-meta-eco"); if (!e) { e = document.createElement("p"); e.className = "gtm-meta-eco"; a.insertBefore(e, a.querySelector(".gtm-avance")); } e.innerHTML = `<i>◆ Al cerrar:</i> ${ult.metas.creadores === 1 ? "1 creador" : num(ult.metas.creadores) + " creadores"} · ${pesos(ult.metas.puerta)} de puerta · ${pesos(ult.metas.casa)} para la casa${hechas[ult.id] ? " ✓" : ""}`; }
@@ -86,7 +101,7 @@
     const h = hechas[p.id], n = P.indexOf(p) + 1;
     const meta = (k) => { const v = realDe(k), m = p.metas[k]; return `<div class="gtm-meta-num${v >= m ? " ok" : ""}"><b>${cifra(k, m)}</b><span>${METAS[k][0]}</span><div class="gtm-avance"><div style="width:${Math.min(100, Math.max(v > 0 ? 2 : 0, (v / m) * 100)).toFixed(1)}%"></div></div><small>este mes: ${cifra(k, v)}</small></div>`; };
     const grupo = (tipo, titulo) => { const ks = Object.keys(p.metas).filter((k) => METAS[k][2] === tipo); return ks.length ? `<div class="gtm-punto-grupo"><h5>${titulo}</h5><div>${ks.map(meta).join("")}</div></div>` : ""; };
-    const emp = p.empujan.map((id) => { const t = T.find((x) => x.id === id); return t ? `<button type="button" data-ir-tarea="${id}" class="${hechas[id] ? "hecha" : ""}">${hechas[id] ? "✓ " : ""}${id} · ${esc(t.titulo)}</button>` : ""; }).join("");
+    const emp = p.empujan.map((id) => { const t = TT.find((x) => x.id === id); return t ? `<button type="button" data-ir-tarea="${id}" class="${hechas[id] ? "hecha" : ""}">${hechas[id] ? "✓ " : ""}${id} · ${esc(t.titulo)}</button>` : ""; }).join("");
     return `<article class="gtm-punto${h ? " alcanzado" : ""}" data-punto="${p.id}">
       <div class="gtm-punto-cab"><span>◆ Punto de control ${n} de ${P.length}</span><em>${esc(p.cuando)}</em>${h ? `<i class="ok">Alcanzado · ${fecha(h.at)}</i>` : `<i>Vamos al ${Math.floor(avancePunto(p) * 100)} %</i>`}</div>
       <b>${esc(p.titulo)}</b><p>${esc(p.detalle)}</p>
@@ -109,7 +124,7 @@
     setTimeout(() => destello(document.querySelector(`.gtm-punto[data-punto="${id}"]`)), 60);
   }
   function irATarea(id) {
-    F.fase = 0; F.area = ""; F.quien = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist();
+    F.fase = 0; F.area = ""; F.quien = ""; F.ritmo = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist();
     setTimeout(() => destello(document.querySelector(`.gtm-tarea[data-id="${id}"]`)), 60);
   }
   function pintarEscalera() {
@@ -123,7 +138,12 @@
   }
 
   /* ── checklist ──────────────────────────────────────────────────────── */
-  const pasa = (t, sin) => (sin === "fase" || !F.fase || t.fase === F.fase) && (sin === "area" || !F.area || t.area === F.area) && (sin === "quien" || !F.quien || t.quien === F.quien) && (F.estado === "todas" || (F.estado !== "puntos" && (F.estado === "hechas") === !!hechas[t.id])) && (!F.q || llano(t.titulo + " " + t.detalle + " " + t.id).includes(llano(F.q)));
+  const RITMO_NOMBRE = { u: "una vez", d: "diario", s: "semanal", m: "mensual" };
+  const cambiada = (t) => t.editada || t.movida;
+  const pasa = (t, sin) => (sin === "fase" || !F.fase || t.fase === F.fase) && (sin === "area" || !F.area || t.area === F.area) && (sin === "quien" || !F.quien || t.quien === F.quien)
+    && (!F.ritmo || (F.ritmo === "u") === (t.ritmo === "u"))
+    && (F.estado === "todas" || (F.estado === "archivadas" ? t.archivada : F.estado === "editadas" ? cambiada(t) : F.estado === "puntos" ? false : !t.archivada && (F.estado === "hechas") === !!hechas[t.id]))
+    && (!F.q || llano(t.titulo + " " + t.detalle + " " + t.id + " " + AREAS[t.area] + " " + QUIEN[t.quien]).includes(llano(F.q)));
   function pintarCarga() {
     // La carga: cuánto falta por quién y por área, en tareas y en horas aproximadas.
     const grupo = (titulo, mapa, campo) => {
@@ -135,83 +155,123 @@
     $("gtm-carga").innerHTML = grupo("Quién lo hace", QUIEN, "quien") + grupo("Área", AREAS, "area");
     $("gtm-carga").querySelectorAll(".gtm-carga-fila").forEach((b) => (b.onclick = () => { F[b.dataset.campo] = F[b.dataset.campo] === b.dataset.k ? "" : b.dataset.k; recordar(); pintarChecklist(); }));
   }
+  const conFiltro = () => !!(F.area || F.quien || F.ritmo || F.q || F.fase || F.estado !== "todas");
+  const limpiarFiltros = () => { F.fase = 0; F.area = ""; F.quien = ""; F.ritmo = ""; F.estado = "todas"; F.q = ""; recordar(); const q = $("gtm-q"); if (q) q.value = ""; pintarChecklist(); };
   function pintarFiltros() {
-    const chip = (campo, valor, txt) => `<button type="button" data-campo="${campo}" data-v="${valor}" class="${String(F[campo]) === String(valor) ? "on" : ""}">${txt}</button>`;
-    $("gtm-filtros").innerHTML = `<div class="gtm-chips">${chip("fase", 0, "Todos los pasos")}${[1, 2, 3, 4, 5].map((f) => chip("fase", f, `${f} · ${FASES[f]}`)).join("")}</div>
-      <div class="gtm-chips">${chip("estado", "todas", "Todas")}${chip("estado", "pendientes", "Pendientes")}${chip("estado", "hechas", "Hechas")}${P.length ? chip("estado", "puntos", "◆ Solo puntos de control") : ""}<input type="search" id="gtm-q" placeholder="Buscar tarea…" value="${esc(F.q)}" autocomplete="off">${F.area || F.quien || F.q || F.fase || F.estado !== "todas" ? `<button type="button" id="gtm-limpiar" class="limpiar">Quitar filtros</button>` : ""}</div>`;
-    $("gtm-filtros").querySelectorAll("[data-campo]").forEach((b) => (b.onclick = () => { F[b.dataset.campo] = b.dataset.campo === "fase" ? +b.dataset.v : b.dataset.v; recordar(); pintarChecklist(); }));
-    let tq = 0; $("gtm-q").oninput = (e) => { F.q = e.target.value; clearTimeout(tq); tq = setTimeout(() => { recordar(); pintarLista(); pintarCarga(); }, 160); };
-    const l = $("gtm-limpiar"); if (l) l.onclick = () => { F.fase = 0; F.area = ""; F.quien = ""; F.estado = "todas"; F.q = ""; recordar(); pintarChecklist(); };
+    // Arriba, por tipo: paso, quién, área y ritmo. Abajo, pegado al hacer scroll: el buscador y el estado.
+    const chip = (campo, valor, txt, n) => `<button type="button" data-campo="${campo}" data-v="${valor}" class="${String(F[campo]) === String(valor) ? "on" : ""}">${txt}${n == null ? "" : ` <i>${n}</i>`}</button>`;
+    const tipos = $("gtm-tipos");
+    if (tipos) {
+      tipos.innerHTML = `<div class="gtm-chips"><b class="gtm-chip-tit">Paso</b>${chip("fase", 0, "Todos")}${[1, 2, 3, 4, 5].map((f) => chip("fase", f, `${f} · ${FASES[f]}`)).join("")}</div>
+        <div class="gtm-chips"><b class="gtm-chip-tit">Quién</b>${Object.keys(QUIEN).map((k) => chip("quien", k, QUIEN[k], T.filter((t) => t.quien === k).length)).join("")}<b class="gtm-chip-tit sep">Ritmo</b>${chip("ritmo", "u", "Una vez")}${chip("ritmo", "rec", "Se repite")}</div>
+        <div class="gtm-chips"><b class="gtm-chip-tit">Área</b>${Object.keys(AREAS).map((k) => chip("area", k, AREAS[k], T.filter((t) => t.area === k).length)).join("")}</div>`;
+      tipos.querySelectorAll("[data-campo]").forEach((b) => (b.onclick = () => { const c = b.dataset.campo, v = c === "fase" ? +b.dataset.v : b.dataset.v; F[c] = c !== "fase" && F[c] === v ? "" : v; recordar(); pintarChecklist(); }));
+    }
+    const caja = $("gtm-filtros");
+    if (!$("gtm-q")) {
+      caja.innerHTML = `<div class="gtm-busca"><span aria-hidden="true">⌕</span><input type="search" id="gtm-q" placeholder="Buscar una tarea: palabra, número, área o quién la hace" autocomplete="off" aria-label="Buscar una tarea"><kbd title="Atajo: la tecla diagonal">/</kbd><em id="gtm-cuantas"></em></div><div class="gtm-chips" id="gtm-estados"></div>`;
+      let tq = 0; $("gtm-q").oninput = (e) => { F.q = e.target.value; clearTimeout(tq); tq = setTimeout(() => { recordar(); pintarEstados(); pintarLista(); pintarCarga(); }, 140); };
+      $("gtm-q").onkeydown = (e) => { if (e.key === "Escape") { e.target.value = ""; F.q = ""; recordar(); pintarEstados(); pintarLista(); pintarCarga(); e.target.blur(); } };
+    }
+    if ($("gtm-q").value !== F.q && document.activeElement !== $("gtm-q")) $("gtm-q").value = F.q;
+    pintarEstados();
   }
+  function pintarEstados() {
+    const c = $("gtm-estados"); if (!c) return;
+    const nH = T.filter((t) => hechas[t.id]).length, nA = TT.length - T.length, nE = TT.filter(cambiada).length;
+    const chip = (valor, txt, n, clase) => `<button type="button" data-estado="${valor}" class="${F.estado === valor ? "on" : ""}${clase ? " " + clase : ""}">${txt}${n == null ? "" : ` <i>${n}</i>`}</button>`;
+    c.innerHTML = chip("todas", "Todas", TT.length) + chip("pendientes", "Pendientes", T.length - nH) + chip("hechas", "Hechas", nH) + chip("archivadas", "Archivadas", nA, "c-arch") + chip("editadas", "Editadas o movidas", nE, "c-edit") + (P.length ? chip("puntos", "◆ Puntos de control", P.length) : "") + (conFiltro() ? `<button type="button" id="gtm-limpiar" class="limpiar">Quitar filtros</button>` : "");
+    c.querySelectorAll("[data-estado]").forEach((b) => (b.onclick = () => { F.estado = b.dataset.estado; recordar(); pintarChecklist(); }));
+    const l = $("gtm-limpiar"); if (l) l.onclick = limpiarFiltros;
+  }
+  // La diagonal lleva al buscador desde cualquier parte del checklist.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+    const a = document.activeElement, q = $("gtm-q");
+    if (!q || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || $("tab-checklist").hidden) return;
+    e.preventDefault(); q.focus(); q.select();
+  });
+
+  const firmaDe = (correo, at) => `<b>${esc(correo || "")}</b> · ${fechaHora(at)}`;
   function tarjeta(t) {
-    const h = hechas[t.id];
-    return `<article class="gtm-tarea${h ? " hecha" : ""}" data-id="${t.id}">
-      <button type="button" class="gtm-palomita${PUEDE ? "" : " bloqueada"}" role="checkbox" aria-checked="${h ? "true" : "false"}" ${PUEDE ? "" : `aria-disabled="true" title="Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear"`} aria-label="${h ? "Marcar como pendiente" : "Marcar como hecha"}: ${esc(t.titulo)}">${h ? "✓" : ""}</button>
+    const h = hechas[t.id], e = t.ed, arch = t.archivada;
+    const acciones = !PUEDE ? "" : arch
+      ? `<div class="gtm-acc"><button type="button" data-acc="regresar" class="ancha" title="Vuelve a contar y se puede palomear">↩ Regresar al plan</button></div>`
+      : `<div class="gtm-acc"><span class="gtm-agarre" draggable="true" title="Arrastra para mover" aria-hidden="true">⋮⋮</span><button type="button" data-acc="editar" title="Editar" aria-label="Editar la tarea ${t.id}">✎</button><button type="button" data-acc="subir" title="Subir un lugar" aria-label="Subir un lugar">↑</button><button type="button" data-acc="bajar" title="Bajar un lugar" aria-label="Bajar un lugar">↓</button><button type="button" data-acc="mover" title="Mover a otro bloque" aria-label="Mover a otro bloque">⇄</button><button type="button" data-acc="archivar" title="Archivar: se queda aquí, apagada" aria-label="Archivar la tarea ${t.id}">⊘</button></div>`;
+    const palomita = arch
+      ? `<button type="button" class="gtm-palomita bloqueada" role="checkbox" aria-checked="false" aria-disabled="true" disabled title="Archivada: regrésala al plan para palomearla">⊘</button>`
+      : `<button type="button" class="gtm-palomita${PUEDE ? "" : " bloqueada"}" role="checkbox" aria-checked="${h ? "true" : "false"}" ${PUEDE ? "" : `aria-disabled="true" title="Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear"`} aria-label="${h ? "Marcar como pendiente" : "Marcar como hecha"}: ${esc(t.titulo)}">${h ? "✓" : ""}</button>`;
+    return `<article class="gtm-tarea${h && !arch ? " hecha" : ""}${arch ? " archivada" : ""}${t.editada ? " editada" : ""}" data-id="${t.id}">
+      ${palomita}
       <div class="gtm-tarea-txt"><b>${esc(t.titulo)}</b><p>${esc(t.detalle)}</p>
-        <div class="gtm-etq"><span class="e-quien v-${t.quien}">${QUIEN[t.quien]}</span><span class="e-area v-${t.area}">${AREAS[t.area]}</span><span>${ESFUERZO[t.esf]}</span>${RITMO[t.ritmo] ? `<span class="e-ritmo">${RITMO[t.ritmo]}</span>` : ""}<span class="e-id">${t.id}</span></div>
-        ${h ? `<p class="gtm-firma">✓ <b>${esc(h.por || h.nombre || "")}</b> · ${fechaHora(h.at)}</p>` : ""}
-      </div></article>`;
+        <div class="gtm-etq"><span class="e-quien v-${t.quien}">${QUIEN[t.quien]}</span><span class="e-area v-${t.area}">${AREAS[t.area]}</span><span>${ESFUERZO[t.esf]}</span>${RITMO[t.ritmo] ? `<span class="e-ritmo">${RITMO[t.ritmo]}</span>` : ""}${arch ? `<span class="e-arch">archivada</span>` : ""}${t.editada ? `<span class="e-edit">editada</span>` : ""}${t.movida ? `<span class="e-mov">movida</span>` : ""}<span class="e-id">${t.id}</span></div>
+        ${h && !arch ? `<p class="gtm-firma">✓ ${firmaDe(h.por || h.nombre, h.at)}</p>` : ""}
+        ${arch ? `<p class="gtm-firma f-arch">⊘ Archivada por ${firmaDe(e.archivada_por, e.archivada_at)}${e.motivo ? ` · «${esc(e.motivo)}»` : ""}${h ? " · ya estaba hecha" : ""}</p>` : ""}
+        ${t.editada ? `<p class="gtm-firma f-edit">✎ Editada por ${firmaDe(e.editada_por, e.editada_at)}</p>` : ""}
+        ${t.movida ? `<p class="gtm-firma f-mov">⇄ Movida por ${firmaDe(e.movida_por, e.movida_at)} · venía de «${esc((BLQ[BLQ_N[BLQ_DE[t.id]]] || {}).titulo || "")}»</p>` : ""}
+      </div>${acciones}</article>`;
   }
 
-  /* ── marcador: quién ha palomeado y lo último que pasó ──────────────── */
+  /* ── marcador: quién ha palomeado y la bitácora ─────────────────────── */
   function cuentas() {
     const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0); const tHoy = hoy0.getTime() / 1000, tSem = Date.now() / 1000 - 7 * 86400;
     const m = {};
     T.forEach((t) => { const h = hechas[t.id]; if (!h || !h.por) return; const c = (m[h.por] = m[h.por] || { por: h.por, total: 0, semana: 0, hoy: 0, ultima: 0 }); c.total++; if (h.at >= tSem) c.semana++; if (h.at >= tHoy) c.hoy++; if (h.at > c.ultima) c.ultima = h.at; });
     return Object.values(m).sort((a, b) => b.total - a.total || b.ultima - a.ultima);
   }
+  // Cada cosa que pasa en el checklist: su signo, su verbo y su color.
+  const ACCION = { hecha: ["✓", "palomeó", "a-hecha"], deshecha: ["○", "desmarcó", "a-quito"], editada: ["✎", "editó", "a-edit"], original: ["↺", "regresó al texto del plan", "a-edit"], archivada: ["⊘", "archivó", "a-arch"], restaurada: ["↩", "regresó al plan", "a-hecha"], movida: ["⇄", "movió", "a-mov"], lugar: ["↺", "regresó a su lugar", "a-mov"], punto: ["◆", "alcanzaron", "a-punto"] };
+  let bitacoraAbierta = false;
   function pintarMarcador() {
     const c = $("gtm-marcador"); if (!c) return;
     const filas = cuentas(), max = Math.max(1, ...filas.map((f) => f.total)), mio = filas.find((f) => f.por === YO);
     const tabla = filas.length
       ? filas.map((f, i) => `<li class="${f.por === YO ? "yo" : ""}"><i>${i + 1}</i><span><b>${esc(f.por)}</b><u><em style="width:${((f.total / max) * 100).toFixed(0)}%"></em></u></span><strong>${f.total}</strong><small>${f.hoy ? `${f.hoy} hoy · ` : ""}${f.semana} esta semana</small></li>`).join("")
       : `<li class="vacio">Nadie ha palomeado todavía. ${PUEDE ? "La primera es tuya." : ""}</li>`;
-    const nombreDe = (id) => { const t = T.find((x) => x.id === id); if (t) return t.titulo; const p = P.find((x) => x.id === id); return p ? "◆ " + p.titulo : id; };
-    const ult = bitacora.slice(0, 8).map((e) => `<li class="${e.hecha ? "" : "quito"}${e.por === "sistema" ? " punto" : ""}"><b>${e.por === "sistema" ? "Números reales" : esc(corto(e.por))}</b> ${e.por === "sistema" ? "alcanzaron" : e.hecha ? "palomeó" : "desmarcó"} <span>${esc(nombreDe(e.tarea))}</span><em title="${fechaHora(e.at)}">${hace(e.at)}</em></li>`).join("");
-    c.innerHTML = `<div class="gtm-marcador">
+    const nombreDe = (id) => { const t = TT.find((x) => x.id === id); if (t) return t.titulo; const p = P.find((x) => x.id === id); return p ? p.titulo : id; };
+    const renglon = (e) => { const a = ACCION[e.accion] || ACCION[e.hecha ? "hecha" : "deshecha"]; return `<li class="${a[2]}" data-ir="${esc(e.tarea)}" tabindex="0" title="${fechaHora(e.at)} · ${esc(e.por)}"><i>${a[0]}</i><p><b>${e.por === "sistema" ? "Números reales" : esc(corto(e.por))}</b> ${a[1]} <span>${esc(nombreDe(e.tarea))}</span>${e.nota ? `<small>${esc(e.nota)}</small>` : ""}</p><em>${bitacoraAbierta ? fechaHora(e.at) : hace(e.at)}</em></li>`; };
+    const cuantos = bitacoraAbierta ? bitacora.length : 8, ult = bitacora.slice(0, cuantos).map(renglon).join("");
+    c.innerHTML = `<div class="gtm-marcador${bitacoraAbierta ? " abierta" : ""}">
       <div><h4>Marcador${mio ? ` <small>tú llevas ${mio.total}${mio.hoy ? `, ${mio.hoy} hoy` : ""}</small>` : ""}</h4><ol class="gtm-marc-lista">${tabla}</ol></div>
-      <div><h4>Lo último</h4><ul class="gtm-marc-feed">${ult || `<li class="vacio">Aquí va a salir cada palomita, con quién y cuándo.</li>`}</ul></div>
+      <div><h4>Bitácora <small>quién, qué y a qué hora</small></h4><ul class="gtm-marc-feed">${ult || `<li class="vacio">Aquí queda cada palomita, cada edición y cada tarea archivada o movida.</li>`}</ul>${bitacora.length > 8 ? `<button type="button" class="gtm-liga" id="gtm-bit-mas">${bitacoraAbierta ? "Ver solo lo último" : `Ver toda la bitácora (${bitacora.length})`}</button>` : ""}</div>
     </div>`;
+    c.querySelectorAll("[data-ir]").forEach((li) => { const ir = () => (li.dataset.ir.startsWith("pc") ? irAPunto(li.dataset.ir) : irATarea(li.dataset.ir)); li.onclick = ir; li.onkeydown = (e) => { if (e.key === "Enter") ir(); }; });
+    const mas = $("gtm-bit-mas"); if (mas) mas.onclick = () => { bitacoraAbierta = !bitacoraAbierta; pintarMarcador(); };
   }
   function pintarLista() {
-    const lista = T.filter((t) => pasa(t)), puntos = P.filter(pasaPunto), cont = $("gtm-lista");
-    if (!lista.length && !puntos.length) { cont.innerHTML = `<p class="gtm-vacio">Nada con esos filtros.</p>`; return; }
+    const cont = $("gtm-lista"), puntos = P.filter(pasaPunto), visibles = TT.filter((t) => pasa(t));
+    const cu = $("gtm-cuantas"); if (cu) cu.textContent = conFiltro() ? `${visibles.length} de ${TT.length}` : `${TT.length} tareas`;
+    if (!visibles.length && !puntos.length) { cont.innerHTML = `<p class="gtm-vacio">Nada con esos filtros. <button type="button" class="gtm-liga" id="gtm-vacio-limpiar">Quitar filtros</button></p>`; $("gtm-vacio-limpiar").onclick = limpiarFiltros; pintarMarcador(); return; }
     cont.innerHTML = [1, 2, 3, 4, 5].map((f) => {
-      const todas = T.filter((t) => t.fase === f), h = todas.filter((t) => hechas[t.id]).length;
+      const vivas = T.filter((t) => t.fase === f), h = vivas.filter((t) => hechas[t.id]).length, arch = TT.filter((t) => t.fase === f && t.archivada).length;
       const pf = P.filter((p) => p.fase === f), ph = pf.filter((p) => hechas[p.id]).length;
       // Cada punto de control va justo después de la tarea de la que cuelga, se vea o no esa tarea.
       // Los bloques: cada subtítulo sale si algo de su bloque se ve.
-      let trozos = [], abierto = null;
-      const cierra = () => { if (abierto && abierto.html) trozos.push(`<h4 class="gtm-bloque"><span>${esc(abierto.titulo)}</span><em>${abierto.h} de ${abierto.n}</em></h4>` + abierto.html); abierto = null; };
-      todas.forEach((t) => {
-        if (BLOQUE[t.id] || !abierto) { cierra(); abierto = { titulo: BLOQUE[t.id] || "", html: "", n: 0, h: 0 }; }
-        abierto.n++; if (hechas[t.id]) abierto.h++;
-        abierto.html += (pasa(t) ? tarjeta(t) : "") + pf.filter((p) => p.despues === t.id && pasaPunto(p)).map(puntoHtml).join("");
-      });
-      cierra();
-      const cuerpo = trozos.join("");
+      const cuerpo = BLQ.filter((b) => b.fase === f).map((b) => {
+        const suyas = TT.filter((t) => t.bloque === b.llave), cuentan = suyas.filter((t) => !t.archivada);
+        const html = suyas.map((t) => (pasa(t) ? tarjeta(t) : "") + P.filter((p) => p.despues === t.id && pasaPunto(p)).map(puntoHtml).join("")).join("");
+        return html ? `<h4 class="gtm-bloque" data-bloque="${b.llave}"><span>${esc(b.titulo)}</span><em>${cuentan.filter((t) => hechas[t.id]).length} de ${cuentan.length}</em></h4>` + html : "";
+      }).join("");
       if (!cuerpo) return "";
-      return `<section class="gtm-grupo"><h3><span>Paso ${f}</span> ${FASES[f]} ${pf.length ? `<small class="gtm-grupo-pts">◆ ${ph} de ${pf.length}</small>` : ""}<em>${h} de ${todas.length}</em></h3><div class="gtm-avance"><div style="width:${((h / todas.length) * 100).toFixed(1)}%"></div></div>${cuerpo}</section>`;
+      return `<section class="gtm-grupo" data-fase="${f}"><h3><span>Paso ${f}</span> ${FASES[f]} ${pf.length ? `<small class="gtm-grupo-pts">◆ ${ph} de ${pf.length}</small>` : ""}${arch ? `<small class="gtm-grupo-arch">⊘ ${arch} archivada${arch === 1 ? "" : "s"}</small>` : ""}<em>${h} de ${vivas.length}</em></h3><div class="gtm-avance"><div style="width:${(vivas.length ? (h / vivas.length) * 100 : 0).toFixed(1)}%"></div></div>${cuerpo}</section>`;
     }).join("");
-    cont.querySelectorAll(".gtm-palomita").forEach((b) => (b.onclick = () => palomear(b.closest(".gtm-tarea").dataset.id)));
     enlazarPuntos(cont); pintarMarcador();
   }
   function pintarChecklist() { pintarCarga(); pintarFiltros(); pintarLista(); pintarHoy(); pintarEscalera(); }
+  const tarjetaEn = (id) => document.querySelector(`#gtm-lista .gtm-tarea[data-id="${id}"]`);
+  const AVISO_CASA = "Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear, editar, archivar o mover.";
   async function palomear(id) {
-    if (!PUEDE) return toast("Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear.");
+    if (!PUEDE) return toast(AVISO_CASA);
+    const t = TT.find((x) => x.id === id); if (!t || t.archivada) return toast("Está archivada. Regrésala al plan para palomearla.");
     const antes = hechas[id], hecha = !antes;
     if (hecha) hechas[id] = { por: YO, nombre: G.yo.nombre, at: Math.floor(Date.now() / 1000) }; else delete hechas[id];
-    const repinta = (clase) => {
-      const art = document.querySelector(`.gtm-tarea[data-id="${id}"]`); if (art) art.outerHTML = tarjeta(T.find((t) => t.id === id));
-      const n = document.querySelector(`.gtm-tarea[data-id="${id}"]`); if (!n) return;
-      n.querySelector(".gtm-palomita").onclick = () => palomear(id); if (clase) n.classList.add(clase);
-    };
-    repinta(hecha ? "recien" : ""); pintarCarga(); pintarHoy(); actualizarGrupos(); repintarPuntos(); pintarMarcador(); pintarIndicadores();
+    const repinta = (clase) => { const art = tarjetaEn(id); if (!art) return; art.outerHTML = tarjeta(t); const n = tarjetaEn(id); if (n && clase) n.classList.add(clase); };
+    repinta(hecha ? "recien" : ""); pintarCarga(); pintarEstados(); pintarHoy(); actualizarGrupos(); repintarPuntos(); pintarMarcador(); pintarIndicadores();
     try {
       const r = await fetch("/api/gtm/tarea", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hecha }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || String(r.status));
-      bitacora.unshift({ tarea: id, hecha, por: j.por, nombre: j.nombre, at: j.at }); bitacora = bitacora.slice(0, 25);
+      bitacora.unshift({ tarea: id, hecha, accion: hecha ? "hecha" : "deshecha", nota: "", por: j.por, nombre: j.nombre, at: j.at }); bitacora = bitacora.slice(0, 80);
       if (hecha) {
         hechas[id] = { por: j.por, nombre: j.nombre, at: j.at };
         const cs = cuentas(), lugar = cs.findIndex((f) => f.por === YO) + 1, mio = cs[lugar - 1] || { total: 1, hoy: 1 };
@@ -220,22 +280,130 @@
       pintarMarcador();
     } catch (e) {
       if (antes) hechas[id] = antes; else delete hechas[id];
-      pintarChecklist(); toast(String(e.message) === "solo_correos_de_la_casa" ? "Solo correos @superleads.mx o @ingenieriadigital.mx pueden palomear." : "No se guardó. Revisa tu conexión e intenta de nuevo.");
+      pintarChecklist(); toast(String(e.message) === "solo_correos_de_la_casa" ? AVISO_CASA : String(e.message) === "tarea_archivada" ? "Está archivada. Regrésala al plan para palomearla." : "No se guardó. Revisa tu conexión e intenta de nuevo.");
     }
   }
-  function actualizarBloques() {
-    document.querySelectorAll("#gtm-lista .gtm-grupo").forEach((g) => {
-      let h4 = null, n = 0, h = 0; const cierra = () => { if (h4) h4.querySelector("em").textContent = `${h} de ${n}`; };
-      const f = +(g.querySelector("h3 span").textContent.replace(/\D/g, "")); const ids = T.filter((t) => t.fase === f); let k = -1;
-      const tits = [...g.querySelectorAll(".gtm-bloque")];
-      ids.forEach((t) => { if (BLOQUE[t.id]) { cierra(); k = tits.findIndex((x) => x.querySelector("span").textContent === BLOQUE[t.id]); h4 = k >= 0 ? tits[k] : null; n = 0; h = 0; } n++; if (hechas[t.id]) h++; });
-      cierra();
-    });
-  }
   function actualizarGrupos() {
-    actualizarBloques();
-    document.querySelectorAll(".gtm-grupo").forEach((g) => { const f = +(g.querySelector("h3 span").textContent.replace(/\D/g, "")), todas = T.filter((t) => t.fase === f), h = todas.filter((t) => hechas[t.id]).length; g.querySelector("h3 em").textContent = `${h} de ${todas.length}`; g.querySelector(".gtm-avance div").style.width = ((h / todas.length) * 100).toFixed(1) + "%"; });
+    document.querySelectorAll("#gtm-lista .gtm-bloque").forEach((h4) => { const s = T.filter((t) => t.bloque === h4.dataset.bloque); h4.querySelector("em").textContent = `${s.filter((t) => hechas[t.id]).length} de ${s.length}`; });
+    document.querySelectorAll("#gtm-lista .gtm-grupo").forEach((g) => { const f = +g.dataset.fase, todas = T.filter((t) => t.fase === f), h = todas.filter((t) => hechas[t.id]).length; g.querySelector("h3 em").textContent = `${h} de ${todas.length}`; g.querySelector(".gtm-avance div").style.width = (todas.length ? (h / todas.length) * 100 : 0).toFixed(1) + "%"; });
   }
+
+  /* ── editar, archivar y mover: lo que quien dirige le hace a una tarea ── */
+  // El plan del código no cambia. Cada acción se guarda aparte, queda en la bitácora
+  // con correo y hora, y la ve todo el equipo. Mismo candado que las palomitas.
+  const ERRORES = { solo_correos_de_la_casa: AVISO_CASA, titulo_corto: "Falta el nombre de la tarea.", detalle_corto: "Falta la descripción.", etiqueta_invalida: "Revisa quién, área, esfuerzo y ritmo.", tarea_archivada: "Está archivada. Regrésala al plan primero." };
+  async function accionTarea(id, cual, cuerpo, aviso) {
+    if (!PUEDE) { toast(AVISO_CASA); return false; }
+    try {
+      const r = await fetch(`/api/gtm/tarea/${encodeURIComponent(id)}/${cual}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo || {}) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || String(r.status));
+      ediciones = j.ediciones || {}; armar(); pintarChecklist(); pintarIndicadores();
+      const n = tarjetaEn(id); if (n) { n.classList.add("recien"); n.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+      if (aviso) toast(aviso);
+      refrescar(false); // trae la bitácora con lo que acaba de pasar
+      return true;
+    } catch (e) { toast(ERRORES[e.message] || "No se guardó. Revisa tu conexión e intenta de nuevo."); return false; }
+  }
+  const opciones = (mapa, actual) => Object.keys(mapa).map((k) => `<option value="${k}"${String(k) === String(actual) ? " selected" : ""}>${esc(mapa[k])}</option>`).join("");
+  function cerrarPaneles() { document.querySelectorAll("#gtm-lista .gtm-tarea.editando, #gtm-lista .gtm-tarea.preguntando").forEach((a) => { const t = TT.find((x) => x.id === a.dataset.id); if (t) a.outerHTML = tarjeta(t); }); }
+  function abrirEditor(id) {
+    cerrarPaneles();
+    const t = TT.find((x) => x.id === id), art = tarjetaEn(id); if (!t || !art) return;
+    art.classList.add("editando");
+    art.querySelector(".gtm-tarea-txt").innerHTML = `<form class="gtm-form" novalidate>
+      <label><span>Tarea</span><input name="titulo" maxlength="180" value="${esc(t.titulo)}" required></label>
+      <label><span>Descripción: qué es y cuándo se da por hecha</span><textarea name="detalle" rows="4" maxlength="1500" required>${esc(t.detalle)}</textarea></label>
+      <div class="gtm-form-fila">
+        <label><span>Quién</span><select name="quien">${opciones(QUIEN, t.quien)}</select></label>
+        <label><span>Área</span><select name="area">${opciones(AREAS, t.area)}</select></label>
+        <label><span>Esfuerzo</span><select name="esfuerzo">${opciones(ESFUERZO, t.esf)}</select></label>
+        <label><span>Ritmo</span><select name="ritmo">${opciones(RITMO_NOMBRE, t.ritmo)}</select></label>
+      </div>
+      <div class="gtm-form-pie"><button type="submit" class="btn-primary small">Guardar</button><button type="button" class="btn-ghost small" data-x="cancelar">Cancelar</button>${t.editada ? `<button type="button" class="gtm-liga" data-x="original">Volver al texto del plan</button>` : ""}<em>Ctrl + Enter guarda · Esc cancela</em></div>
+    </form>`;
+    const f = art.querySelector("form"), guardar = async () => {
+      const d = Object.fromEntries(new FormData(f).entries()); d.esfuerzo = +d.esfuerzo;
+      f.querySelector("[type=submit]").disabled = true;
+      if (!(await accionTarea(id, "editar", d, "✎ Guardada. Quedó en la bitácora."))) f.querySelector("[type=submit]").disabled = false;
+    };
+    f.onsubmit = (e) => { e.preventDefault(); guardar(); };
+    f.onkeydown = (e) => { if (e.key === "Escape") cerrarPaneles(); else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); guardar(); } };
+    f.querySelector("[data-x=cancelar]").onclick = cerrarPaneles;
+    const o = f.querySelector("[data-x=original]"); if (o) o.onclick = () => accionTarea(id, "original", {}, "↺ Regresó al texto del plan.");
+    const inp = f.querySelector("[name=titulo]"); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
+  // Una franja dentro de la tarjeta para confirmar: archivar (con motivo opcional) o elegir a qué bloque va.
+  function preguntar(id, html, alAceptar) {
+    cerrarPaneles();
+    const art = tarjetaEn(id); if (!art) return;
+    art.classList.add("preguntando");
+    art.querySelector(".gtm-tarea-txt").insertAdjacentHTML("beforeend", `<form class="gtm-pregunta">${html}<button type="button" class="btn-ghost small" data-x="cancelar">Cancelar</button></form>`);
+    const f = art.querySelector(".gtm-pregunta");
+    f.onsubmit = (e) => { e.preventDefault(); alAceptar(Object.fromEntries(new FormData(f).entries())); };
+    f.onkeydown = (e) => { if (e.key === "Escape") cerrarPaneles(); };
+    f.querySelector("[data-x=cancelar]").onclick = cerrarPaneles;
+    const primero = f.querySelector("input, select"); if (primero) primero.focus();
+  }
+  function vecinas(t) { return TT.filter((x) => x.bloque === t.bloque); }
+  function moverUnLugar(t, dir) {
+    const s = vecinas(t), i = s.findIndex((x) => x.id === t.id), nb = BLQ_N[t.bloque];
+    if (dir < 0) {
+      if (i > 0) return accionTarea(t.id, "mover", { bloque: t.bloque, antes_de: s[i - 1].id });
+      const ant = BLQ[nb - 1]; if (!ant) return toast("Ya es la primera del plan.");
+      return accionTarea(t.id, "mover", { bloque: ant.llave }, `⇄ Pasó al bloque «${ant.titulo}».`);
+    }
+    if (i < s.length - 1) return accionTarea(t.id, "mover", s[i + 2] ? { bloque: t.bloque, antes_de: s[i + 2].id } : { bloque: t.bloque });
+    const sig = BLQ[nb + 1]; if (!sig) return toast("Ya es la última del plan.");
+    const primera = TT.find((x) => x.bloque === sig.llave);
+    return accionTarea(t.id, "mover", primera ? { bloque: sig.llave, antes_de: primera.id } : { bloque: sig.llave }, `⇄ Pasó al bloque «${sig.titulo}».`);
+  }
+  function accionDeTarjeta(id, cual) {
+    const t = TT.find((x) => x.id === id); if (!t) return;
+    if (!PUEDE) return toast(AVISO_CASA);
+    if (cual === "editar") return abrirEditor(id);
+    if (cual === "subir") return moverUnLugar(t, -1);
+    if (cual === "bajar") return moverUnLugar(t, 1);
+    if (cual === "regresar") return accionTarea(id, "archivar", { archivada: false }, "↩ Regresó al plan. Vuelve a contar.");
+    if (cual === "archivar") return preguntar(id, `<label><span>Archivar esta tarea. Se queda aquí, apagada, y deja de contar.</span><input name="motivo" maxlength="200" placeholder="Por qué, si quieres dejarlo escrito (opcional)" autocomplete="off"></label><button type="submit" class="btn-primary small">⊘ Archivar</button>`, (d) => accionTarea(id, "archivar", { archivada: true, motivo: d.motivo || "" }, "⊘ Archivada. Sigue ahí, apagada."));
+    if (cual === "mover") {
+      const porPaso = [1, 2, 3, 4, 5].map((f) => `<optgroup label="Paso ${f} · ${FASES[f]}">${BLQ.filter((b) => b.fase === f).map((b) => `<option value="${b.llave}"${b.llave === t.bloque ? " selected" : ""}>${esc(b.titulo)}</option>`).join("")}</optgroup>`).join("");
+      preguntar(id, `<label><span>Mover al final de este bloque. Dentro del bloque se acomoda con las flechas o arrastrando.</span><select name="bloque">${porPaso}</select></label><button type="submit" class="btn-primary small">⇄ Mover</button>${t.movida || t.ed.bloque != null ? `<button type="button" class="gtm-liga" data-x="lugar">Regresar a su lugar del plan</button>` : ""}`, (d) => accionTarea(id, "mover", { bloque: d.bloque }, "⇄ Movida. Quedó en la bitácora."));
+      const l = tarjetaEn(id) && tarjetaEn(id).querySelector("[data-x=lugar]");
+      if (l) l.onclick = () => accionTarea(id, "mover", { original: true }, "↺ Regresó a su lugar del plan.");
+    }
+  }
+  // Un solo oído para toda la lista: palomitas, acciones y arrastrar.
+  (function oidos() {
+    const cont = $("gtm-lista"); if (!cont) return;
+    cont.addEventListener("click", (e) => {
+      const acc = e.target.closest("[data-acc]"), pal = e.target.closest(".gtm-palomita"), art = e.target.closest(".gtm-tarea");
+      if (!art) return;
+      if (acc) return accionDeTarjeta(art.dataset.id, acc.dataset.acc);
+      if (pal && !art.classList.contains("editando")) return palomear(art.dataset.id);
+    });
+    let llevo = null;
+    const limpia = () => cont.querySelectorAll(".soltar-aqui, .arrastrando").forEach((x) => x.classList.remove("soltar-aqui", "arrastrando"));
+    cont.addEventListener("dragstart", (e) => {
+      const a = e.target.closest && e.target.closest(".gtm-agarre"); if (!a) return;
+      const art = a.closest(".gtm-tarea"); llevo = art.dataset.id; art.classList.add("arrastrando");
+      e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", llevo);
+      try { e.dataTransfer.setDragImage(art, 20, 20); } catch {}
+    });
+    cont.addEventListener("dragover", (e) => {
+      if (!llevo) return; const obj = e.target.closest(".gtm-tarea, .gtm-bloque"); if (!obj || obj.dataset.id === llevo) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = "move";
+      if (!obj.classList.contains("soltar-aqui")) { cont.querySelectorAll(".soltar-aqui").forEach((x) => x.classList.remove("soltar-aqui")); obj.classList.add("soltar-aqui"); }
+    });
+    cont.addEventListener("drop", (e) => {
+      if (!llevo) return; const obj = e.target.closest(".gtm-tarea, .gtm-bloque"), id = llevo; llevo = null; limpia();
+      if (!obj || obj.dataset.id === id) return; e.preventDefault();
+      if (obj.classList.contains("gtm-bloque")) { const primera = TT.find((x) => x.bloque === obj.dataset.bloque && x.id !== id); return accionTarea(id, "mover", primera ? { bloque: obj.dataset.bloque, antes_de: primera.id } : { bloque: obj.dataset.bloque }, "⇄ Movida. Quedó en la bitácora."); }
+      const dest = TT.find((x) => x.id === obj.dataset.id); if (dest) accionTarea(id, "mover", { bloque: dest.bloque, antes_de: dest.id }, "⇄ Movida. Quedó en la bitácora.");
+    });
+    cont.addEventListener("dragend", () => { llevo = null; limpia(); });
+  })();
+
   // Lo que pasa en la aplicación y lo que palomea el equipo llega solo, cada 45 segundos.
   let refrescando = false;
   async function refrescar(aMano) {
@@ -244,8 +412,12 @@
     try {
       const r = await fetch("/api/gtm" + (aMano ? "?fresco=1" : "")); if (!r.ok) throw new Error(String(r.status));
       const j = await r.json();
-      const cambio = JSON.stringify(j.hechas) !== JSON.stringify(hechas), cambioReal = JSON.stringify(j.real) !== JSON.stringify(real);
-      hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo;
+      const cambioEd = !!j.ediciones && JSON.stringify(j.ediciones) !== JSON.stringify(ediciones);
+      // Con un editor abierto no se repinta la lista: se perdería lo que la persona está escribiendo.
+      const ocupado = !!document.querySelector("#gtm-lista .gtm-tarea.editando, #gtm-lista .gtm-tarea.preguntando");
+      if (cambioEd && !ocupado) { ediciones = j.ediciones; armar(); }
+      const cambio = (JSON.stringify(j.hechas) !== JSON.stringify(hechas) || cambioEd) && !ocupado, cambioReal = JSON.stringify(j.real) !== JSON.stringify(real);
+      if (!ocupado) hechas = j.hechas || {}; real = j.real || real; equipo = j.equipo || equipo;
       if (j.bitacora) { const cb = JSON.stringify(j.bitacora) !== JSON.stringify(bitacora); bitacora = j.bitacora; if (cb && !cambio) pintarMarcador(); }
       if (j.postulaciones && j.postulaciones.length !== postulaciones.length) { postulaciones = j.postulaciones; pintarPostulaciones(); }
       if (cambio) pintarChecklist(); else { pintarHoy(); if (cambioReal) repintarPuntos(); }
