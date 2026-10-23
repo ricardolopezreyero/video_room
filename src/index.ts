@@ -20,6 +20,7 @@ import { isReservedSlug, canonicalizarSlug } from "./lib/slugs";
 import { publicStatusRead, evaluateRelics } from "./lib/status";
 import { TIP_OPTIONS_CENTS } from "./lib/pricing";
 import { enviarCortesSemanales } from "./lib/corte-semanal";
+import { programarCartas } from "./lib/cartas";
 import { rescatar, esRuido } from "./lib/rescate";
 import { accesoGtm, estadoGtm, numerosReales, paginaGtm, paginaGtmCerrada, esTareaGtm, puedePalomear } from "./lib/gtm";
 import { listarCandidatos, moverCandidato, agregarCandidato } from "./lib/candidatos";
@@ -546,6 +547,8 @@ export default {
     }
     else {
       ctx.waitUntil(cleanupStaleLiveSessions(env));
+      // Cartas 2 y 3 de bienvenida: a las 24 y 48 horas exactas del alta.
+      ctx.waitUntil(programarCartas(env).then((r) => { if (r.programadas || r.apagadas) console.log("cartas", r); }).catch((err) => console.error("cartas", err)));
       // La música de los videos: si falta algún fondo, se le pide a ElevenLabs.
       ctx.waitUntil(asegurarMusica(env).then((n) => { if (n) console.log("música nueva", n); }).catch((err) => console.error("música", err)));
       // Los puntos de control del plan se cumplen solos: cada media hora se

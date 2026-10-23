@@ -25,7 +25,7 @@ export function sePuedeEnviar(apiKey: string, to: string): boolean {
 
 export async function sendEmail(
   apiKey: string,
-  params: { to: string; subject: string; html: string; text: string; unsubscribeUrl?: string }
+  params: { to: string; subject: string; html: string; text: string; unsubscribeUrl?: string; scheduledAt?: number }
 ): Promise<boolean> {
   if (!sePuedeEnviar(apiKey, params.to)) return false;
   try {
@@ -41,6 +41,8 @@ export async function sendEmail(
         subject: params.subject,
         html: params.html,
         text: params.text,
+        // Programado: Resend lo entrega en ese segundo exacto (hora UTC).
+        ...(params.scheduledAt ? { scheduled_at: new Date(params.scheduledAt * 1000).toISOString() } : {}),
         // List-Unsubscribe + "One-Click" hacen que Gmail/Outlook muestren su
         // propio botón de "Cancelar suscripción" junto al remitente — mejora
         // la entregabilidad porque la gente deja de reportar el correo como spam.
@@ -183,6 +185,15 @@ export interface Detail {
   value: string;
   strong?: boolean;
 }
+export interface Funcion {
+  /** Ruta absoluta de la imagen (se sirve desde /correos/). */
+  img: string;
+  alt: string;
+  titulo: string;
+  texto: string;
+  /** Ancho en pantalla; 440 por omisión, como se ve en un teléfono. */
+  ancho?: number;
+}
 interface ShellOpts {
   appUrl: string;
   preheader: string;
@@ -196,6 +207,9 @@ interface ShellOpts {
   bodyHtml: string;
   stats?: Stat[];
   details?: Detail[];
+  /** Funciones explicadas con su captura real (las cartas de bienvenida). */
+  funciones?: Funcion[];
+  funcionesTitulo?: string;
   ctaLabel: string;
   linkUrl: string;
   /** Texto corto debajo del botón (HTML ya escapado). */
@@ -249,6 +263,21 @@ export function renderShell(o: ShellOpts): string {
       </table>`
     : "";
 
+  const funcionesHtml = o.funciones && o.funciones.length
+    ? `${o.funcionesTitulo ? `<p style="margin:8px 0 18px; font-size:11px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:#1f9d5c;">${escapeHtml(o.funcionesTitulo)}</p>` : ""}
+      ${o.funciones
+        .map(
+          (f, i) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px; ${i ? "border-top:1px solid #eef1f5; padding-top:22px;" : ""}">
+            <tr><td style="padding:0 0 6px; font-size:17px; font-weight:800; color:#0D1117; letter-spacing:-.2px;"><span style="color:#1f9d5c;">${i + 1}.</span> ${escapeHtml(f.titulo)}</td></tr>
+            <tr><td style="padding:0 0 14px; font-size:14.5px; line-height:1.6; color:#44505f;">${escapeHtml(f.texto)}</td></tr>
+            <tr><td align="center" style="background:#0D1117; border-radius:16px; padding:14px 10px;">
+              <img src="${escapeHtml(f.img)}" width="${f.ancho ?? 440}" alt="${escapeHtml(f.alt)}" style="width:${f.ancho ?? 440}px; max-width:100%; height:auto; display:block; border:0; border-radius:10px;">
+            </td></tr>
+          </table>`
+        )
+        .join("")}`
+    : "";
+
   const ligaAjustes = o.ajustesUrl ? `<a href="${escapeHtml(o.ajustesUrl)}" style="color:#7c8696; text-decoration:underline;">Elegir qué correos recibo</a>` : "";
   const footerText = o.unsubscribeUrl
     ? `Recibes este correo porque pediste que te avisáramos sobre esta sala en Video Room.
@@ -293,6 +322,7 @@ export function renderShell(o: ShellOpts): string {
               <p style="margin:0 0 22px; font-size:15.5px; line-height:1.65; color:#44505f;">${o.bodyHtml}</p>
               ${statsHtml}
               ${detailsHtml}
+              ${funcionesHtml}
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 14px;"><tr>
                 <td style="border-radius:12px; background:${t.btnBg};">
                   <a href="${escapeHtml(o.linkUrl)}" style="display:inline-block; padding:15px 28px; font-size:15px; font-weight:800; color:${t.btnFg}; text-decoration:none; letter-spacing:-.1px;">${escapeHtml(o.ctaLabel)} →</a>
@@ -328,6 +358,7 @@ export function renderText(o: {
   headline: string;
   lines: string[];
   details?: Detail[];
+  funciones?: Funcion[];
   ctaLabel: string;
   linkUrl: string;
   fineprint?: string;
@@ -336,6 +367,9 @@ export function renderText(o: {
   const parts = [o.headline, "", ...o.lines];
   if (o.details?.length) {
     parts.push("", ...o.details.map((d) => `${d.label}: ${d.value}`));
+  }
+  if (o.funciones?.length) {
+    parts.push("", ...o.funciones.flatMap((f, i) => [`${i + 1}. ${f.titulo}`, f.texto, ""]));
   }
   parts.push("", `${o.ctaLabel}: ${o.linkUrl}`);
   if (o.fineprint) parts.push("", o.fineprint);
@@ -510,49 +544,6 @@ export function newFollowerEmail(opts: {
 // ---------------------------------------------------------------------------
 // Cuenta y dinero
 // ---------------------------------------------------------------------------
-
-// Primer correo de la vida de un creador: su sala ya existe y tiene link.
-export function welcomeEmail(opts: {
-  appUrl: string;
-  name: string;
-  avatarUrl: string | null;
-  roomUrl: string;
-}): Mail {
-  const { appUrl, name, avatarUrl, roomUrl } = opts;
-  const first = name.split(" ")[0] || name;
-  const subject = `🎉 Tu sala ya existe, ${first}`;
-  const html = renderShell({
-    appUrl,
-    preheader: `Tu link es ${roomUrl.replace(/^https?:\/\//, "")}. Compártelo, transmite, cobra.`,
-    badgeText: "🎉 Bienvenido a Video Room",
-    avatarUrl,
-    avatarAlt: name,
-    headline: `Tu sala ya existe, ${first}`,
-    bodyHtml: `Ya tienes una sala de video en vivo con puerta de cobro, lista para usarse. No hay nada que configurar: <strong>comparte tu link, prende la cámara y cada persona que entre te paga</strong>.`,
-    details: [
-      { label: "Tu link", value: roomUrl.replace(/^https?:\/\//, ""), strong: true },
-      { label: "Cada persona paga", value: "$20 MXN por hora" },
-      { label: "Tú te quedas con", value: "$16 de cada entrada de $20, y el 100% de lo que te manden adentro" },
-      { label: "Grabación", value: "Ninguna, nunca" },
-    ],
-    ctaLabel: "Abrir mi sala",
-    linkUrl: roomUrl,
-    afterHtml: "Pega tu link donde ya está tu gente —WhatsApp, Instagram, tu bio— y deja que la gente active «Avísame cuando abra». Cuando transmitas, les avisamos nosotros.",
-    fineprint: "Tu primer retiro puede ser desde $10 MXN, directo a tu banco, para que compruebes que el dinero de verdad llega.",
-  });
-  const text = renderText({
-    headline: subject,
-    lines: ["Ya tienes una sala de video en vivo con puerta de cobro. Comparte tu link, prende la cámara y cada persona que entre te paga."],
-    details: [
-      { label: "Tu link", value: roomUrl },
-      { label: "Cada persona paga", value: "$20 MXN por hora" },
-      { label: "Tú te quedas con", value: "$16 de cada entrada de $20, y el 100% de lo que te manden adentro" },
-    ],
-    ctaLabel: "Abrir mi sala",
-    linkUrl: roomUrl,
-  });
-  return { subject, html, text };
-}
 
 // Recibo de recarga — se dispara desde el webhook de Stripe justo después de
 // acreditar el saldo, para que quede constancia de cada movimiento real.

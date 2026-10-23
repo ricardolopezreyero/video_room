@@ -438,6 +438,20 @@ previa de la propia persona: monedero → «Ver cómo se vería mi corte semanal
 (`GET /api/wallet/corte?html=1`). Para probar el envío a mano:
 `enviarCortesSemanales(env, hasta)`.
 
+**Tres cartas de bienvenida** (`src/lib/cartas.ts`), firmadas por el fundador.
+Cada una es una carta y, abajo, tres o cuatro funciones explicadas con su
+captura real: 1 · al terminar el onboarding (el alta), tus herramientas: tu
+link, tu precio, la puerta que ve tu gente; 2 · a las 24 horas exactas, dar:
+materiales, avisar que ya empiezas, en qué minuto se va la gente, membresía;
+3 · a las 48 horas exactas, recibir: tus números, tus logros, retirar a tu
+banco. La 1 sale en el alta y reemplazó al correo de bienvenida. La 2 y la 3
+las programa el cron de cada media hora en Resend (`scheduled_at`) para el
+segundo exacto, así que quien apaga «Tres cartas de bienvenida» deja de
+recibirlas hasta media hora antes. `users.cartas` dice cuántas van; las
+cuentas que ya existían quedaron en 3 y no reciben la serie. Las capturas
+viven en `public/correos/` y salen de una sala de ejemplo con datos
+inventados; cada carta lo dice al pie.
+
 Revisión del 10-oct-2026: todos los textos de dinero dicen «4 de cada 5
 pesos» en la puerta, «te llegó completo» en los envíos y «lo ganado también se
 gasta adentro» en vez de «balance de creador».

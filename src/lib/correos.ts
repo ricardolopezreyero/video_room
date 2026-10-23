@@ -16,6 +16,7 @@ export interface CategoriaCorreo {
 export const CATEGORIAS: CategoriaCorreo[] = [
   { clave: "recibos", nombre: "Recibos de dinero", que: "Cada entrada, envío, membresía, recarga y retiro, con folio y hora exacta. A las dos partes, siempre.", fijo: true, para: "todos" },
   { clave: "cuenta", nombre: "Tu cuenta", que: "Bienvenida, cuenta bancaria conectada y avisos de seguridad.", fijo: true, para: "todos" },
+  { clave: "cartas", nombre: "Tres cartas de bienvenida", que: "Al crear tu sala, a las 24 horas y a las 48: por qué existe Video Room, dar y recibir. Son tres y se acaban.", para: "creador" },
   { clave: "corte_semanal", nombre: "Corte semanal", que: "Los viernes a las 3:33 pm: todo lo que produjiste en los últimos 7 días, comparado con la semana anterior. Solo si hubo movimiento.", para: "creador" },
   { clave: "resumen_transmision", nombre: "Resumen al terminar cada transmisión", que: "Cuánto ganaste, cuánta gente hubo y qué reliquias se abrieron.", para: "creador" },
   { clave: "nuevo_seguidor", nombre: "Alguien activó «Avísame»", que: "Cuando una persona nueva pide que le avisemos de tu sala.", para: "creador" },

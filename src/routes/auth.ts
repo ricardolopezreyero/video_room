@@ -4,7 +4,8 @@ import { signSession, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "../lib/ses
 import { newId, type User } from "../lib/db";
 import { nextAvailableSlug } from "../lib/slugs";
 import { readUtmCookie } from "../lib/utm";
-import { sendEmail, welcomeEmail } from "../lib/email";
+import { sendEmail } from "../lib/email";
+import { cartaUno } from "../lib/cartas";
 import type { Env } from "../env";
 import { verificarPase } from "../lib/verificar-ct";
 import { ponerSesion, quitarSesion } from "../lib/current-user";
@@ -77,15 +78,17 @@ async function entrarConPerfil(c: Context<{ Bindings: Env }>, profile: Perfil): 
       "INSERT INTO rooms (id, owner_id, slug, title) VALUES (?, ?, ?, ?)"
     ).bind(newId("room"), userId, slug, profile.name).run();
 
-    // Primer correo de su vida en Video Room: su link ya existe. Si Resend
-    // falla, el alta sigue igual — nunca debe estorbar el login.
+    // Carta 1 de 3, al terminar el onboarding: su link ya existe. La 2 y la 3
+    // las programa el cron (lib/cartas.ts). Si Resend falla, el alta sigue
+    // igual: nunca debe estorbar el login.
+    await c.env.DB.prepare("UPDATE users SET cartas = 1 WHERE id = ?").bind(userId).run();
     try {
       await sendEmail(c.env.RESEND_API_KEY, {
         to: profile.email,
-        ...welcomeEmail({ appUrl: c.env.APP_URL, name: profile.name, avatarUrl: profile.picture || null, roomUrl: `${c.env.APP_URL}/${slug}` }),
+        ...cartaUno({ appUrl: c.env.APP_URL, name: profile.name, avatarUrl: profile.picture || null, roomUrl: `${c.env.APP_URL}/${slug}` }),
       });
     } catch (err) {
-      console.error("welcomeEmail", err);
+      console.error("cartaUno", err);
     }
   }
   return { userId, isNewUser };
