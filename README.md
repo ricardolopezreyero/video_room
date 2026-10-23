@@ -218,6 +218,28 @@ tele: AirPlay (iPhone → Apple TV) o «Duplicar pantalla» (Android → Roku); 
 que se refleja es exactamente esa pantalla. Roku y Apple TV no tienen
 navegador ni reciben WebRTC: por eso el camino es reflejar, no una app.
 
+## La palabra: el creador deja hablar a quien ve
+
+El creador le da la palabra a una persona de su público desde tres lugares:
+la tarjeta «✋ Fulano levantó la mano» que aparece arriba a la izquierda
+(botón «🎤 Dar la palabra»; se va sola a los 45 s), el menú de cualquier
+comentario (⋯ → «Dar la palabra») y la lista de conectados (👁 → 🎤). Darla
+no obliga a nada: a la persona le sale una hoja con dos formas de entrar,
+**solo mi voz** o **mi voz y mi cámara**, y «Ahora no». Al aceptar, publica
+en una sesión propia del SFU (`POST /api/rooms/:slug/invitado/publish`, que
+exige pase vigente y la palabra en el Durable Object) y toda la sala, el
+creador incluido, la jala a una conexión aparte de la de la transmisión
+(`/invitado/subscribe`): así cambiar de calidad o reconectar no toca a los
+invitados. Su ficha (`#invitados`, a la derecha) muestra su foto o su video
+chico y se enciende en verde mientras habla (nivel de audio del receptor;
+en la propia, un analizador local). El botón de la mano se vuelve el de su
+voz (🎙️/🔇) y la ✕ de su ficha deja la palabra. El creador la quita desde
+los mismos tres lugares o con la ✕ de la ficha; también se va al expulsar,
+al desconectarse del todo y al terminar la transmisión. Hasta cuatro
+personas a la vez (`MAX_INVITADOS`). Estado y mensajes (`palabra`,
+`invitado`, `invitados`) en `src/durable/room.ts`; cliente en `room.js`
+(«La palabra»).
+
 ## El recibo como objeto (PDF)
 
 `GET /recibo/<pass_|tip_|mem_…>` genera en el Worker (pdf-lib + Plus Jakarta

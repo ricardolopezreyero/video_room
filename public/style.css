@@ -1057,7 +1057,7 @@ body.modo-tv.en-llamada #player { object-fit: cover; }
 .tv-pasos { margin: 8px 0 14px; padding-left: 20px; color: #d9dde3; font-size: 13.5px; line-height: 1.55; }
 .tv-pasos li { margin: 4px 0; }
 .tv-pasos strong { color: #fff; }
-.sheet-inner #tv-cancel, .sheet-inner #call-cancel, .sheet-inner #fx-cerrar { background: none; border: none; color: #9aa1b0; padding: 8px 0; cursor: pointer; font-family: inherit; }
+.sheet-inner #tv-cancel, .sheet-inner #call-cancel, .sheet-inner #fx-cerrar, .sheet-inner #palabra-no { background: none; border: none; color: #9aa1b0; padding: 8px 0; cursor: pointer; font-family: inherit; }
 .sheet-inner .btn-primary, .sheet-inner .btn-ghost { width: 100%; margin: 6px 0; }
 
 
@@ -2083,3 +2083,65 @@ body.fe-abierto { overflow: hidden; }
   .gtm-busca kbd { display: none; }
   .gtm-chip-tit { min-width: 0; }
 }
+/* ---------- La palabra (RLR) ----------
+   Quien recibe la palabra aparece en una ficha chica, a la derecha, para
+   toda la sala: su foto (o su inicial) si entró solo con voz, su video si
+   entró con cámara. La ficha se enciende en verde mientras habla. */
+.invitados {
+  position: absolute; right: 12px; top: calc(76px + env(safe-area-inset-top));
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-end; z-index: 12; pointer-events: none;
+}
+.invitado {
+  position: relative; width: 84px; height: 84px; border-radius: 22px; overflow: hidden;
+  background: #0D1117; border: 2px solid rgba(255,255,255,.18); box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  pointer-events: auto; transition: border-color .15s, box-shadow .15s, width .25s, height .25s;
+}
+.invitado.con-video { width: 124px; height: 92px; }
+.invitado video, .invitado img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.invitado video.espejo { transform: scaleX(-1); }
+.invitado audio { display: none; }
+.invitado .inicial { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 28px; color: var(--green); background: rgba(86,239,159,.12); }
+.invitado .invitado-nombre {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 6px 4px; font-size: 10px; font-weight: 800; color: #fff;
+  background: linear-gradient(transparent, rgba(13,17,23,.9)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.invitado .invitado-nombre::before { content: "🎙️ "; }
+.invitado.mudo .invitado-nombre::before { content: "🔇 "; }
+.invitado.hablando { border-color: var(--green); box-shadow: 0 0 0 3px rgba(86,239,159,.35), 0 0 22px rgba(86,239,159,.55); }
+.invitado.hablando .invitado-nombre { color: var(--green); }
+.invitado.yo { border-color: rgba(86,239,159,.55); }
+.invitado .invitado-x {
+  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; border: none;
+  background: rgba(13,17,23,.7); color: #fff; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit;
+}
+.invitado .invitado-x:hover { background: #E5484D; }
+body.modo-tv .invitados { top: calc(12px + env(safe-area-inset-top)); }
+@media (min-width: 900px) {
+  .invitado { width: 110px; height: 110px; }
+  .invitado.con-video { width: 168px; height: 124px; }
+}
+/* Manos levantadas: para el creador, cada una es una tarjeta con el botón de
+   dar la palabra; se va sola a los 45 s o al tocar ✕. */
+.manos {
+  position: absolute; left: 12px; top: calc(76px + env(safe-area-inset-top));
+  display: flex; flex-direction: column; gap: 8px; z-index: 12; max-width: min(280px, calc(100vw - 150px));
+}
+.mano {
+  display: flex; align-items: center; gap: 8px; background: rgba(13,17,23,.85); border: .5px solid rgba(86,239,159,.3);
+  border-radius: 999px; padding: 6px 6px 6px 12px; color: #fff; font-size: 12.5px; font-weight: 700; animation: mano-in .3s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes mano-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+.mano span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mano .mano-dar { background: var(--green); color: var(--navy); border: none; border-radius: 999px; padding: 7px 10px; font-weight: 800; font-size: 12px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.mano .mano-dar:active { transform: scale(.95); }
+.mano .mano-x { background: none; border: none; color: rgba(255,255,255,.5); font-size: 13px; cursor: pointer; padding: 4px; font-family: inherit; }
+/* Hoja «te dieron la palabra»: dos formas de entrar y una de no entrar. */
+.palabra-opciones { display: grid; gap: 10px; margin: 14px 0; }
+.palabra-opciones button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left;
+  background: rgba(255,255,255,.06); border: .5px solid rgba(86,239,159,.3); border-radius: 14px; padding: 14px; color: #fff; font-family: inherit; cursor: pointer; width: 100%;
+}
+.palabra-opciones button b { font-size: 15px; }
+.palabra-opciones button small { color: #9aa1b0; font-size: 12px; }
+.palabra-opciones button:active { background: rgba(86,239,159,.18); }
+@media (prefers-reduced-motion: reduce) { .mano { animation: none; } .invitado { transition: none; } }

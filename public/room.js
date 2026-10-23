@@ -228,6 +228,7 @@
   function stopOwnerMediaNow() {
     if (ownerStreamStopped) return;
     ownerStreamStopped = true;
+    limpiarPalabra();
     if (llamadaCon) terminarLlamada();
     soltarWakeLock();
     if (motor) motor.detener();
@@ -244,6 +245,7 @@
   }
 
   function handleKicked(reason) {
+    limpiarPalabra();
     if (pc) { try { pc.close(); } catch {} pc = null; }
     stopViewerQualityMonitor();
     player.srcObject = null;
@@ -369,7 +371,24 @@
       } else if (msg.type === "unpinned") {
         $("pinned-msg").style.display = "none";
       } else if (msg.type === "raise_hand") {
-        if (isOwner) toast(`🎤 ${msg.name} levantó la mano`, 5000);
+        mostrarMano(msg.user_id, msg.name);
+      } else if (msg.type === "palabra") {
+        if (msg.dar) {
+          conPalabra.add(msg.user_id);
+          if (me && msg.user_id === me.id && !isOwner) ofrecerPalabra();
+        } else {
+          conPalabra.delete(msg.user_id);
+          if (me && msg.user_id === me.id) {
+            if (hojaPalabra) { hojaPalabra.remove(); hojaPalabra = null; }
+            dejarPalabra({ porElCreador: true });
+          } else {
+            quitarFichaInvitado(msg.user_id, { silencioso: !isOwner });
+          }
+        }
+      } else if (msg.type === "invitado") {
+        recibirInvitado(msg.invitado);
+      } else if (msg.type === "invitados") {
+        (msg.lista || []).forEach(recibirInvitado);
       } else if (msg.type === "owner_offline") {
         if (!isOwner) {
           ownerOfflineSince = msg.since || Date.now();
@@ -383,6 +402,7 @@
         if (!isOwner && me && effectiveTier != null) reconectarEspectador("republished");
       } else if (msg.type === "ended") {
         sessionEnded = true;
+        limpiarPalabra();
         detenerEsperaCreador(true);
         if (isOwner) {
           stopOwnerMediaNow();
@@ -484,6 +504,9 @@
   function openCommentActions(ev, commentId, userId, name) {
     ev.stopPropagation();
     moderationTarget = { commentId, userId, name };
+    const bp = $("ca-palabra");
+    bp.style.display = userId && me && userId !== me.id ? "block" : "none";
+    bp.textContent = conPalabra.has(userId) ? "🔕 Quitar la palabra" : "🎤 Dar la palabra";
     commentActionsEl.style.display = "block";
     const rect = ev.currentTarget.getBoundingClientRect();
     const menuWidth = commentActionsEl.offsetWidth || 170;
@@ -507,6 +530,8 @@
       closeCommentActions();
       if (action === "like") {
         await api(`/api/rooms/${slug}/like-comment`, { body: { comment_id: commentId } });
+      } else if (action === "palabra") {
+        if (conPalabra.has(userId)) await quitarPalabraA(userId, name); else await darPalabraA(userId, name);
       } else if (action === "mute") {
         await api(`/api/rooms/${slug}/mute`, { body: { user_id: userId } });
         toast(`🔇 Silenciado: ${name}`);
@@ -573,6 +598,18 @@
 
       const actions = document.createElement("div");
       actions.className = "viewer-row-actions";
+
+      const palBtn = document.createElement("button");
+      palBtn.textContent = "🎤";
+      palBtn.title = v.tiene_palabra ? "Quitar la palabra" : "Dar la palabra";
+      palBtn.classList.toggle("active", !!v.tiene_palabra);
+      palBtn.onclick = async () => {
+        if (v.tiene_palabra) await quitarPalabraA(v.user_id, v.name); else await darPalabraA(v.user_id, v.name);
+        v.tiene_palabra = conPalabra.has(v.user_id);
+        palBtn.title = v.tiene_palabra ? "Quitar la palabra" : "Dar la palabra";
+        palBtn.classList.toggle("active", v.tiene_palabra);
+      };
+      actions.appendChild(palBtn);
 
       const muteBtn = document.createElement("button");
       muteBtn.textContent = "🔇";
@@ -775,6 +812,7 @@
     if (filtro) filtro.setFiltro(filtroNombre); else filtroNombre = "normal";
     player.srcObject = new MediaStream([fuenteVideo()]);
     await publicar("Conectando con el estudio…");
+    sincronizarInvitados();
     hideOverlaySmoothly();
     showControlsWithEntrance();
     studioBar.style.display = "flex";
@@ -1219,6 +1257,295 @@
     sheet.querySelector("#call-go").onclick = ir;
     sheet.querySelector("#call-slug").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); ir(); } });
     setTimeout(() => sheet.querySelector("#call-slug").focus(), 50);
+  }
+
+  // ---- La palabra: el creador deja hablar a quien ve ----
+  // Quien recibe la palabra publica su voz (y su cámara, si quiere) en una
+  // sesión propia del SFU; toda la sala, el creador incluido, la jala a una
+  // conexión aparte de la de la transmisión, así que cambiar de calidad o
+  // reconectar no la toca. Su ficha se enciende en verde mientras habla.
+  const invitadosEl = $("invitados");
+  const manosEl = $("manos");
+  const invitados = new Map(); // uid → { info, pc, el, sfu, nivelTimer }
+  const invitadosPendientes = new Map(); // llegaron antes de poder suscribirse
+  const conPalabra = new Set(); // uids con la palabra (para los menús del creador)
+  const MAX_PALABRA = 4;
+  let miPalabra = null; // { pc, stream, el, mudo, medidor, nivelTimer } cuando yo hablo
+  let hojaPalabra = null;
+  const escTxt = (t) => String(t ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const inicialDe = (n) => ((n || "").trim().charAt(0) || "?").toUpperCase();
+
+  function puedoOirInvitados() { return !sessionEnded && (isOwner ? !!pc : !!viewerSessionId); }
+
+  function fichaInvitado(info, { yo = false } = {}) {
+    const el = document.createElement("div");
+    el.className = `invitado${yo ? " yo" : ""}`;
+    el.dataset.uid = info.user_id;
+    const cara = info.avatar_url ? `<img src="${escTxt(info.avatar_url)}" alt="">` : `<div class="inicial">${escTxt(inicialDe(info.name))}</div>`;
+    el.innerHTML = `${cara}<span class="invitado-nombre">${escTxt(yo ? "Tú" : info.name)}</span>`;
+    if (yo || isOwner) {
+      const x = document.createElement("button");
+      x.className = "invitado-x";
+      x.textContent = "✕";
+      x.title = yo ? "Dejar la palabra" : `Quitarle la palabra a ${info.name}`;
+      x.onclick = (e) => { e.stopPropagation(); if (yo) dejarPalabra(); else quitarPalabraA(info.user_id, info.name); };
+      el.appendChild(x);
+    }
+    invitadosEl.appendChild(el);
+    return el;
+  }
+  // La ficha pasa de foto a video: un solo elemento que trae audio y video.
+  function ponerVideoEnFicha(el, stream, { muted = false, espejo = false } = {}) {
+    el.querySelectorAll("audio, img, .inicial").forEach((n) => n.remove());
+    let v = el.querySelector("video");
+    if (!v) { v = document.createElement("video"); v.playsInline = true; v.autoplay = true; v.setAttribute("playsinline", ""); el.insertBefore(v, el.firstChild); }
+    v.muted = muted;
+    v.classList.toggle("espejo", espejo);
+    v.srcObject = stream;
+    v.play().catch(() => {});
+    el.classList.add("con-video");
+  }
+  function ponerAudioEnFicha(el, stream) {
+    if (el.querySelector("video")) return;
+    let a = el.querySelector("audio");
+    if (!a) { a = document.createElement("audio"); a.autoplay = true; el.appendChild(a); }
+    a.srcObject = stream;
+    a.play().catch(() => {});
+  }
+  // La ficha se enciende con la voz: sube al instante, se apaga medio segundo después.
+  function vigilarVoz(el, nivel) {
+    let apagar = 0;
+    return setInterval(() => {
+      const n = nivel();
+      if (n > 0.015) { el.classList.add("hablando"); apagar = Date.now() + 500; }
+      else if (apagar && Date.now() > apagar) { el.classList.remove("hablando"); apagar = 0; }
+    }, 150);
+  }
+  function nivelDeReceptor(conn) {
+    return () => {
+      try {
+        const rx = conn.getReceivers().find((r) => r.track && r.track.kind === "audio");
+        if (!rx || !rx.getSynchronizationSources) return 0;
+        const fuentes = rx.getSynchronizationSources();
+        return fuentes.length ? (fuentes[0].audioLevel || 0) : 0;
+      } catch { return 0; }
+    };
+  }
+  function medidorLocal(track) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      ctx.resume().catch(() => {});
+      const an = ctx.createAnalyser();
+      an.fftSize = 256;
+      ctx.createMediaStreamSource(new MediaStream([track])).connect(an);
+      const buf = new Uint8Array(an.fftSize);
+      return {
+        nivel: () => { an.getByteTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; s += v * v; } return Math.sqrt(s / buf.length); },
+        cerrar: () => ctx.close().catch(() => {}),
+      };
+    } catch { return { nivel: () => 0, cerrar: () => {} }; }
+  }
+
+  async function suscribirInvitado(info) {
+    if (me && info.user_id === me.id) return; // mi propia voz no se oye de vuelta
+    const previo = invitados.get(info.user_id);
+    if (previo && previo.sfu === info.sfuSessionId) return;
+    if (previo) quitarFichaInvitado(info.user_id, { silencioso: true });
+    const res = await api(`/api/rooms/${slug}/invitado/subscribe`, { body: { user_id: info.user_id } });
+    if (res.error || !res.offer_sdp) return;
+    const npc = new RTCPeerConnection();
+    const el = fichaInvitado(info);
+    const entrada = { info, pc: npc, el, sfu: info.sfuSessionId, nivelTimer: null };
+    invitados.set(info.user_id, entrada);
+    conPalabra.add(info.user_id);
+    npc.ontrack = (ev) => {
+      const stream = ev.streams[0] || new MediaStream([ev.track]);
+      if (ev.track.kind === "video") ponerVideoEnFicha(el, stream);
+      else ponerAudioEnFicha(el, stream);
+    };
+    try {
+      await npc.setRemoteDescription({ type: "offer", sdp: res.offer_sdp });
+      const answer = await npc.createAnswer();
+      await npc.setLocalDescription(answer);
+      await api(`/api/rooms/${slug}/renegotiate`, { body: { session_id: res.session_id, sdp: answer.sdp } });
+    } catch {
+      quitarFichaInvitado(info.user_id, { silencioso: true });
+      return;
+    }
+    entrada.nivelTimer = vigilarVoz(el, nivelDeReceptor(npc));
+    if (isOwner) toast(`🎙️ ${info.name} está al aire. Toda la sala la escucha.`, 4000);
+  }
+  function quitarFichaInvitado(uid, { silencioso = false } = {}) {
+    invitadosPendientes.delete(uid);
+    const e = invitados.get(uid);
+    if (!e) return;
+    invitados.delete(uid);
+    clearInterval(e.nivelTimer);
+    try { e.pc.close(); } catch {}
+    e.el.remove();
+    if (!silencioso && isOwner) toast(`${e.info.name} dejó la palabra.`, 3000);
+  }
+  function recibirInvitado(info) {
+    if (!info || !info.sfuSessionId) return;
+    if (me && info.user_id === me.id) return;
+    invitadosPendientes.set(info.user_id, info);
+    sincronizarInvitados();
+  }
+  // Se llama en cuanto se puede oír la sala (creador publicando, espectador
+  // suscrito) y cada vez que llega alguien nuevo al aire.
+  function sincronizarInvitados() {
+    if (!puedoOirInvitados()) return;
+    for (const [uid, info] of [...invitadosPendientes]) {
+      invitadosPendientes.delete(uid);
+      suscribirInvitado(info).catch(() => {});
+    }
+  }
+  function limpiarPalabra() {
+    dejarPalabra({ porElCreador: true, silencioso: true });
+    for (const uid of [...invitados.keys()]) quitarFichaInvitado(uid, { silencioso: true });
+    invitadosPendientes.clear();
+    conPalabra.clear();
+    manosEl.innerHTML = "";
+  }
+
+  // -- Del lado del creador --
+  async function darPalabraA(userId, name) {
+    const r = await api(`/api/rooms/${slug}/palabra`, { body: { user_id: userId, dar: true } });
+    if (r.error === "cupo") return toast(`Ya hay ${MAX_PALABRA} personas con la palabra. Quítasela a alguien primero.`, 5000);
+    if (r.error) return toast("No se pudo dar la palabra.", 4000);
+    conPalabra.add(userId);
+    quitarMano(userId);
+    toast(`🎤 Le diste la palabra a ${name}. Cuando acepte, aparece su ficha y toda la sala la escucha.`, 5000);
+  }
+  async function quitarPalabraA(userId, name) {
+    await api(`/api/rooms/${slug}/palabra`, { body: { user_id: userId, dar: false } });
+    conPalabra.delete(userId);
+    quitarFichaInvitado(userId, { silencioso: true });
+    toast(`🔕 Le quitaste la palabra a ${name}.`, 3500);
+  }
+  // Manos levantadas: una tarjeta por persona con el botón de dar la palabra.
+  function mostrarMano(userId, name) {
+    if (!isOwner) return;
+    if (!userId) return toast(`🎤 ${name} levantó la mano`, 5000);
+    quitarMano(userId);
+    const card = document.createElement("div");
+    card.className = "mano";
+    card.dataset.uid = userId;
+    card.innerHTML = `<span>✋ ${escTxt(name)}</span><button class="mano-dar">🎤 Dar la palabra</button><button class="mano-x" aria-label="Cerrar">✕</button>`;
+    card.querySelector(".mano-dar").onclick = () => darPalabraA(userId, name);
+    card.querySelector(".mano-x").onclick = () => card.remove();
+    manosEl.appendChild(card);
+    while (manosEl.children.length > 3) manosEl.firstChild.remove();
+    setTimeout(() => card.remove(), 45000);
+    buzz(12);
+  }
+  function quitarMano(userId) {
+    manosEl.querySelectorAll(".mano").forEach((c) => { if (c.dataset.uid === userId) c.remove(); });
+  }
+
+  // -- Del lado de quien recibe la palabra --
+  function ofrecerPalabra() {
+    if (miPalabra || hojaPalabra) return;
+    const sheet = document.createElement("div");
+    sheet.className = "sheet";
+    sheet.innerHTML = `
+      <div class="sheet-inner">
+        <h3>🎤 ${escTxt(roomTitle || "Quien transmite")} te dio la palabra</h3>
+        <p class="sheet-sub">Toda la sala te va a escuchar. Elige cómo entrar; puedes dejar la palabra cuando quieras.</p>
+        <div class="palabra-opciones">
+          <button data-video="0"><b>🎙️ Solo mi voz</b><small>Tu ficha muestra tu foto y se enciende cuando hablas.</small></button>
+          <button data-video="1"><b>🎙️📷 Mi voz y mi cámara</b><small>Tu ficha muestra tu video, chiquito, junto a la transmisión.</small></button>
+        </div>
+        <button id="palabra-no">Ahora no</button>
+      </div>`;
+    document.body.appendChild(sheet);
+    hojaPalabra = sheet;
+    const cerrar = () => { sheet.remove(); hojaPalabra = null; };
+    sheet.querySelector("#palabra-no").onclick = () => { cerrar(); api(`/api/rooms/${slug}/invitado/salir`, { body: {} }).catch(() => {}); };
+    sheet.querySelectorAll(".palabra-opciones button").forEach((b) => {
+      b.addEventListener("pointerdown", () => buzz(8), { passive: true });
+      b.onclick = () => { cerrar(); tomarPalabra(b.dataset.video === "1"); };
+    });
+  }
+  async function tomarPalabra(conVideo) {
+    let stream;
+    toast(conVideo ? "Pidiendo tu micrófono y tu cámara…" : "Pidiendo tu micrófono…", 3000);
+    try {
+      stream = await withTimeout(navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: conVideo ? { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 }, facingMode: "user" } : false,
+      }), 15000);
+    } catch {
+      return toast("No pudimos usar tu micrófono. Revisa los permisos del navegador y pide la palabra otra vez.", 6000);
+    }
+    const audioTrack = stream.getAudioTracks()[0];
+    const videoTrack = stream.getVideoTracks()[0] || null;
+    if (!audioTrack) { stream.getTracks().forEach((t) => t.stop()); return toast("No encontramos un micrófono.", 5000); }
+    const npc = new RTCPeerConnection();
+    const aTx = npc.addTransceiver(audioTrack, { direction: "sendonly" });
+    const vTx = videoTrack ? npc.addTransceiver(videoTrack, { direction: "sendonly", sendEncodings: [{ maxBitrate: 500000 }] }) : null;
+    const offer = await npc.createOffer();
+    await npc.setLocalDescription(offer);
+    const tracks = [{ mid: aTx.mid != null ? String(aTx.mid) : "0", trackName: "audio" }];
+    if (vTx) tracks.push({ mid: vTx.mid != null ? String(vTx.mid) : "1", trackName: "video" });
+    let res;
+    try { res = await api(`/api/rooms/${slug}/invitado/publish`, { body: { sdp: offer.sdp, tracks, video: !!videoTrack } }); } catch { res = { error: "red" }; }
+    if (res.error) {
+      stream.getTracks().forEach((t) => t.stop());
+      try { npc.close(); } catch {}
+      return toast(res.error === "sin_palabra" ? "El creador ya retomó la palabra." : "No se pudo entrar al aire. Intenta de nuevo.", 5000);
+    }
+    try { await npc.setRemoteDescription({ type: "answer", sdp: res.answer_sdp }); } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      try { npc.close(); } catch {}
+      return toast("No se pudo entrar al aire. Intenta de nuevo.", 5000);
+    }
+    const el = fichaInvitado({ user_id: me.id, name: me.name, avatar_url: me.avatar_url || null }, { yo: true });
+    if (videoTrack) ponerVideoEnFicha(el, new MediaStream([videoTrack]), { muted: true, espejo: true });
+    const medidor = medidorLocal(audioTrack);
+    miPalabra = { pc: npc, stream, el, mudo: false, medidor, nivelTimer: null };
+    miPalabra.nivelTimer = vigilarVoz(el, () => (miPalabra && miPalabra.mudo ? 0 : medidor.nivel()));
+    conPalabra.add(me.id);
+    pintarBotonMano();
+    toast(videoTrack ? "🎙️📷 Estás al aire: toda la sala te escucha y te ve en tu ficha." : "🎙️ Estás al aire: toda la sala te escucha.", 6000);
+  }
+  function dejarPalabra({ porElCreador = false, silencioso = false } = {}) {
+    if (!miPalabra) return;
+    const m = miPalabra;
+    miPalabra = null;
+    clearInterval(m.nivelTimer);
+    m.medidor.cerrar();
+    m.stream.getTracks().forEach((t) => t.stop());
+    try { m.pc.close(); } catch {}
+    m.el.remove();
+    if (me) conPalabra.delete(me.id);
+    pintarBotonMano();
+    if (!porElCreador) api(`/api/rooms/${slug}/invitado/salir`, { body: {} }).catch(() => {});
+    if (!silencioso) toast(porElCreador ? "El creador retomó la palabra. Gracias por participar." : "Dejaste la palabra.", 4000);
+  }
+  function alternarMiVoz() {
+    if (!miPalabra) return;
+    miPalabra.mudo = !miPalabra.mudo;
+    miPalabra.stream.getAudioTracks().forEach((t) => { t.enabled = !miPalabra.mudo; });
+    miPalabra.el.classList.toggle("mudo", miPalabra.mudo);
+    pintarBotonMano();
+    toast(miPalabra.mudo ? "🔇 Tu voz está en pausa." : "🎙️ Tu voz vuelve a salir.", 2500);
+  }
+  // Con la palabra, el botón de la mano se vuelve el de tu voz.
+  function pintarBotonMano() {
+    const b = $("btn-hand");
+    if (miPalabra) {
+      b.textContent = miPalabra.mudo ? "🔇" : "🎙️";
+      b.dataset.label = miPalabra.mudo ? "En pausa" : "Al aire";
+      b.classList.add("active");
+      b.classList.toggle("off", miPalabra.mudo);
+    } else {
+      b.textContent = handRaised ? "✋" : "🎤";
+      b.dataset.label = "Mano";
+      b.classList.toggle("active", handRaised);
+      b.classList.remove("off");
+    }
   }
 
   function toggleMic() {
@@ -1695,6 +2022,7 @@
     adoptarConexionEspectador(result);
     effectiveTier = initialTier;
     updateAudioOnlyBadge();
+    sincronizarInvitados();
     hideOverlaySmoothly();
     pedirWakeLock(); // viendo, el teléfono tampoco se duerme
     if (modoTvAuto) setTimeout(entrarTv, 600);
@@ -2000,6 +2328,7 @@
     // ensucia a los otros. Se resetea sola a los 45s si nadie la baja.
     guarded($("btn-hand"), async () => {
       if (!me) return requireLogin();
+      if (miPalabra) return alternarMiVoz();
       handRaised = !handRaised;
       $("btn-hand").textContent = handRaised ? "✋" : "🎤";
       $("btn-hand").classList.toggle("active", handRaised);

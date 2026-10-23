@@ -10,6 +10,24 @@ interface TipEvent {
   message?: string;
 }
 
+// ── La palabra ──────────────────────────────────────────────────────────────
+// El creador le da la palabra a quien ve: esa persona publica su voz (y su
+// cámara, si quiere) en una sesión propia del SFU y toda la sala la escucha
+// y la ve en una ficha chica. Hasta MAX_INVITADOS a la vez. La palabra se va
+// cuando el creador la quita, cuando la persona la deja, cuando se desconecta
+// o cuando termina la transmisión.
+export interface Invitado {
+  user_id: string;
+  name: string;
+  avatar_url: string | null;
+  /** null mientras la persona no ha aceptado y publicado */
+  sfuSessionId: string | null;
+  tracks: { mid: string; trackName: string }[];
+  video: boolean;
+  since: number;
+}
+export const MAX_INVITADOS = 4;
+
 interface PersistedState {
   totalCents: number;
   peakViewers: number;
@@ -25,6 +43,7 @@ interface PersistedState {
   comments?: number;
   ownerOfflineSince?: number;
   chatSeq?: number;
+  invitados?: Record<string, Invitado>;
 }
 
 const SAMPLE_EVERY_MS = 60_000;
@@ -83,6 +102,7 @@ export class RoomDurableObject implements DurableObject {
   comments = 0;
   ownerOfflineSince = 0;
   chatSeq = 0;
+  invitados: Record<string, Invitado> = {};
   // freno por persona (en memoria: si el DO hiberna, se perdona)
   private ultimoComentario = new Map<string, number>();
   private idASeq: Map<string, number> | null = null;
@@ -106,6 +126,7 @@ export class RoomDurableObject implements DurableObject {
         this.comments = stored.comments ?? 0;
         this.ownerOfflineSince = stored.ownerOfflineSince ?? 0;
         this.chatSeq = stored.chatSeq ?? 0;
+        this.invitados = stored.invitados ?? {};
       }
     });
   }
@@ -191,9 +212,23 @@ export class RoomDurableObject implements DurableObject {
     this.sampledComments = 0;
     this.startedAtMs = 0;
     this.ownerOfflineSince = 0;
+    this.invitados = {};
     await this.borrarChat(); // nada se graba: el chat se va con la transmisión
     await this.persist();
     return summary;
+  }
+
+  /** Solo quienes ya publican: es lo que la sala se suscribe. */
+  private invitadosAlAire(): Invitado[] {
+    return Object.values(this.invitados).filter((i) => !!i.sfuSessionId);
+  }
+
+  private async quitarPalabra(user_id: string): Promise<void> {
+    const inv = this.invitados[user_id];
+    if (!inv) return;
+    delete this.invitados[user_id];
+    await this.persist();
+    this.broadcast({ type: "palabra", user_id, name: inv.name, dar: false });
   }
 
   private async persist() {
@@ -210,6 +245,7 @@ export class RoomDurableObject implements DurableObject {
       comments: this.comments,
       ownerOfflineSince: this.ownerOfflineSince,
       chatSeq: this.chatSeq,
+      invitados: this.invitados,
     };
     await this.state.storage.put("state", data);
   }
@@ -341,6 +377,10 @@ export class RoomDurableObject implements DurableObject {
       } catch {
         // si falla, el cliente lo pide por /chat
       }
+      // Quién tiene la palabra ahora mismo, para que quien entra tarde también
+      // los vea y los oiga.
+      const alAire = this.invitadosAlAire();
+      if (alAire.length) server.send(JSON.stringify({ type: "invitados", lista: alAire }));
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -375,6 +415,7 @@ export class RoomDurableObject implements DurableObject {
       this.sampledComments = 0;
       this.startedAtMs = Date.now();
       this.ownerOfflineSince = 0;
+      this.invitados = {};
       await this.borrarChat();
       await this.anotarChat({ kind: "aviso", id: null, user_id: null, name: "", avatar_url: null, mark: null, body: "Aquí empezó la transmisión", is_owner: false });
       await this.persist();
@@ -472,6 +513,7 @@ export class RoomDurableObject implements DurableObject {
     // esto corta la conexión de OTRA persona por decisión del creador.
     if (url.pathname === "/kick-user" && request.method === "POST") {
       const { user_id, reason } = await request.json<{ user_id: string; reason?: string }>();
+      await this.quitarPalabra(user_id);
       for (const ws of this.state.getWebSockets()) {
         const attachment = ws.deserializeAttachment() as { uid?: string; isOwner?: boolean } | null;
         if (attachment?.uid === user_id && !attachment.isOwner) {
@@ -484,6 +526,42 @@ export class RoomDurableObject implements DurableObject {
         }
       }
       return Response.json({ ok: true });
+    }
+
+    // ── La palabra ──
+    if (url.pathname === "/palabra" && request.method === "POST") {
+      const { user_id, name, avatar_url, dar } = await request.json<{ user_id: string; name?: string; avatar_url?: string | null; dar: boolean }>();
+      if (!dar) {
+        await this.quitarPalabra(user_id);
+        return Response.json({ ok: true, invitados: this.invitadosAlAire() });
+      }
+      if (!this.sessionId) return Response.json({ error: "sala_cerrada" }, { status: 400 });
+      if (!this.invitados[user_id] && Object.keys(this.invitados).length >= MAX_INVITADOS) return Response.json({ error: "cupo" }, { status: 409 });
+      if (!this.invitados[user_id]) {
+        this.invitados[user_id] = { user_id, name: String(name || "").slice(0, 60), avatar_url: avatar_url ?? null, sfuSessionId: null, tracks: [], video: false, since: Date.now() };
+        await this.persist();
+      }
+      this.broadcast({ type: "palabra", user_id, name: this.invitados[user_id].name, dar: true });
+      return Response.json({ ok: true, invitados: this.invitadosAlAire() });
+    }
+    if (url.pathname === "/invitado-publica" && request.method === "POST") {
+      const { user_id, sfuSessionId, tracks, video } = await request.json<{ user_id: string; sfuSessionId: string; tracks: { mid: string; trackName: string }[]; video: boolean }>();
+      const inv = this.invitados[user_id];
+      if (!inv) return Response.json({ error: "sin_palabra" }, { status: 403 });
+      inv.sfuSessionId = sfuSessionId;
+      inv.tracks = tracks;
+      inv.video = !!video;
+      await this.persist();
+      this.broadcast({ type: "invitado", invitado: inv });
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/invitado-fuera" && request.method === "POST") {
+      const { user_id } = await request.json<{ user_id: string }>();
+      await this.quitarPalabra(user_id);
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/invitados") {
+      return Response.json({ invitados: Object.values(this.invitados) });
     }
 
     // ids únicos de espectadores conectados ahora mismo (sin el creador) —
@@ -530,7 +608,11 @@ export class RoomDurableObject implements DurableObject {
         this.broadcast({ type: "hearts", count: this.hearts });
       }
       if (data.type === "raise_hand") {
-        this.broadcast({ type: "raise_hand", user_id: data.user_id, name: data.name });
+        // Quién levanta la mano sale de la etiqueta real de la conexión, no
+        // de lo que mande el cliente: con ese id el creador le da la palabra.
+        let uid: string | null = null;
+        try { uid = (ws.deserializeAttachment() as { uid?: string } | null)?.uid ?? null; } catch {}
+        this.broadcast({ type: "raise_hand", user_id: uid, name: String(data.name || "").slice(0, 60) });
       }
       // Fijar un comentario sí puede afectar lo que ve toda la sala, a
       // diferencia de un corazón o una mano levantada — por eso, a diferencia
@@ -568,8 +650,18 @@ export class RoomDurableObject implements DurableObject {
   // Si el que se desconectó es el creador (y no queda otra pestaña suya), su
   // público se entera al instante y empieza el tiempo de gracia.
   private async socketCerrado(ws: WebSocket): Promise<void> {
-    let attachment: { isOwner?: boolean } | null = null;
-    try { attachment = ws.deserializeAttachment() as { isOwner?: boolean } | null; } catch {}
+    let attachment: { isOwner?: boolean; uid?: string } | null = null;
+    try { attachment = ws.deserializeAttachment() as { isOwner?: boolean; uid?: string } | null; } catch {}
+    // Quien tenía la palabra y se fue del todo (ninguna otra pestaña suya) la
+    // suelta: su ficha desaparece para toda la sala.
+    if (attachment?.uid && this.invitados[attachment.uid]) {
+      const uid = attachment.uid;
+      const otra = this.state.getWebSockets().some((w) => {
+        if (w === ws) return false;
+        try { return (w.deserializeAttachment() as { uid?: string } | null)?.uid === uid; } catch { return false; }
+      });
+      if (!otra) await this.quitarPalabra(uid);
+    }
     if (attachment?.isOwner && this.sessionId) {
       const otraDelCreador = this.state.getWebSockets().some((w) => {
         if (w === ws) return false;

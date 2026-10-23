@@ -166,6 +166,10 @@ export function renderRoomPage(opts: {
       <button id="call-close" class="call-close" aria-label="Terminar llamada" title="Cerrar la sala de la otra persona">✕</button>
     </div>
     <div id="viewer-presence" class="viewer-presence" style="display:none">🟢 <span id="presence-count">0</span> en la sala<span id="viewer-quality" class="stream-quality"></span></div>
+    <!-- La palabra: fichas de quienes hablan (voz, o voz y cámara) y, para el
+         creador, las manos levantadas con el botón de dar la palabra. -->
+    <div id="invitados" class="invitados" aria-live="polite"></div>
+    <div id="manos" class="manos"></div>
     <!-- Cuando se corta el internet (el del creador o el propio), esto es lo
          que se ve: quién falta, cuánto llevamos esperando, y que el chat
          sigue vivo. Nunca una pantalla negra sin explicación. -->
@@ -213,6 +217,7 @@ export function renderRoomPage(opts: {
          compartido que room.js posiciona junto al comentario que tocaron. -->
     <div id="comment-actions" class="comment-actions" style="display:none">
       <button id="ca-like" data-action="like">❤️ Like</button>
+      <button id="ca-palabra" data-action="palabra">🎤 Dar la palabra</button>
       <button id="ca-mute" data-action="mute">🔇 Silenciar</button>
       <button id="ca-kick" data-action="kick">👢 Expulsar</button>
       <button id="ca-block" class="danger" data-action="block">🚫 Bloquear</button>

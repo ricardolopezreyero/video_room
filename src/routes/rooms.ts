@@ -686,6 +686,35 @@ rooms.post("/api/rooms/:slug/kick", async (c) => {
   return c.json({ ok: true });
 });
 
+// La palabra: el creador se la da (o se la quita) a una persona que está
+// viendo. Darla no la obliga a nada: ella elige entrar solo con su voz, con
+// voz y cámara, o no entrar. Quitarla la saca del aire al instante.
+rooms.post("/api/rooms/:slug/palabra", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+
+  const { user_id: targetUserId, dar } = await c.req.json<{ user_id: string; dar?: boolean }>().catch(() => ({ user_id: "", dar: false }));
+  if (!targetUserId || targetUserId === user.id) return c.json({ error: "user_id_requerido" }, 400);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  if (dar === false) {
+    await stub.fetch("https://do/palabra", { method: "POST", body: JSON.stringify({ user_id: targetUserId, dar: false }) });
+    return c.json({ ok: true, dar: false });
+  }
+  const [target, blocked] = await Promise.all([
+    c.env.DB.prepare("SELECT id, name, avatar_url FROM users WHERE id = ?").bind(targetUserId).first<{ id: string; name: string; avatar_url: string | null }>(),
+    isBlocked(c.env.DB, room.id, targetUserId),
+  ]);
+  if (!target) return c.json({ error: "no_existe" }, 404);
+  if (blocked) return c.json({ error: "bloqueado" }, 400);
+  const r = await stub.fetch("https://do/palabra", { method: "POST", body: JSON.stringify({ user_id: target.id, name: target.name, avatar_url: target.avatar_url, dar: true }) });
+  const j = await r.json<{ ok?: boolean; error?: string }>();
+  if (!r.ok) return c.json({ error: j.error || "no_se_pudo" }, r.status === 409 ? 409 : 400);
+  return c.json({ ok: true, dar: true });
+});
+
 rooms.post("/api/rooms/:slug/like-comment", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: "no_session" }, 401);
@@ -722,8 +751,10 @@ rooms.get("/api/rooms/:slug/viewers", async (c) => {
   if (!session) return c.json({ viewers: [] });
 
   const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
-  const connRes = await stub.fetch("https://do/connected-uids");
+  const [connRes, invRes] = await Promise.all([stub.fetch("https://do/connected-uids"), stub.fetch("https://do/invitados")]);
   const { uids } = await connRes.json<{ uids: string[] }>();
+  const { invitados } = await invRes.json<{ invitados: { user_id: string }[] }>();
+  const conPalabra = new Set(invitados.map((i) => i.user_id));
   if (uids.length === 0) return c.json({ viewers: [] });
 
   const placeholders = uids.map(() => "?").join(",");
@@ -756,6 +787,7 @@ rooms.get("/api/rooms/:slug/viewers", async (c) => {
       total_cents: centsByUser.get(u.id) ?? 0,
       is_muted: mutedSet.has(u.id),
       is_blocked: blockedSet.has(u.id),
+      tiene_palabra: conPalabra.has(u.id),
     }))
     .sort((a, b) => b.total_cents - a.total_cents);
 

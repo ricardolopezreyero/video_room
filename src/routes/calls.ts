@@ -186,3 +186,96 @@ calls.post("/api/rooms/:slug/renegotiate", async (c) => {
   if (!res.ok) return c.json({ error: "calls_error", detail: await res.text() }, 502);
   return c.json({ ok: true });
 });
+
+// ── La palabra: la persona invitada publica su voz (y su cámara si quiere) ──
+// Hace falta las dos cosas: un pase vigente en esta sala y que el creador le
+// haya dado la palabra (vive en el Durable Object). Su sesión del SFU es
+// propia; la de la transmisión del creador no se toca.
+type InvitadoDO = { user_id: string; name: string; avatar_url: string | null; sfuSessionId: string | null; tracks: { mid: string; trackName: string }[]; video: boolean };
+
+async function accesoAlaSala(c: { env: Env }, room: Room, userId: string): Promise<"ok" | "sin_pase" | "creador_no_transmitiendo" | "bloqueado"> {
+  if (userId === room.owner_id) return "ok";
+  const now = Math.floor(Date.now() / 1000);
+  const [blocked, acceso] = await Promise.all([
+    isBlocked(c.env.DB, room.id, userId),
+    c.env.DB.prepare(
+      `SELECT s.id as session_id, p.id as pass_id FROM sessions s
+       LEFT JOIN passes p ON p.session_id = s.id AND p.user_id = ? AND p.expires_at > ?
+       WHERE s.room_id = ? AND s.status = 'live' ORDER BY p.expires_at DESC LIMIT 1`
+    ).bind(userId, now, room.id).first<{ session_id: string; pass_id: string | null }>(),
+  ]);
+  if (blocked) return "bloqueado";
+  if (!acceso) return "creador_no_transmitiendo";
+  if (!acceso.pass_id) return "sin_pase";
+  return "ok";
+}
+
+calls.post("/api/rooms/:slug/invitado/publish", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const acceso = await accesoAlaSala(c, room, user.id);
+  if (acceso !== "ok") return c.json({ error: acceso }, acceso === "sin_pase" ? 402 : acceso === "bloqueado" ? 403 : 400);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const { invitados } = await (await stub.fetch("https://do/invitados")).json<{ invitados: InvitadoDO[] }>();
+  if (!invitados.some((i) => i.user_id === user.id)) return c.json({ error: "sin_palabra" }, 403);
+
+  const { sdp, tracks, video } = await c.req.json<{ sdp: string; tracks: { mid: string; trackName: string }[]; video?: boolean }>().catch(() => ({ sdp: "", tracks: [], video: false }));
+  if (!sdp || !Array.isArray(tracks) || !tracks.length) return c.json({ error: "parametros" }, 400);
+  let sfuSessionId: string;
+  try { sfuSessionId = await newCallsSession(c.env); } catch (err) { return c.json({ error: "calls_error", detail: String(err) }, 502); }
+  const res = await fetch(callsUrl(c.env, `/sessions/${sfuSessionId}/tracks/new`), {
+    method: "POST",
+    headers: callsHeaders(c.env),
+    body: JSON.stringify({
+      sessionDescription: { type: "offer", sdp },
+      tracks: tracks.map((t) => ({ location: "local", mid: t.mid, trackName: t.trackName })),
+    }),
+  });
+  if (!res.ok) return c.json({ error: "calls_error", detail: await res.text() }, 502);
+  const json = await res.json<{ sessionDescription: { sdp: string } }>();
+  const r = await stub.fetch("https://do/invitado-publica", { method: "POST", body: JSON.stringify({ user_id: user.id, sfuSessionId, tracks, video: !!video }) });
+  if (!r.ok) return c.json({ error: "sin_palabra" }, 403);
+  return c.json({ sfu_session_id: sfuSessionId, answer_sdp: json.sessionDescription.sdp });
+});
+
+// Toda la sala (el creador incluido) jala la voz y la cámara de quien tiene
+// la palabra a una sesión propia, aparte de la que ya usa para ver la
+// transmisión: así cambiar de calidad o reconectar no toca a los invitados.
+calls.post("/api/rooms/:slug/invitado/subscribe", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const { user_id } = await c.req.json<{ user_id: string }>().catch(() => ({ user_id: "" }));
+  if (!user_id) return c.json({ error: "parametros" }, 400);
+  const acceso = await accesoAlaSala(c, room, user.id);
+  if (acceso !== "ok") return c.json({ error: acceso }, acceso === "sin_pase" ? 402 : acceso === "bloqueado" ? 403 : 400);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const { invitados } = await (await stub.fetch("https://do/invitados")).json<{ invitados: InvitadoDO[] }>();
+  const inv = invitados.find((i) => i.user_id === user_id && i.sfuSessionId);
+  if (!inv) return c.json({ error: "no_esta_al_aire" }, 404);
+
+  let sessionId: string;
+  try { sessionId = await newCallsSession(c.env); } catch (err) { return c.json({ error: "calls_error", detail: String(err) }, 502); }
+  const res = await fetch(callsUrl(c.env, `/sessions/${sessionId}/tracks/new`), {
+    method: "POST",
+    headers: callsHeaders(c.env),
+    body: JSON.stringify({ tracks: inv.tracks.map((t) => ({ location: "remote", sessionId: inv.sfuSessionId, trackName: t.trackName })) }),
+  });
+  if (!res.ok) return c.json({ error: "calls_error", detail: await res.text() }, 502);
+  const json = await res.json<{ sessionDescription?: { sdp: string } }>();
+  return c.json({ session_id: sessionId, offer_sdp: json.sessionDescription?.sdp ?? null, video: inv.video });
+});
+
+// La persona deja la palabra por su cuenta.
+calls.post("/api/rooms/:slug/invitado/salir", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/invitado-fuera", { method: "POST", body: JSON.stringify({ user_id: user.id }) });
+  return c.json({ ok: true });
+});
