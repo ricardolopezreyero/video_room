@@ -385,6 +385,8 @@
             quitarFichaInvitado(msg.user_id, { silencioso: !isOwner });
           }
         }
+      } else if (msg.type === "invitado_tamano") {
+        aplicarTamano(msg.user_id, msg.tamano || 1);
       } else if (msg.type === "invitado") {
         recibirInvitado(msg.invitado);
       } else if (msg.type === "invitados") {
@@ -1270,8 +1272,10 @@
   const invitadosPendientes = new Map(); // llegaron antes de poder suscribirse
   const conPalabra = new Set(); // uids con la palabra (para los menús del creador)
   const MAX_PALABRA = 4;
-  let miPalabra = null; // { pc, stream, el, mudo, medidor, nivelTimer } cuando yo hablo
+  let miPalabra = null; // { pc, stream, el, mudo, medidor, nivelTimer, videoSender, tamano, pantalla, sincPrincipal } cuando yo hablo
   let hojaPalabra = null;
+  const escenarioEl = $("escenario");
+  const NOMBRE_TAMANO = { 1: "ficha", 2: "mediana", 3: "a dúo", 4: "protagonista" };
   const escTxt = (t) => String(t ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const inicialDe = (n) => ((n || "").trim().charAt(0) || "?").toUpperCase();
 
@@ -1283,6 +1287,13 @@
     el.dataset.uid = info.user_id;
     const cara = info.avatar_url ? `<img src="${escTxt(info.avatar_url)}" alt="">` : `<div class="inicial">${escTxt(inicialDe(info.name))}</div>`;
     el.innerHTML = `${cara}<span class="invitado-nombre">${escTxt(yo ? "Tú" : info.name)}</span>`;
+    if (isOwner && !yo) {
+      // Un toque en la ficha la sube de tamaño: ficha → mediana → a dúo → protagonista → ficha.
+      el.classList.add("tocable");
+      el.title = "Toca para cambiar el tamaño con que toda la sala la ve";
+      el.insertAdjacentHTML("beforeend", `<span class="invitado-lat"></span><span class="invitado-tam">⤢</span>`);
+      el.addEventListener("click", () => { const e = invitados.get(info.user_id); const t = ((e && e.info.tamano) || 1) % 4 + 1; cambiarTamano(info.user_id, t); });
+    }
     if (yo || isOwner) {
       const x = document.createElement("button");
       x.className = "invitado-x";
@@ -1374,7 +1385,47 @@
       return;
     }
     entrada.nivelTimer = vigilarVoz(el, nivelDeReceptor(npc));
-    if (isOwner) toast(`🎙️ ${info.name} está al aire. Toda la sala la escucha.`, 4000);
+    armarSincronia(entrada);
+    aplicarTamano(info.user_id, info.tamano || 1);
+    if (isOwner) toast(`🎙️ ${info.name} está al aire. Toca su ficha para hacerla más grande.`, 5000);
+  }
+  // Quien conversa (el creador, o yo cuando tengo la palabra) oye al invitado
+  // con el colchón mínimo; el público lo oye alineado al creador.
+  function armarSincronia(entrada) {
+    if (entrada.sinc) entrada.sinc.detener();
+    const latEl = entrada.el.querySelector(".invitado-lat");
+    const onEstado = (m) => { if (latEl) latEl.textContent = m.bocaOidoMs != null ? `≈ ${m.bocaOidoMs} ms` : ""; };
+    if (!window.MotorSincronia) { entrada.sinc = null; return; }
+    entrada.sinc = (isOwner || miPalabra) ? MotorSincronia.conversacion(entrada.pc, { onEstado }) : (pc ? MotorSincronia.alineado(pc, entrada.pc, { onEstado }) : null);
+  }
+  function rearmarSincronias() { for (const e of invitados.values()) armarSincronia(e); }
+  // Tamaño: toda la sala ve el mismo acomodo. Del 2 en adelante la ficha pasa
+  // al escenario y solo una persona puede estar ahí.
+  function aplicarTamano(uid, t) {
+    const e = invitados.get(uid);
+    const el = e ? e.el : (miPalabra && me && uid === me.id ? miPalabra.el : null);
+    if (e) e.info.tamano = t;
+    if (!el) return;
+    const tam = el.querySelector(".invitado-tam");
+    if (tam) tam.textContent = t > 1 ? `${t}/4` : "⤢";
+    if (t > 1) {
+      for (const otro of [...escenarioEl.children]) if (otro !== el) invitadosEl.appendChild(otro);
+      escenarioEl.appendChild(el);
+      document.body.dataset.escena = String(t);
+    } else {
+      if (el.parentElement === escenarioEl) invitadosEl.appendChild(el);
+      if (!escenarioEl.children.length) delete document.body.dataset.escena;
+    }
+    if (miPalabra && me && uid === me.id) {
+      miPalabra.tamano = t;
+      if (window.MotorSincronia && miPalabra.videoSender) MotorSincronia.emisor(miPalabra.videoSender, t, { pantalla: !!miPalabra.pantalla });
+      if (t >= 3) toast(t === 4 ? "🎬 El creador te puso de protagonista: tu video llena la pantalla de toda la sala." : "🎬 Estás a dúo con el creador: la sala los ve a los dos.", 5000);
+    }
+  }
+  async function cambiarTamano(uid, t) {
+    const r = await api(`/api/rooms/${slug}/palabra/tamano`, { body: { user_id: uid, tamano: t } });
+    if (r.error) return toast("No se pudo cambiar el tamaño.", 3000);
+    toast(`⤢ Tamaño ${t} de 4: ${NOMBRE_TAMANO[t]}. Así lo ve toda la sala.`, 3000);
   }
   function quitarFichaInvitado(uid, { silencioso = false } = {}) {
     invitadosPendientes.delete(uid);
@@ -1382,8 +1433,10 @@
     if (!e) return;
     invitados.delete(uid);
     clearInterval(e.nivelTimer);
+    if (e.sinc) e.sinc.detener();
     try { e.pc.close(); } catch {}
     e.el.remove();
+    if (!escenarioEl.children.length) delete document.body.dataset.escena;
     if (!silencioso && isOwner) toast(`${e.info.name} dejó la palabra.`, 3000);
   }
   function recibirInvitado(info) {
@@ -1407,6 +1460,7 @@
     invitadosPendientes.clear();
     conPalabra.clear();
     manosEl.innerHTML = "";
+    delete document.body.dataset.escena;
   }
 
   // -- Del lado del creador --
@@ -1472,9 +1526,10 @@
     let stream;
     toast(conVideo ? "Pidiendo tu micrófono y tu cámara…" : "Pidiendo tu micrófono…", 3000);
     try {
+      const MS = window.MotorSincronia;
       stream = await withTimeout(navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: conVideo ? { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 }, facingMode: "user" } : false,
+        audio: MS ? MS.capturaVoz() : { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: conVideo ? (MS ? MS.capturaCamara() : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: "user" }) : false,
       }), 15000);
     } catch {
       return toast("No pudimos usar tu micrófono. Revisa los permisos del navegador y pide la palabra otra vez.", 6000);
@@ -1482,9 +1537,15 @@
     const audioTrack = stream.getAudioTracks()[0];
     const videoTrack = stream.getVideoTracks()[0] || null;
     if (!audioTrack) { stream.getTracks().forEach((t) => t.stop()); return toast("No encontramos un micrófono.", 5000); }
+    try { audioTrack.contentHint = "speech"; if (videoTrack) videoTrack.contentHint = "motion"; } catch {}
     const npc = new RTCPeerConnection();
     const aTx = npc.addTransceiver(audioTrack, { direction: "sendonly" });
-    const vTx = videoTrack ? npc.addTransceiver(videoTrack, { direction: "sendonly", sendEncodings: [{ maxBitrate: 500000 }] }) : null;
+    const vTx = videoTrack ? npc.addTransceiver(videoTrack, { direction: "sendonly", sendEncodings: [{ maxBitrate: 500000, maxFramerate: 30, scaleResolutionDownBy: 2 }] }) : null;
+    // H.264 primero: lo decodifican por hardware todos los aparatos, y
+    // decodificar rápido también es menos latencia.
+    if (vTx && window.MotorVideo && MotorVideo.elegirCodecs) {
+      try { const codec = await MotorVideo.elegirCodecs({ w: 1280, h: 720, fps: 30 }); if (codec.lista) vTx.setCodecPreferences(codec.lista); } catch {}
+    }
     const offer = await npc.createOffer();
     await npc.setLocalDescription(offer);
     const tracks = [{ mid: aTx.mid != null ? String(aTx.mid) : "0", trackName: "audio" }];
@@ -1496,7 +1557,7 @@
       try { npc.close(); } catch {}
       return toast(res.error === "sin_palabra" ? "El creador ya retomó la palabra." : "No se pudo entrar al aire. Intenta de nuevo.", 5000);
     }
-    try { await npc.setRemoteDescription({ type: "answer", sdp: res.answer_sdp }); } catch {
+    try { await npc.setRemoteDescription({ type: "answer", sdp: window.MotorSincronia ? MotorSincronia.sdpVozConversacion(res.answer_sdp) : res.answer_sdp }); } catch {
       stream.getTracks().forEach((t) => t.stop());
       try { npc.close(); } catch {}
       return toast("No se pudo entrar al aire. Intenta de nuevo.", 5000);
@@ -1504,8 +1565,20 @@
     const el = fichaInvitado({ user_id: me.id, name: me.name, avatar_url: me.avatar_url || null }, { yo: true });
     if (videoTrack) ponerVideoEnFicha(el, new MediaStream([videoTrack]), { muted: true, espejo: true });
     const medidor = medidorLocal(audioTrack);
-    miPalabra = { pc: npc, stream, el, mudo: false, medidor, nivelTimer: null };
+    miPalabra = { pc: npc, stream, el, mudo: false, medidor, nivelTimer: null, videoSender: vTx ? vTx.sender : null, tamano: 1, pantalla: null, camara: videoTrack, sincPrincipal: null };
     miPalabra.nivelTimer = vigilarVoz(el, () => (miPalabra && miPalabra.mudo ? 0 : medidor.nivel()));
+    if (miPalabra.videoSender && window.MotorSincronia) MotorSincronia.emisor(miPalabra.videoSender, 1);
+    // Con cámara y en escritorio, también puede compartir su pantalla.
+    if (videoTrack && navigator.mediaDevices.getDisplayMedia) {
+      const b = document.createElement("button");
+      b.className = "invitado-pantalla"; b.textContent = "🖥️"; b.title = "Compartir mi pantalla";
+      b.onclick = (ev) => { ev.stopPropagation(); alternarPantallaInvitado(b); };
+      el.appendChild(b);
+    }
+    // Conversación: al creador lo oigo con el colchón mínimo, y a los demás
+    // invitados también. El colchón automático del espectador se apaga.
+    if (window.MotorSincronia && pc) { colchonMs = 0; miPalabra.sincPrincipal = MotorSincronia.conversacion(pc); }
+    rearmarSincronias();
     conPalabra.add(me.id);
     pintarBotonMano();
     toast(videoTrack ? "🎙️📷 Estás al aire: toda la sala te escucha y te ve en tu ficha." : "🎙️ Estás al aire: toda la sala te escucha.", 6000);
@@ -1516,13 +1589,40 @@
     miPalabra = null;
     clearInterval(m.nivelTimer);
     m.medidor.cerrar();
+    if (m.sincPrincipal) m.sincPrincipal.detener();
+    if (m.pantalla) { try { m.pantalla.getTracks().forEach((t) => t.stop()); } catch {} }
     m.stream.getTracks().forEach((t) => t.stop());
     try { m.pc.close(); } catch {}
     m.el.remove();
+    if (!escenarioEl.children.length) delete document.body.dataset.escena;
     if (me) conPalabra.delete(me.id);
+    rearmarSincronias();
     pintarBotonMano();
     if (!porElCreador) api(`/api/rooms/${slug}/invitado/salir`, { body: {} }).catch(() => {});
     if (!silencioso) toast(porElCreador ? "El creador retomó la palabra. Gracias por participar." : "Dejaste la palabra.", 4000);
+  }
+  async function alternarPantallaInvitado(boton) {
+    if (!miPalabra || !miPalabra.videoSender) return;
+    if (miPalabra.pantalla) {
+      miPalabra.pantalla.getTracks().forEach((t) => t.stop());
+      miPalabra.pantalla = null;
+      await miPalabra.videoSender.replaceTrack(miPalabra.camara).catch(() => {});
+      ponerVideoEnFicha(miPalabra.el, new MediaStream([miPalabra.camara]), { muted: true, espejo: true });
+      if (window.MotorSincronia) MotorSincronia.emisor(miPalabra.videoSender, miPalabra.tamano);
+      boton.classList.remove("active"); boton.title = "Compartir mi pantalla";
+      return toast("Volviste a tu cámara.", 2500);
+    }
+    let pantalla;
+    try { pantalla = await withTimeout(navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false }), 15000); } catch { return; }
+    const track = pantalla.getVideoTracks()[0];
+    try { track.contentHint = "detail"; } catch {}
+    miPalabra.pantalla = pantalla;
+    await miPalabra.videoSender.replaceTrack(track).catch(() => {});
+    ponerVideoEnFicha(miPalabra.el, new MediaStream([track]), { muted: true, espejo: false });
+    if (window.MotorSincronia) MotorSincronia.emisor(miPalabra.videoSender, miPalabra.tamano, { pantalla: true });
+    track.onended = () => { if (miPalabra && miPalabra.pantalla) alternarPantallaInvitado(boton); };
+    boton.classList.add("active"); boton.title = "Volver a mi cámara";
+    toast("🖥️ Compartiendo tu pantalla con la sala. El creador puede ponerla en grande.", 5000);
   }
   function alternarMiVoz() {
     if (!miPalabra) return;
@@ -1778,6 +1878,8 @@
   function adoptarConexionEspectador(result) {
     const vieja = pc;
     pc = result.pc;
+    if (miPalabra && miPalabra.sincPrincipal) miPalabra.sincPrincipal.rePc(pc);
+    for (const e of invitados.values()) if (e.sinc && e.sinc.rePrincipal) e.sinc.rePrincipal(pc);
     viewerSessionId = result.sessionId;
     videoMid = result.videoMid;
     simulcastViewer = result.simulcast;
@@ -1877,7 +1979,9 @@
       const good = (l.rtt == null || l.rtt < 0.15) && (l.perdida == null || l.perdida < 0.02) && l.congelamientos === 0 && l.tirados <= 2;
       if (bad) { badStreak++; goodStreak = 0; } else if (good) { goodStreak++; badStreak = 0; } else { badStreak = 0; goodStreak = 0; }
 
-      if (bad && colchonMs < 500) { colchonMs = colchonMs ? 500 : 250; MotorVideo.ajustarColchon(pc, colchonMs); }
+      // Con la palabra, el colchón lo gobierna el motor de sincronía (mínimo).
+      if (miPalabra) { /* nada */ }
+      else if (bad && colchonMs < 500) { colchonMs = colchonMs ? 500 : 250; MotorVideo.ajustarColchon(pc, colchonMs); }
       else if (goodStreak >= 5 && colchonMs) { colchonMs = colchonMs === 500 ? 250 : 0; MotorVideo.ajustarColchon(pc, colchonMs); }
 
       const idx = ORDEN.indexOf(effectiveTier);

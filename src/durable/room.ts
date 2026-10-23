@@ -24,6 +24,8 @@ export interface Invitado {
   sfuSessionId: string | null;
   tracks: { mid: string; trackName: string }[];
   video: boolean;
+  /** 1 ficha · 2 mediana · 3 a dúo · 4 protagonista. Solo una persona a la vez pasa de 1. */
+  tamano: 1 | 2 | 3 | 4;
   since: number;
 }
 export const MAX_INVITADOS = 4;
@@ -538,7 +540,7 @@ export class RoomDurableObject implements DurableObject {
       if (!this.sessionId) return Response.json({ error: "sala_cerrada" }, { status: 400 });
       if (!this.invitados[user_id] && Object.keys(this.invitados).length >= MAX_INVITADOS) return Response.json({ error: "cupo" }, { status: 409 });
       if (!this.invitados[user_id]) {
-        this.invitados[user_id] = { user_id, name: String(name || "").slice(0, 60), avatar_url: avatar_url ?? null, sfuSessionId: null, tracks: [], video: false, since: Date.now() };
+        this.invitados[user_id] = { user_id, name: String(name || "").slice(0, 60), avatar_url: avatar_url ?? null, sfuSessionId: null, tracks: [], video: false, tamano: 1, since: Date.now() };
         await this.persist();
       }
       this.broadcast({ type: "palabra", user_id, name: this.invitados[user_id].name, dar: true });
@@ -554,6 +556,24 @@ export class RoomDurableObject implements DurableObject {
       await this.persist();
       this.broadcast({ type: "invitado", invitado: inv });
       return Response.json({ ok: true });
+    }
+    // El tamaño de la ficha lo pone el creador y lo ve toda la sala. Solo una
+    // persona a la vez puede estar en grande: al subir a una, las demás
+    // vuelven a la ficha chica.
+    if (url.pathname === "/invitado-tamano" && request.method === "POST") {
+      const { user_id, tamano } = await request.json<{ user_id: string; tamano: number }>();
+      const inv = this.invitados[user_id];
+      if (!inv) return Response.json({ error: "sin_palabra" }, { status: 404 });
+      const t = ([1, 2, 3, 4] as const).find((x) => x === tamano) ?? 1;
+      if (t > 1) {
+        for (const otro of Object.values(this.invitados)) {
+          if (otro.user_id !== user_id && otro.tamano > 1) { otro.tamano = 1; this.broadcast({ type: "invitado_tamano", user_id: otro.user_id, tamano: 1 }); }
+        }
+      }
+      inv.tamano = t;
+      await this.persist();
+      this.broadcast({ type: "invitado_tamano", user_id, tamano: t });
+      return Response.json({ ok: true, tamano: t });
     }
     if (url.pathname === "/invitado-fuera" && request.method === "POST") {
       const { user_id } = await request.json<{ user_id: string }>();

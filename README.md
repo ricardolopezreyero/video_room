@@ -237,8 +237,33 @@ voz (🎙️/🔇) y la ✕ de su ficha deja la palabra. El creador la quita des
 los mismos tres lugares o con la ✕ de la ficha; también se va al expulsar,
 al desconectarse del todo y al terminar la transmisión. Hasta cuatro
 personas a la vez (`MAX_INVITADOS`). Estado y mensajes (`palabra`,
-`invitado`, `invitados`) en `src/durable/room.ts`; cliente en `room.js`
-(«La palabra»).
+`invitado`, `invitados`, `invitado_tamano`) en `src/durable/room.ts`;
+cliente en `room.js` («La palabra»).
+
+**Tamaños.** El creador toca la ficha y la sube: 1 ficha · 2 mediana · 3 a
+dúo (mitad y mitad con el creador; en vertical, arriba y abajo) · 4
+protagonista (la persona llena la pantalla y el creador queda chico). Lo ve
+toda la sala igual (`POST /api/rooms/:slug/palabra/tamano`), solo una persona
+puede estar en grande y el tamaño también manda cómo codifica la persona
+invitada: 360p en ficha, 720p a dúo o de protagonista. Quien entró con cámara
+y está en escritorio puede compartir su pantalla desde su propia ficha (🖥️).
+
+**Motor de sincronía (`public/motor-sincronia.js`).** El razonamiento
+completo está en la cabecera del archivo. En corto: el único pedazo grande
+del retraso que el navegador deja mover es el colchón de llegada
+(`jitterBufferTarget`), así que a quien conversa (el creador oyendo al
+invitado y el invitado oyendo al creador) se le pone en cero y solo sube 30
+ms cuando hay ocultamiento de audio, congelamientos o pérdida, y baja 10 ms
+tras seis segundos limpios, con el mismo objetivo para audio y video. Al
+público, el invitado le llega alineado al creador: cada 2 s se mide cuánto
+espera el audio del creador y se le pide lo mismo al del invitado, así una
+pregunta y su respuesta se oyen al ritmo en que ocurrieron. Lo que sale se
+codifica para baja latencia: voz Opus mono a 64 kb/s con FEC y sin DTX,
+cámara a 30 fps con prioridad a los cuadros por segundo, H.264 para que
+todos decodifiquen por hardware, captura de audio con buffer de 10 ms. El
+creador ve en cada ficha un estimado de boca a oído (`≈ N ms`: un RTT más
+el colchón más 75 ms fijos de codificar y pintar). El colchón automático del
+espectador (250/500 ms) se apaga mientras esa persona tiene la palabra.
 
 ## El recibo como objeto (PDF)
 

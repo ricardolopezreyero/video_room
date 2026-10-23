@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { app } from "../src/index";
 import { cookieFor, createUser, createRoom, createLiveSession } from "./helpers";
 
-type Invitado = { user_id: string; sfuSessionId: string | null; video: boolean };
+type Invitado = { user_id: string; sfuSessionId: string | null; video: boolean; tamano: number };
 const DO = (roomId: string) => (env as unknown as { ROOM_DO: DurableObjectNamespace }).ROOM_DO.get((env as unknown as { ROOM_DO: DurableObjectNamespace }).ROOM_DO.idFromName(roomId));
 const post = (path: string, cookie: string, body: unknown) =>
   app.request(path, { method: "POST", headers: { Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) }, env);
@@ -75,5 +75,28 @@ describe("la palabra", () => {
     // Al terminar la transmisión no queda nadie al aire
     await DO(room.id).fetch("https://do/stop", { method: "POST" });
     expect(await invitadosDe(room.id)).toEqual([]);
+  });
+
+  it("el tamaño lo pone el creador y solo una persona está en grande", async () => {
+    const owner = await createUser();
+    const room = await createRoom(owner);
+    await DO(room.id).fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId: await createLiveSession(room.id) }) });
+    const cookie = await cookieFor(owner);
+    const a = await createUser(), b = await createUser(), otro = await createUser();
+    for (const u of [a, b]) await post(`/api/rooms/${room.slug}/palabra`, cookie, { user_id: u, dar: true });
+
+    expect((await post(`/api/rooms/${room.slug}/palabra/tamano`, await cookieFor(otro), { user_id: a, tamano: 3 })).status).toBe(403);
+    expect((await post(`/api/rooms/${room.slug}/palabra/tamano`, cookie, { user_id: a, tamano: 7 })).status).toBe(400);
+    expect((await post(`/api/rooms/${room.slug}/palabra/tamano`, cookie, { user_id: otro, tamano: 2 })).status).toBe(404);
+
+    expect((await post(`/api/rooms/${room.slug}/palabra/tamano`, cookie, { user_id: a, tamano: 3 })).status).toBe(200);
+    let lista = await invitadosDe(room.id);
+    expect(lista.find((i) => i.user_id === a)?.tamano).toBe(3);
+    expect(lista.find((i) => i.user_id === b)?.tamano).toBe(1);
+
+    await post(`/api/rooms/${room.slug}/palabra/tamano`, cookie, { user_id: b, tamano: 4 });
+    lista = await invitadosDe(room.id);
+    expect(lista.find((i) => i.user_id === a)?.tamano).toBe(1);
+    expect(lista.find((i) => i.user_id === b)?.tamano).toBe(4);
   });
 });

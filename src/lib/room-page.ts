@@ -169,6 +169,7 @@ export function renderRoomPage(opts: {
     <!-- La palabra: fichas de quienes hablan (voz, o voz y cámara) y, para el
          creador, las manos levantadas con el botón de dar la palabra. -->
     <div id="invitados" class="invitados" aria-live="polite"></div>
+    <div id="escenario" class="escenario"></div>
     <div id="manos" class="manos"></div>
     <!-- Cuando se corta el internet (el del creador o el propio), esto es lo
          que se ve: quién falta, cuánto llevamos esperando, y que el chat
@@ -244,6 +245,7 @@ export function renderRoomPage(opts: {
   ${inicioJson ? `<script>window.__VR_INICIO = ${inicioJson};</script>` : ""}
   <script src="/motor-video.js${v}" defer></script>
   <script src="/motor-audio.js${v}" defer></script>
+  <script src="/motor-sincronia.js${v}" defer></script>
   <script src="/chat.js${v}" defer></script>
   <script src="/room.js${v}" defer></script>
   <!-- Login de la casa, sin widget (la sala tiene su propio dock): solo el API

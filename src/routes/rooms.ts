@@ -715,6 +715,22 @@ rooms.post("/api/rooms/:slug/palabra", async (c) => {
   return c.json({ ok: true, dar: true });
 });
 
+// El tamaño con que toda la sala ve a quien tiene la palabra: 1 ficha,
+// 2 mediana, 3 a dúo con el creador, 4 protagonista.
+rooms.post("/api/rooms/:slug/palabra/tamano", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const slug = c.req.param("slug");
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(slug).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+  const { user_id: targetUserId, tamano } = await c.req.json<{ user_id: string; tamano: number }>().catch(() => ({ user_id: "", tamano: 0 }));
+  if (!targetUserId || ![1, 2, 3, 4].includes(tamano)) return c.json({ error: "parametros" }, 400);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const r = await stub.fetch("https://do/invitado-tamano", { method: "POST", body: JSON.stringify({ user_id: targetUserId, tamano }) });
+  if (!r.ok) return c.json({ error: "sin_palabra" }, 404);
+  return c.json({ ok: true, tamano });
+});
+
 rooms.post("/api/rooms/:slug/like-comment", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.json({ error: "no_session" }, 401);

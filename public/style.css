@@ -2145,3 +2145,36 @@ body.modo-tv .invitados { top: calc(12px + env(safe-area-inset-top)); }
 .palabra-opciones button small { color: #9aa1b0; font-size: 12px; }
 .palabra-opciones button:active { background: rgba(86,239,159,.18); }
 @media (prefers-reduced-motion: reduce) { .mano { animation: none; } .invitado { transition: none; } }
+/* ---------- La palabra: tamaños (RLR) ----------
+   El creador toca la ficha y la va subiendo: 1 ficha · 2 mediana · 3 a dúo ·
+   4 protagonista. Toda la sala ve el mismo acomodo. Del 2 en adelante la
+   ficha vive en #escenario, encima del video, y el video del creador se
+   acomoda alrededor. */
+.escenario { position: absolute; inset: 0; pointer-events: none; z-index: 11; }
+.escenario .invitado { pointer-events: auto; position: absolute; transition: none; }
+.escenario .invitado .invitado-nombre { font-size: 12px; padding: 18px 10px 6px; }
+.invitado .invitado-lat { position: absolute; top: 4px; left: 6px; font-size: 10px; font-weight: 800; color: rgba(255,255,255,.75); background: rgba(13,17,23,.55); padding: 2px 6px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.invitado .invitado-lat:empty { display: none; }
+.invitado.hablando .invitado-lat { color: var(--green); }
+.invitado .invitado-pantalla { position: absolute; top: 4px; right: 30px; width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(13,17,23,.7); color: #fff; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; }
+.invitado .invitado-pantalla.active { background: var(--green); color: var(--navy); }
+.invitado.tocable { cursor: pointer; }
+.invitado .invitado-tam { position: absolute; bottom: 4px; right: 6px; font-size: 10px; font-weight: 800; color: rgba(255,255,255,.7); pointer-events: none; }
+/* 2 · mediana: un recuadro grande abajo a la derecha, encima del dock. */
+body[data-escena="2"] .escenario .invitado { right: 12px; bottom: calc(126px + env(safe-area-inset-bottom)); width: min(42vw, 420px); aspect-ratio: 4 / 3; height: auto; border-radius: 18px; }
+/* 3 · a dúo: mitad y mitad. En vertical, arriba y abajo. */
+body[data-escena="3"] #player { width: 50%; height: 100%; left: 0; position: absolute; }
+body[data-escena="3"] .escenario .invitado { left: 50%; top: 0; width: 50%; height: 100%; border-radius: 0; border-width: 0 0 0 2px; }
+@media (max-aspect-ratio: 1/1) {
+  body[data-escena="3"] #player { width: 100%; height: 50%; }
+  body[data-escena="3"] .escenario .invitado { left: 0; top: 50%; width: 100%; height: 50%; border-width: 2px 0 0; }
+}
+/* 4 · protagonista: la persona llena la pantalla; el creador queda chico. */
+body[data-escena="4"] .escenario .invitado { inset: 0; width: 100%; height: 100%; border-radius: 0; border: none; }
+body[data-escena="4"] #player { position: absolute; top: calc(76px + env(safe-area-inset-top)); right: 12px; left: auto; width: min(32vw, 320px); height: auto; aspect-ratio: 16 / 9; border-radius: 16px; border: 2px solid rgba(86,239,159,.55); z-index: 12; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+body[data-escena="4"] .invitados { top: calc(76px + env(safe-area-inset-top) + min(18vw, 180px) + 12px); }
+body[data-escena] .escenario .invitado .inicial { font-size: clamp(40px, 10vw, 120px); }
+body[data-escena] .escenario .invitado .invitado-x { width: 32px; height: 32px; font-size: 15px; top: 10px; right: 10px; }
+body[data-escena] .escenario .invitado .invitado-pantalla { width: 32px; height: 32px; font-size: 15px; top: 10px; right: 48px; }
+body[data-escena] .escenario .invitado .invitado-lat { top: 10px; left: 10px; font-size: 12px; }
+body.modo-tv .escenario, body.en-llamada .escenario { display: none; }
