@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { app } from "../src/index";
 import { cookieFor, createUser, createRoom, createLiveSession } from "./helpers";
 
-type Invitado = { user_id: string; sfuSessionId: string | null; video: boolean; tamano: number };
+type Invitado = { user_id: string; sfuSessionId: string | null; video: boolean; tamano: number; acomodo: { x: number; y: number; w: number; h: number } | null };
 const DO = (roomId: string) => (env as unknown as { ROOM_DO: DurableObjectNamespace }).ROOM_DO.get((env as unknown as { ROOM_DO: DurableObjectNamespace }).ROOM_DO.idFromName(roomId));
 const post = (path: string, cookie: string, body: unknown) =>
   app.request(path, { method: "POST", headers: { Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) }, env);
@@ -98,5 +98,36 @@ describe("la palabra", () => {
     lista = await invitadosDe(room.id);
     expect(lista.find((i) => i.user_id === a)?.tamano).toBe(1);
     expect(lista.find((i) => i.user_id === b)?.tamano).toBe(4);
+  });
+
+  it("acomodo libre y mesa: solo el creador, con límites, y se excluyen con el tamaño", async () => {
+    const owner = await createUser();
+    const room = await createRoom(owner);
+    await DO(room.id).fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId: await createLiveSession(room.id) }) });
+    const cookie = await cookieFor(owner);
+    const a = await createUser(), otro = await createUser();
+    await post(`/api/rooms/${room.slug}/palabra`, cookie, { user_id: a, dar: true });
+    await post(`/api/rooms/${room.slug}/palabra/tamano`, cookie, { user_id: a, tamano: 3 });
+
+    expect((await post(`/api/rooms/${room.slug}/palabra/acomodo`, await cookieFor(otro), { user_id: a, acomodo: { x: 10, y: 10, w: 30, h: 30 } })).status).toBe(403);
+    expect((await post(`/api/rooms/${room.slug}/palabra/acomodo`, cookie, { user_id: a, acomodo: { x: 10, y: 10, w: 3, h: 30 } })).status).toBe(400);
+    const r = await post(`/api/rooms/${room.slug}/palabra/acomodo`, cookie, { user_id: a, acomodo: { x: 90, y: 95.26, w: 30, h: 30 } });
+    expect(r.status).toBe(200);
+    // Se acota al escenario y se redondea a décimas
+    expect(((await r.json()) as { acomodo: unknown }).acomodo).toEqual({ x: 70, y: 70, w: 30, h: 30 });
+    let inv = (await invitadosDe(room.id)).find((i) => i.user_id === a);
+    expect(inv?.tamano).toBe(1);
+    expect(inv?.acomodo).toEqual({ x: 70, y: 70, w: 30, h: 30 });
+    // Volver a un tamaño borra el acomodo libre
+    await post(`/api/rooms/${room.slug}/palabra/tamano`, cookie, { user_id: a, tamano: 2 });
+    inv = (await invitadosDe(room.id)).find((i) => i.user_id === a);
+    expect(inv?.acomodo).toBeNull();
+
+    expect((await post(`/api/rooms/${room.slug}/palabra/escena`, await cookieFor(otro), { modo: "mesa" })).status).toBe(403);
+    expect((await post(`/api/rooms/${room.slug}/palabra/escena`, cookie, { modo: "circo" })).status).toBe(400);
+    expect((await post(`/api/rooms/${room.slug}/palabra/escena`, cookie, { modo: "mesa" })).status).toBe(200);
+    expect(((await (await DO(room.id).fetch("https://do/invitados")).json()) as { escena: string }).escena).toBe("mesa");
+    await DO(room.id).fetch("https://do/stop", { method: "POST" });
+    expect(((await (await DO(room.id).fetch("https://do/invitados")).json()) as { escena: string }).escena).toBe("fichas");
   });
 });

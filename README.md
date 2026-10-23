@@ -248,6 +248,19 @@ puede estar en grande y el tamaño también manda cómo codifica la persona
 invitada: 360p en ficha, 720p a dúo o de protagonista. Quien entró con cámara
 y está en escritorio puede compartir su pantalla desde su propia ficha (🖥️).
 
+**Acomodo libre y mesa.** El creador arrastra cualquier ficha a donde quiera
+y la redimensiona desde la esquina: queda «libre», guardada en % del
+escenario (`POST /api/rooms/:slug/palabra/acomodo`, acotada a la pantalla y
+con mínimo de 10 %), y toda la sala la pinta igual aunque cada pantalla sea
+distinta; se manda cada 150 ms mientras arrastra y al soltar. Volver a tocar
+la ficha la regresa a los tamaños. El botón «⊞ Mesa» de la barra de estudio
+acomoda a todos parejos, el creador incluido (`/palabra/escena`): la
+cuadrícula la calcula cada cliente según cuántos son y si la pantalla es
+ancha o alta (2 → lado a lado; 3 → tres columnas en ancha, apiladas en alta;
+4 → 2×2; 5 → 3+2 con la última fila centrada). El creador manda en todo: dar,
+quitar, tamaño, lugar y escena son suyos y nada de eso se comparte. Cuatro
+personas como máximo; con ✕ sale una y entra otra al instante.
+
 **Motor de sincronía (`public/motor-sincronia.js`).** El razonamiento
 completo está en la cabecera del archivo. En corto: el único pedazo grande
 del retraso que el navegador deja mover es el colchón de llegada

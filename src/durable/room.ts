@@ -26,9 +26,22 @@ export interface Invitado {
   video: boolean;
   /** 1 ficha · 2 mediana · 3 a dúo · 4 protagonista. Solo una persona a la vez pasa de 1. */
   tamano: 1 | 2 | 3 | 4;
+  /** Acomodo libre que arrastró el creador, en % del escenario; null = según tamaño. */
+  acomodo: Acomodo | null;
   since: number;
 }
+export interface Acomodo { x: number; y: number; w: number; h: number }
+/** Cómo se acomoda la sala entera: fichas (cada quien su tamaño o su lugar) o mesa (todos parejos). */
+export type Escena = "fichas" | "mesa";
 export const MAX_INVITADOS = 4;
+const pct = (n: unknown, max: number) => (typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(max, Math.round(n * 10) / 10)) : null);
+export function limpiarAcomodo(a: unknown): Acomodo | null {
+  if (!a || typeof a !== "object") return null;
+  const o = a as Record<string, unknown>;
+  const w = pct(o.w, 100), h = pct(o.h, 100), x = pct(o.x, 100), y = pct(o.y, 100);
+  if (w == null || h == null || x == null || y == null || w < 8 || h < 8) return null;
+  return { x: Math.min(x, 100 - w), y: Math.min(y, 100 - h), w, h };
+}
 
 interface PersistedState {
   totalCents: number;
@@ -46,6 +59,7 @@ interface PersistedState {
   ownerOfflineSince?: number;
   chatSeq?: number;
   invitados?: Record<string, Invitado>;
+  escena?: Escena;
 }
 
 const SAMPLE_EVERY_MS = 60_000;
@@ -105,6 +119,7 @@ export class RoomDurableObject implements DurableObject {
   ownerOfflineSince = 0;
   chatSeq = 0;
   invitados: Record<string, Invitado> = {};
+  escena: Escena = "fichas";
   // freno por persona (en memoria: si el DO hiberna, se perdona)
   private ultimoComentario = new Map<string, number>();
   private idASeq: Map<string, number> | null = null;
@@ -129,6 +144,7 @@ export class RoomDurableObject implements DurableObject {
         this.ownerOfflineSince = stored.ownerOfflineSince ?? 0;
         this.chatSeq = stored.chatSeq ?? 0;
         this.invitados = stored.invitados ?? {};
+        this.escena = stored.escena ?? "fichas";
       }
     });
   }
@@ -215,6 +231,7 @@ export class RoomDurableObject implements DurableObject {
     this.startedAtMs = 0;
     this.ownerOfflineSince = 0;
     this.invitados = {};
+    this.escena = "fichas";
     await this.borrarChat(); // nada se graba: el chat se va con la transmisión
     await this.persist();
     return summary;
@@ -248,6 +265,7 @@ export class RoomDurableObject implements DurableObject {
       ownerOfflineSince: this.ownerOfflineSince,
       chatSeq: this.chatSeq,
       invitados: this.invitados,
+      escena: this.escena,
     };
     await this.state.storage.put("state", data);
   }
@@ -382,7 +400,7 @@ export class RoomDurableObject implements DurableObject {
       // Quién tiene la palabra ahora mismo, para que quien entra tarde también
       // los vea y los oiga.
       const alAire = this.invitadosAlAire();
-      if (alAire.length) server.send(JSON.stringify({ type: "invitados", lista: alAire }));
+      if (alAire.length || this.escena !== "fichas") server.send(JSON.stringify({ type: "invitados", lista: alAire, escena: this.escena }));
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -418,6 +436,7 @@ export class RoomDurableObject implements DurableObject {
       this.startedAtMs = Date.now();
       this.ownerOfflineSince = 0;
       this.invitados = {};
+      this.escena = "fichas";
       await this.borrarChat();
       await this.anotarChat({ kind: "aviso", id: null, user_id: null, name: "", avatar_url: null, mark: null, body: "Aquí empezó la transmisión", is_owner: false });
       await this.persist();
@@ -540,7 +559,7 @@ export class RoomDurableObject implements DurableObject {
       if (!this.sessionId) return Response.json({ error: "sala_cerrada" }, { status: 400 });
       if (!this.invitados[user_id] && Object.keys(this.invitados).length >= MAX_INVITADOS) return Response.json({ error: "cupo" }, { status: 409 });
       if (!this.invitados[user_id]) {
-        this.invitados[user_id] = { user_id, name: String(name || "").slice(0, 60), avatar_url: avatar_url ?? null, sfuSessionId: null, tracks: [], video: false, tamano: 1, since: Date.now() };
+        this.invitados[user_id] = { user_id, name: String(name || "").slice(0, 60), avatar_url: avatar_url ?? null, sfuSessionId: null, tracks: [], video: false, tamano: 1, acomodo: null, since: Date.now() };
         await this.persist();
       }
       this.broadcast({ type: "palabra", user_id, name: this.invitados[user_id].name, dar: true });
@@ -571,9 +590,33 @@ export class RoomDurableObject implements DurableObject {
         }
       }
       inv.tamano = t;
+      inv.acomodo = null;
       await this.persist();
       this.broadcast({ type: "invitado_tamano", user_id, tamano: t });
       return Response.json({ ok: true, tamano: t });
+    }
+    // Acomodo libre: el creador arrastró o redimensionó la ficha. Se guarda
+    // en % del escenario para que cada pantalla lo pinte igual.
+    if (url.pathname === "/invitado-acomodo" && request.method === "POST") {
+      const { user_id, acomodo } = await request.json<{ user_id: string; acomodo: unknown }>();
+      const inv = this.invitados[user_id];
+      if (!inv) return Response.json({ error: "sin_palabra" }, { status: 404 });
+      const a = limpiarAcomodo(acomodo);
+      if (!a) return Response.json({ error: "acomodo_invalido" }, { status: 400 });
+      inv.acomodo = a;
+      inv.tamano = 1;
+      await this.persist();
+      this.broadcast({ type: "invitado_acomodo", user_id, acomodo: a });
+      return Response.json({ ok: true, acomodo: a });
+    }
+    // La escena de toda la sala: fichas o mesa (todos parejos, el creador incluido).
+    if (url.pathname === "/escena" && request.method === "POST") {
+      const { modo } = await request.json<{ modo: string }>();
+      if (modo !== "fichas" && modo !== "mesa") return Response.json({ error: "modo_invalido" }, { status: 400 });
+      this.escena = modo;
+      await this.persist();
+      this.broadcast({ type: "escena", modo });
+      return Response.json({ ok: true, modo });
     }
     if (url.pathname === "/invitado-fuera" && request.method === "POST") {
       const { user_id } = await request.json<{ user_id: string }>();
@@ -581,7 +624,7 @@ export class RoomDurableObject implements DurableObject {
       return Response.json({ ok: true });
     }
     if (url.pathname === "/invitados") {
-      return Response.json({ invitados: Object.values(this.invitados) });
+      return Response.json({ invitados: Object.values(this.invitados), escena: this.escena });
     }
 
     // ids únicos de espectadores conectados ahora mismo (sin el creador) —

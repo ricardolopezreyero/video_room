@@ -9,6 +9,7 @@ import { sendEmail, newFollowerEmail } from "../lib/email";
 import { enviarRecibos } from "../lib/recibos";
 import { entradaGratis } from "../lib/cortesia";
 import { quiereDeFila } from "../lib/correos";
+import { limpiarAcomodo } from "../durable/room";
 import { emitEvent } from "../lib/webhooks";
 import { evaluateRelics, viewerMarkFor } from "../lib/status";
 import {
@@ -729,6 +730,32 @@ rooms.post("/api/rooms/:slug/palabra/tamano", async (c) => {
   const r = await stub.fetch("https://do/invitado-tamano", { method: "POST", body: JSON.stringify({ user_id: targetUserId, tamano }) });
   if (!r.ok) return c.json({ error: "sin_palabra" }, 404);
   return c.json({ ok: true, tamano });
+});
+
+// Acomodo libre de una ficha (arrastrar y redimensionar) y escena de la sala.
+// Solo el creador: el control de lo que ve la sala no se comparte.
+rooms.post("/api/rooms/:slug/palabra/acomodo", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+  const { user_id: targetUserId, acomodo } = await c.req.json<{ user_id: string; acomodo: unknown }>().catch(() => ({ user_id: "", acomodo: null }));
+  if (!targetUserId || !limpiarAcomodo(acomodo)) return c.json({ error: "parametros" }, 400);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const r = await stub.fetch("https://do/invitado-acomodo", { method: "POST", body: JSON.stringify({ user_id: targetUserId, acomodo }) });
+  if (!r.ok) return c.json({ error: "sin_palabra" }, 404);
+  return c.json(await r.json());
+});
+rooms.post("/api/rooms/:slug/palabra/escena", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<Room>();
+  if (!room || room.owner_id !== user.id) return c.json({ error: "forbidden" }, 403);
+  const { modo } = await c.req.json<{ modo: string }>().catch(() => ({ modo: "" }));
+  if (modo !== "fichas" && modo !== "mesa") return c.json({ error: "parametros" }, 400);
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  await stub.fetch("https://do/escena", { method: "POST", body: JSON.stringify({ modo }) });
+  return c.json({ ok: true, modo });
 });
 
 rooms.post("/api/rooms/:slug/like-comment", async (c) => {

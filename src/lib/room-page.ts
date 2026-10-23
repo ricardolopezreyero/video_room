@@ -210,6 +210,7 @@ export function renderRoomPage(opts: {
       <span id="stream-quality" class="stream-quality" title="Calidad que estás mandando ahora mismo"></span>
       <span id="ticker-text" title="Ganado en esta transmisión">$0</span>
       <span id="conn-quality" class="conn-quality" title="Calidad de tu conexión"></span>
+      <button id="btn-mesa" title="Acomodar a todos parejos en la pantalla">⊞ Mesa</button>
       <button id="btn-stop" class="btn-stop-secondary">Terminar</button>
     </div>
     <span id="audio-only-badge" class="audio-only-badge" style="display:none">🎧 Solo audio</span>
