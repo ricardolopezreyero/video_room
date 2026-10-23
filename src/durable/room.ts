@@ -28,6 +28,8 @@ export interface Invitado {
   tamano: 1 | 2 | 3 | 4;
   /** Acomodo libre que arrastró el creador, en % del escenario; null = según tamaño. */
   acomodo: Acomodo | null;
+  /** Está compartiendo pantalla (la sala la pinta completa, sin recortar). */
+  pantalla?: boolean;
   since: number;
 }
 export interface Acomodo { x: number; y: number; w: number; h: number }
@@ -617,6 +619,15 @@ export class RoomDurableObject implements DurableObject {
       await this.persist();
       this.broadcast({ type: "escena", modo });
       return Response.json({ ok: true, modo });
+    }
+    if (url.pathname === "/invitado-pantalla" && request.method === "POST") {
+      const { user_id, pantalla } = await request.json<{ user_id: string; pantalla: boolean }>();
+      const inv = this.invitados[user_id];
+      if (!inv) return Response.json({ error: "sin_palabra" }, { status: 404 });
+      inv.pantalla = !!pantalla;
+      await this.persist();
+      this.broadcast({ type: "invitado_pantalla", user_id, pantalla: !!pantalla });
+      return Response.json({ ok: true });
     }
     if (url.pathname === "/invitado-fuera" && request.method === "POST") {
       const { user_id } = await request.json<{ user_id: string }>();

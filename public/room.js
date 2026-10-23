@@ -210,6 +210,7 @@
   }
 
   function showControlsWithEntrance() {
+    setTimeout(acomodarPronto, 50);
     controls.style.display = "flex";
     controls.classList.add("entering");
     setTimeout(() => controls.classList.remove("entering"), 450);
@@ -388,9 +389,11 @@
       } else if (msg.type === "invitado_tamano") {
         aplicarTamano(msg.user_id, msg.tamano || 1);
       } else if (msg.type === "invitado_acomodo") {
-        if (!(isOwner && msg.acomodo && invitados.get(msg.user_id) && invitados.get(msg.user_id).el.classList.contains("arrastrando"))) aplicarAcomodo(msg.user_id, msg.acomodo);
+        if (msg.acomodo) aplicarAcomodo(msg.user_id, msg.acomodo);
       } else if (msg.type === "escena") {
         aplicarEscena(msg.modo);
+      } else if (msg.type === "invitado_pantalla") {
+        aplicarPantalla(msg.user_id, msg.pantalla);
       } else if (msg.type === "invitado") {
         recibirInvitado(msg.invitado);
       } else if (msg.type === "invitados") {
@@ -1154,6 +1157,7 @@
     tvOcultarTimer = setTimeout(() => { b.style.display = "none"; }, 3500);
   }
   function entrarTv() {
+    setTimeout(acomodarPronto, 50);
     modoTv = true;
     document.body.classList.add("modo-tv");
     pantallaCompleta(true);
@@ -1164,6 +1168,7 @@
     if (player.paused) player.play().catch(() => {});
   }
   function salirTv() {
+    setTimeout(acomodarPronto, 50);
     if (!modoTv) return;
     modoTv = false;
     document.body.classList.remove("modo-tv");
@@ -1280,7 +1285,7 @@
   let miPalabra = null; // { pc, stream, el, mudo, medidor, nivelTimer, videoSender, tamano, pantalla, sincPrincipal } cuando yo hablo
   let hojaPalabra = null;
   const escenarioEl = $("escenario");
-  const NOMBRE_TAMANO = { 1: "ficha", 2: "mediana", 3: "a dúo", 4: "protagonista" };
+  const NOMBRE_TAMANO = { 1: "Ficha", 2: "Mediana", 3: "A dúo", 4: "Protagonista" };
   let escena = "fichas"; // "fichas" (cada quien su tamaño o su lugar) | "mesa" (todos parejos)
   const appEl = $("app");
   const escTxt = (t) => String(t ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -1299,7 +1304,7 @@
       // protagonista → ficha); arrastrar la pone donde quiera; la esquina la
       // redimensiona. Toda la sala ve lo mismo.
       el.classList.add("tocable");
-      el.title = "Toca para cambiar el tamaño · arrastra para moverla · esquina para redimensionar";
+      el.title = "Toca: tamaño · Arrastra: mover · Esquina o pellizco: redimensionar";
       el.insertAdjacentHTML("beforeend", `<span class="invitado-lat"></span><span class="invitado-tam">⤢</span><span class="invitado-redim" title="Redimensionar"></span>`);
       armarArrastre(el, info.user_id);
     }
@@ -1311,7 +1316,7 @@
       x.onclick = (e) => { e.stopPropagation(); if (yo) dejarPalabra(); else quitarPalabraA(info.user_id, info.name); };
       el.appendChild(x);
     }
-    invitadosEl.appendChild(el);
+    escenarioEl.appendChild(el);
     return el;
   }
   // La ficha pasa de foto a video: un solo elemento que trae audio y video.
@@ -1395,10 +1400,9 @@
     }
     entrada.nivelTimer = vigilarVoz(el, nivelDeReceptor(npc));
     armarSincronia(entrada);
-    if (info.acomodo) aplicarAcomodo(info.user_id, info.acomodo); else aplicarTamano(info.user_id, info.tamano || 1);
-    if (escena === "mesa") acomodarMesa();
-    pintarBotonMesa();
-    if (isOwner) toast(`🎙️ ${info.name} está al aire. Toca su ficha para agrandarla, arrástrala para moverla.`, 5000);
+    el.classList.toggle("pantalla", !!info.pantalla);
+    acomodar();
+    if (isOwner) toast(`🎙️ ${info.name} está al aire. Toca su ficha para elegir tamaño; arrástrala para moverla.`, 5000);
   }
   // Quien conversa (el creador, o yo cuando tengo la palabra) oye al invitado
   // con el colchón mínimo; el público lo oye alineado al creador.
@@ -1410,175 +1414,263 @@
     entrada.sinc = (isOwner || miPalabra) ? MotorSincronia.conversacion(entrada.pc, { onEstado }) : (pc ? MotorSincronia.alineado(pc, entrada.pc, { onEstado }) : null);
   }
   function rearmarSincronias() { for (const e of invitados.values()) armarSincronia(e); }
-  // -- Acomodo libre (creador): arrastrar y redimensionar --
-  const rectEscenario = () => appEl.getBoundingClientRect();
-  function acomodoDe(el) {
-    const r = el.getBoundingClientRect(), a = rectEscenario();
-    return { x: ((r.left - a.left) / a.width) * 100, y: ((r.top - a.top) / a.height) * 100, w: (r.width / a.width) * 100, h: (r.height / a.height) * 100 };
+  // ---- El acomodo: un solo motor para todas las pantallas ----
+  // Mide la zona libre (debajo de las barras de arriba, encima del dock) y
+  // coloca ahí al creador y a cada ficha, en píxeles calculados aquí y no en
+  // CSS fijo: así un teléfono chico, una tablet y una tele acomodan lo mismo,
+  // con aire alrededor y sin que nada quede detrás de un botón. Lo que viaja
+  // a la sala es solo la intención (tamaño 1–4, lugar libre en % de la zona,
+  // mesa); cada pantalla la pinta como le cabe.
+  //
+  // Reglas que salen de recorrer las combinaciones (1 a 4 personas, teléfono
+  // vertical u horizontal, tablet, computadora, tele; creador y público):
+  //  · Las fichas chicas van en fila arriba a la derecha en vertical (cuatro
+  //    caben en 320 px) y en columna a la derecha en horizontal.
+  //  · Mediana: recuadro arriba a la derecha, nunca abajo (ahí viven el chat
+  //    y el dock). Las chicas se corren debajo.
+  //  · A dúo: mitad y mitad en horizontal; arriba y abajo en vertical. Las
+  //    chicas viven del lado del creador.
+  //  · Protagonista: llena la zona; el creador queda chico arriba a la
+  //    izquierda (arriba a la derecha está su propia barra de estudio).
+  //  · Mesa: cuadrícula de todos con el creador primero; la última fila se
+  //    centra; en vertical las columnas bajan.
+  //  · Libre: donde el creador la soltó, imantada a bordes y centro, con
+  //    mínimo de 15 % de ancho y nunca fuera de la zona.
+  //  · Cualquier cambio (gira el teléfono, entra o sale alguien, se abre el
+  //    modo tele) se recalcula entero; las transiciones de 250 ms evitan
+  //    saltos. Nada de esto toca el video: solo dónde se pinta.
+  const AIRE = 8, GAP = 10;
+  function zona() {
+    const a = appEl.getBoundingClientRect();
+    let top = AIRE, bottom = a.height - AIRE;
+    for (const el of [studioBar, viewerPresenceEl, $("audio-only-badge")]) {
+      if (!el || getComputedStyle(el).display === "none") continue;
+      const r = el.getBoundingClientRect();
+      if (r.height) top = Math.max(top, r.bottom - a.top + AIRE);
+    }
+    if (getComputedStyle(controls).display !== "none") {
+      const r = controls.getBoundingClientRect();
+      if (r.height) bottom = Math.min(bottom, r.top - a.top - AIRE);
+    }
+    return { x: AIRE, y: top, w: Math.max(120, a.width - 2 * AIRE), h: Math.max(120, bottom - top), vertical: a.width < a.height, ancho: a.width, alto: a.height };
   }
+  const px = (el, r) => { el.style.left = `${Math.round(r.x)}px`; el.style.top = `${Math.round(r.y)}px`; el.style.width = `${Math.round(r.w)}px`; el.style.height = `${Math.round(r.h)}px`; };
+  const dePct = (z, a) => ({ x: z.x + (a.x / 100) * z.w, y: z.y + (a.y / 100) * z.h, w: (a.w / 100) * z.w, h: (a.h / 100) * z.h });
+  const aPct = (z, r) => ({ x: ((r.x - z.x) / z.w) * 100, y: ((r.y - z.y) / z.h) * 100, w: (r.w / z.w) * 100, h: (r.h / z.h) * 100 });
   const redondea = (a) => ({ x: Math.round(a.x * 10) / 10, y: Math.round(a.y * 10) / 10, w: Math.round(a.w * 10) / 10, h: Math.round(a.h * 10) / 10 });
   function acotar(a) {
-    const w = Math.max(10, Math.min(100, a.w)), h = Math.max(10, Math.min(100, a.h));
+    const w = Math.max(15, Math.min(100, a.w)), h = Math.max(15, Math.min(100, a.h));
     return { w, h, x: Math.max(0, Math.min(100 - w, a.x)), y: Math.max(0, Math.min(100 - h, a.y)) };
   }
-  function pintarAcomodo(el, a) {
-    el.style.left = `${a.x}%`; el.style.top = `${a.y}%`; el.style.width = `${a.w}%`; el.style.height = `${a.h}%`;
+  // Imán: a 12 px de un borde o del centro, se pega.
+  function imantar(z, r) {
+    const IMAN = 12, o = { ...r };
+    for (const c of [z.x, z.x + (z.w - r.w) / 2, z.x + z.w - r.w]) if (Math.abs(o.x - c) < IMAN) o.x = c;
+    for (const c of [z.y, z.y + (z.h - r.h) / 2, z.y + z.h - r.h]) if (Math.abs(o.y - c) < IMAN) o.y = c;
+    return o;
   }
+  function fichas() {
+    const l = [...invitados.values()].map((e) => ({ el: e.el, info: e.info }));
+    if (miPalabra && me) l.push({ el: miPalabra.el, info: { user_id: me.id, tamano: miPalabra.tamanoSala || 1, acomodo: miPalabra.acomodo || null } });
+    return l;
+  }
+  function rejilla(z, n) {
+    let cols = n <= 1 ? 1 : n === 2 ? (z.vertical ? 1 : 2) : n <= 4 ? 2 : 3;
+    if (n === 3 && !z.vertical) cols = 3;
+    if (n >= 5 && z.vertical) cols = 2;
+    const filas = Math.ceil(n / cols), w = (z.w - GAP * (cols - 1)) / cols, h = (z.h - GAP * (filas - 1)) / filas;
+    const celdas = [];
+    for (let i = 0; i < n; i++) {
+      const fila = Math.floor(i / cols), col = i % cols, enFila = Math.min(cols, n - fila * cols);
+      const sangria = ((cols - enFila) * (w + GAP)) / 2;
+      celdas.push({ x: z.x + sangria + col * (w + GAP), y: z.y + fila * (h + GAP), w, h });
+    }
+    return celdas;
+  }
+  let arrastrando = null; // uid de la ficha que el creador trae en la mano
+  function acomodar() {
+    const z = zona(), lista = fichas();
+    let playerRect = null, destacada = null;
+    if (escena === "mesa") {
+      const celdas = rejilla(z, lista.length + 1);
+      playerRect = celdas[0];
+      lista.forEach((f, i) => { f.el.classList.remove("chica"); if (f.info.user_id !== arrastrando) px(f.el, celdas[i + 1]); });
+    } else {
+      destacada = lista.find((f) => f.info.tamano > 1 && !f.info.acomodo) || null;
+      const libres = lista.filter((f) => f.info.acomodo && f !== destacada);
+      const chicas = lista.filter((f) => f !== destacada && !f.info.acomodo);
+      let zc = z; // dónde viven las chicas
+      if (destacada) {
+        const t = destacada.info.tamano;
+        if (t === 2) {
+          const w = Math.min(z.w * (z.vertical ? 0.5 : 0.36), 440), h = w * 0.75;
+          px(destacada.el, { x: z.x + z.w - w, y: z.y, w, h });
+          zc = { ...z, y: z.y + h + GAP, h: z.h - h - GAP };
+        } else if (t === 3) {
+          if (z.vertical) { const h = (z.h - GAP) / 2; playerRect = { x: z.x, y: z.y, w: z.w, h }; px(destacada.el, { x: z.x, y: z.y + h + GAP, w: z.w, h }); }
+          else { const w = (z.w - GAP) / 2; playerRect = { x: z.x, y: z.y, w, h: z.h }; px(destacada.el, { x: z.x + w + GAP, y: z.y, w, h: z.h }); }
+          zc = playerRect;
+        } else {
+          px(destacada.el, z);
+          const w = Math.min(z.w * 0.34, 300), h = (w * 9) / 16;
+          playerRect = { x: z.x, y: z.y, w, h };
+          zc = { ...z, x: z.x + w + GAP, w: z.w - w - GAP };
+        }
+      }
+      libres.forEach((f) => { if (f.info.user_id !== arrastrando) px(f.el, dePct(z, f.info.acomodo)); });
+      const s = Math.max(56, Math.min(84, Math.round(z.w * 0.17)));
+      chicas.forEach((f, i) => {
+        if (f.info.user_id === arrastrando) return;
+        if (z.vertical) px(f.el, { x: zc.x + zc.w - (i + 1) * s - i * GAP, y: zc.y, w: s, h: s });
+        else px(f.el, { x: zc.x + zc.w - s, y: zc.y + i * (s + GAP), w: s, h: s });
+      });
+      lista.forEach((f) => f.el.classList.toggle("chica", chicas.includes(f)));
+    }
+    if (playerRect) { player.classList.add("escena"); px(player, playerRect); }
+    else { player.classList.remove("escena"); player.style.left = player.style.top = player.style.width = player.style.height = ""; }
+    const modo = escena === "mesa" ? "mesa" : destacada ? String(destacada.info.tamano) : lista.some((f) => f.info.acomodo) ? "libre" : "";
+    if (modo) document.body.dataset.escena = modo; else delete document.body.dataset.escena;
+    lista.forEach((f) => { const tam = f.el.querySelector(".invitado-tam"); if (tam) tam.textContent = f === destacada ? `${f.info.tamano}/4` : "⤢"; });
+    $("btn-mesa").classList.toggle("active", escena === "mesa");
+    pintarBotonMesa();
+    if (miPalabra) { const r = miPalabra.el.getBoundingClientRect(); codificarSegunAncho((r.width / Math.max(1, z.ancho)) * 100); }
+  }
+  let acomodoPendiente = 0;
+  function acomodarPronto() { cancelAnimationFrame(acomodoPendiente); acomodoPendiente = requestAnimationFrame(acomodar); }
+  window.addEventListener("resize", acomodarPronto);
+  window.addEventListener("orientationchange", () => setTimeout(acomodar, 350));
+  function pintarBotonMesa() { $("btn-mesa").style.display = isOwner && invitados.size ? "inline-block" : "none"; }
+  // Lo que manda el creador, aplicado en esta pantalla.
+  function aplicarTamano(uid, t) {
+    for (const e of invitados.values()) { if (e.info.user_id === uid) { e.info.tamano = t; e.info.acomodo = null; } else if (t > 1 && e.info.tamano > 1) e.info.tamano = 1; }
+    if (miPalabra && me) { if (uid === me.id) { miPalabra.tamanoSala = t; miPalabra.acomodo = null; } else if (t > 1 && miPalabra.tamanoSala > 1) miPalabra.tamanoSala = 1; }
+    acomodar();
+    if (miPalabra && me && uid === me.id && t >= 3) toast(t === 4 ? "🎬 El creador te puso de protagonista: tu video llena la pantalla de toda la sala." : "🎬 Estás a dúo con el creador: la sala los ve a los dos.", 5000);
+  }
+  function aplicarAcomodo(uid, a) {
+    const e = invitados.get(uid);
+    if (e) { e.info.acomodo = a; e.info.tamano = 1; }
+    if (miPalabra && me && uid === me.id) { miPalabra.acomodo = a; miPalabra.tamanoSala = 1; }
+    if (uid !== arrastrando) acomodar();
+  }
+  function aplicarEscena(modo) { escena = modo === "mesa" ? "mesa" : "fichas"; acomodar(); }
+  function aplicarPantalla(uid, on) {
+    const e = invitados.get(uid);
+    if (e) e.el.classList.toggle("pantalla", !!on);
+  }
+  // El invitado codifica según qué tan grande lo ve la sala: 360p chico,
+  // 480p mediano, 720p grande. Solo cuando cambia de escalón.
+  function codificarSegunAncho(wPct) {
+    if (!miPalabra || !miPalabra.videoSender || !window.MotorSincronia) return;
+    const t = wPct < 25 ? 1 : wPct < 45 ? 2 : 3;
+    if (t === miPalabra.tamano) return;
+    miPalabra.tamano = t;
+    MotorSincronia.emisor(miPalabra.videoSender, t, { pantalla: !!miPalabra.pantalla });
+  }
+  async function cambiarTamano(uid, t) {
+    const r = await api(`/api/rooms/${slug}/palabra/tamano`, { body: { user_id: uid, tamano: t } });
+    if (r.error) return toast("No se pudo cambiar el tamaño.", 3000);
+  }
+  async function cambiarEscena(modo) {
+    const r = await api(`/api/rooms/${slug}/palabra/escena`, { body: { modo } });
+    if (r.error) return toast("No se pudo cambiar el acomodo.", 3000);
+    toast(modo === "mesa" ? "⊞ Mesa: todos parejos, tú incluido. Así lo ve toda la sala." : "Fichas: cada quien a su tamaño o donde la pongas.", 3500);
+  }
+
+  // -- La hoja de una ficha (creador): tamaño, mesa, quitar --
+  // Un toque abre esto; nada cambia por accidente. Los cuatro tamaños se ven
+  // dibujados, el actual marcado.
+  function abrirHojaFicha(uid) {
+    const e = invitados.get(uid);
+    if (!e) return;
+    const actual = e.info.acomodo ? 0 : e.info.tamano;
+    const pict = (t) => `<span class="pict pict-${t}"><i class="pc"></i><i class="pi"></i></span>`;
+    const sheet = document.createElement("div");
+    sheet.className = "sheet hoja-ficha";
+    sheet.innerHTML = `
+      <div class="sheet-inner">
+        <h3>🎛 ${escTxt(e.info.name)}</h3>
+        <p class="sheet-sub">Cómo la ve toda la sala. También puedes arrastrarla a donde quieras y estirarla desde la esquina.</p>
+        <div class="tam-grid">${[1, 2, 3, 4].map((t) => `<button data-t="${t}" class="${t === actual && escena !== "mesa" ? "active" : ""}">${pict(t)}<b>${NOMBRE_TAMANO[t]}</b></button>`).join("")}</div>
+        <button id="hf-mesa" class="hf-mesa ${escena === "mesa" ? "active" : ""}">⊞ ${escena === "mesa" ? "Salir de la mesa" : "Mesa: todos parejos"}</button>
+        <button id="hf-quitar" class="hf-quitar">🔕 Quitar la palabra</button>
+        <button id="hf-cerrar">Cerrar</button>
+      </div>`;
+    document.body.appendChild(sheet);
+    const cerrar = () => sheet.remove();
+    sheet.addEventListener("click", (ev) => { if (ev.target === sheet) cerrar(); });
+    sheet.querySelector("#hf-cerrar").onclick = cerrar;
+    sheet.querySelectorAll(".tam-grid button").forEach((b) => { b.onclick = () => { cerrar(); if (escena === "mesa") cambiarEscena("fichas"); cambiarTamano(uid, Number(b.dataset.t)); }; });
+    sheet.querySelector("#hf-mesa").onclick = () => { cerrar(); cambiarEscena(escena === "mesa" ? "fichas" : "mesa"); };
+    sheet.querySelector("#hf-quitar").onclick = () => { cerrar(); quitarPalabraA(uid, e.info.name); };
+  }
+
+  // -- Arrastrar, estirar y pellizcar (creador) --
+  // Un dedo mueve; la esquina o dos dedos cambian el tamaño; un toque corto
+  // abre la hoja. Mientras el creador trae la ficha en la mano, lo que llega
+  // de vuelta del servidor no la mueve (sería un tirón).
   function armarArrastre(el, uid) {
-    let inicio = null, modo = null, base = null, ultimoEnvio = 0, movio = false, ultimo = null;
+    const dedos = new Map(); // pointerId → {x, y}
+    let modo = null, base = null, movio = false, ultimo = null, ultimoEnvio = 0, pinzaBase = 0, z = null;
     const enviar = (a, fin) => {
       const ahora = Date.now();
       if (!fin && ahora - ultimoEnvio < 150) return;
       ultimoEnvio = ahora;
       api(`/api/rooms/${slug}/palabra/acomodo`, { body: { user_id: uid, acomodo: redondea(a) } }).catch(() => {});
     };
-    // Mover y soltar se escuchan en la ventana: si el dedo o el cursor se
-    // adelantan a la ficha, el arrastre sigue igual.
+    const rectActual = () => { const r = el.getBoundingClientRect(), a = appEl.getBoundingClientRect(); return { x: r.left - a.left, y: r.top - a.top, w: r.width, h: r.height }; };
+    const dist = () => { const [p, q] = [...dedos.values()]; return Math.hypot(p.x - q.x, p.y - q.y); };
+    const soltarTodo = () => {
+      window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); window.removeEventListener("pointercancel", soltar);
+      dedos.clear(); el.classList.remove("arrastrando"); arrastrando = null;
+    };
     const mover = (ev) => {
-      if (!inicio || ev.pointerId !== inicio.id) return;
-      const a = rectEscenario();
-      const dx = ((ev.clientX - inicio.x) / a.width) * 100, dy = ((ev.clientY - inicio.y) / a.height) * 100;
-      if (!movio && Math.hypot(ev.clientX - inicio.x, ev.clientY - inicio.y) < 6) return;
-      if (!movio) {
-        movio = true;
-        // Al primer movimiento la ficha se vuelve libre, con el lugar y tamaño que tenía.
-        el.classList.remove("preset"); el.classList.add("libre", "arrastrando");
-        escenarioEl.appendChild(el);
-        if (!escenarioEl.querySelector(".invitado.preset")) delete document.body.dataset.escena;
-        pintarAcomodo(el, base);
+      const d = dedos.get(ev.pointerId);
+      if (!d || !base) return;
+      d.x = ev.clientX; d.y = ev.clientY;
+      if (dedos.size >= 2) {
+        if (!pinzaBase) { pinzaBase = dist(); base = rectActual(); modo = "pinza"; }
+        const k = dist() / (pinzaBase || 1), w = base.w * k, h = base.h * k;
+        empezar(); ultimo = { x: base.x + (base.w - w) / 2, y: base.y + (base.h - h) / 2, w, h };
+      } else {
+        const dx = ev.clientX - d.x0, dy = ev.clientY - d.y0;
+        if (!movio && Math.hypot(dx, dy) < 8) return;
+        empezar();
+        ultimo = modo === "redim" ? { ...base, w: base.w + dx, h: base.h + dy } : imantar(z, { ...base, x: base.x + dx, y: base.y + dy });
       }
-      const nuevo = modo === "mover" ? acotar({ ...base, x: base.x + dx, y: base.y + dy }) : acotar({ ...base, w: base.w + dx, h: base.h + dy });
-      ultimo = nuevo;
-      pintarAcomodo(el, nuevo);
-      enviar(nuevo, false);
+      const a = acotar(aPct(z, ultimo));
+      px(el, dePct(z, a));
+      enviar(a, false);
+    };
+    const empezar = () => {
+      if (movio) return;
+      movio = true; arrastrando = uid;
+      el.classList.remove("chica"); el.classList.add("arrastrando");
+      escenarioEl.appendChild(el); // encima de las demás
     };
     const soltar = (ev) => {
-      if (!inicio || ev.pointerId !== inicio.id) return;
-      const fueToque = !movio;
-      inicio = null;
-      window.removeEventListener("pointermove", mover);
-      window.removeEventListener("pointerup", soltar);
-      window.removeEventListener("pointercancel", soltar);
-      el.classList.remove("arrastrando");
+      if (!dedos.has(ev.pointerId)) return;
+      dedos.delete(ev.pointerId);
       try { el.releasePointerCapture(ev.pointerId); } catch {}
-      if (fueToque) { const e = invitados.get(uid); const t = ((e && e.info.tamano) || 1) % 4 + 1; cambiarTamano(uid, t); return; }
-      // Lo último que se pintó es lo que vale: no se vuelve a medir.
-      const a = redondea(ultimo || acotar(acomodoDe(el)));
-      pintarAcomodo(el, a);
+      if (dedos.size) { pinzaBase = 0; base = rectActual(); const d = [...dedos.values()][0]; d.x0 = d.x; d.y0 = d.y; return; }
+      const fueToque = !movio;
+      soltarTodo();
+      if (fueToque) { abrirHojaFicha(uid); return; }
+      const a = redondea(acotar(aPct(z, ultimo || rectActual())));
       const e = invitados.get(uid); if (e) { e.info.acomodo = a; e.info.tamano = 1; }
+      acomodar();
       enviar(a, true);
     };
     el.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0 || escena === "mesa") return;
       if (ev.target.closest(".invitado-x, .invitado-pantalla")) return;
-      modo = ev.target.classList.contains("invitado-redim") ? "redim" : "mover";
-      inicio = { x: ev.clientX, y: ev.clientY, id: ev.pointerId };
-      base = acomodoDe(el);
-      movio = false;
+      if (!dedos.size) { z = zona(); base = rectActual(); movio = false; ultimo = null; pinzaBase = 0; modo = ev.target.classList.contains("invitado-redim") ? "redim" : "mover"; window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar); window.addEventListener("pointercancel", soltar); }
+      dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, x0: ev.clientX, y0: ev.clientY });
       try { el.setPointerCapture(ev.pointerId); } catch {}
-      window.addEventListener("pointermove", mover);
-      window.addEventListener("pointerup", soltar);
-      window.addEventListener("pointercancel", soltar);
       ev.preventDefault();
     });
   }
-  function aplicarAcomodo(uid, a) {
-    const e = invitados.get(uid);
-    const el = e ? e.el : (miPalabra && me && uid === me.id ? miPalabra.el : null);
-    if (e) { e.info.acomodo = a; e.info.tamano = 1; }
-    if (!el || escena === "mesa") return;
-    el.classList.remove("preset"); el.classList.add("libre");
-    escenarioEl.appendChild(el);
-    if (!escenarioEl.querySelector(".invitado.preset")) delete document.body.dataset.escena;
-    pintarAcomodo(el, a);
-    const tam = el.querySelector(".invitado-tam"); if (tam) tam.textContent = "⤢";
-    if (miPalabra && me && uid === me.id) codificarSegunAncho(a.w);
-  }
-  function codificarSegunAncho(wPct) {
-    if (!miPalabra || !miPalabra.videoSender || !window.MotorSincronia) return;
-    const t = wPct < 25 ? 1 : wPct < 45 ? 2 : 3;
-    miPalabra.tamano = t;
-    MotorSincronia.emisor(miPalabra.videoSender, t, { pantalla: !!miPalabra.pantalla });
-  }
-  // -- Mesa: todos parejos, el creador incluido --
-  function fichasVisibles() {
-    const lista = [...invitados.values()].map((e) => e.el);
-    if (miPalabra) lista.push(miPalabra.el);
-    return lista;
-  }
-  function acomodarMesa() {
-    const fichas = fichasVisibles();
-    if (escena !== "mesa") return;
-    const n = fichas.length + 1;
-    const ancha = window.innerWidth >= window.innerHeight;
-    let cols = n <= 1 ? 1 : n === 2 ? (ancha ? 2 : 1) : n <= 4 ? 2 : 3;
-    if (n === 3 && ancha) cols = 3;
-    const filas = Math.ceil(n / cols);
-    const celda = (i) => {
-      const fila = Math.floor(i / cols), col = i % cols;
-      const enFila = Math.min(cols, n - fila * cols);
-      const w = 100 / cols, h = 100 / filas;
-      const sangria = ((cols - enFila) * w) / 2; // la última fila, centrada
-      return { x: sangria + col * w + 0.6, y: fila * h + 0.6, w: w - 1.2, h: h - 1.2 };
-    };
-    player.classList.add("mesa");
-    const c0 = celda(0);
-    player.style.left = `${c0.x}%`; player.style.top = `${c0.y}%`; player.style.width = `${c0.w}%`; player.style.height = `${c0.h}%`;
-    fichas.forEach((el, i) => { el.classList.add("mesa"); el.classList.remove("preset", "libre"); escenarioEl.appendChild(el); pintarAcomodo(el, celda(i + 1)); });
-    if (miPalabra) codificarSegunAncho(celda(1).w);
-  }
-  function deshacerMesa() {
-    player.classList.remove("mesa");
-    player.style.left = player.style.top = player.style.width = player.style.height = "";
-    for (const el of fichasVisibles()) {
-      el.classList.remove("mesa"); el.style.left = el.style.top = el.style.width = el.style.height = "";
-      const uid = el.dataset.uid, e = invitados.get(uid);
-      const info = e ? e.info : (miPalabra && me && uid === me.id ? { tamano: miPalabra.tamanoSala || 1, acomodo: miPalabra.acomodo || null } : null);
-      if (info && info.acomodo) aplicarAcomodo(uid, info.acomodo);
-      else aplicarTamano(uid, (info && info.tamano) || 1);
-    }
-  }
-  function aplicarEscena(modo) {
-    escena = modo === "mesa" ? "mesa" : "fichas";
-    document.body.toggleAttribute("data-mesa", escena === "mesa");
-    $("btn-mesa").classList.toggle("active", escena === "mesa");
-    if (escena === "mesa") acomodarMesa(); else deshacerMesa();
-  }
-  window.addEventListener("resize", () => { if (escena === "mesa") acomodarMesa(); });
-  function pintarBotonMesa() { $("btn-mesa").style.display = isOwner && invitados.size ? "inline-block" : "none"; }
 
-  // Tamaño: toda la sala ve el mismo acomodo. Del 2 en adelante la ficha pasa
-  // al escenario y solo una persona puede estar ahí.
-  function aplicarTamano(uid, t) {
-    const e = invitados.get(uid);
-    const el = e ? e.el : (miPalabra && me && uid === me.id ? miPalabra.el : null);
-    if (e) { e.info.tamano = t; e.info.acomodo = null; }
-    if (miPalabra && me && uid === me.id) { miPalabra.tamanoSala = t; miPalabra.acomodo = null; }
-    if (!el || escena === "mesa") return;
-    const tam = el.querySelector(".invitado-tam");
-    if (tam) tam.textContent = t > 1 ? `${t}/4` : "⤢";
-    el.classList.remove("libre"); el.style.left = el.style.top = el.style.width = el.style.height = "";
-    if (t > 1) {
-      for (const otro of [...escenarioEl.querySelectorAll(".invitado.preset")]) if (otro !== el) { otro.classList.remove("preset"); invitadosEl.appendChild(otro); }
-      el.classList.add("preset");
-      escenarioEl.appendChild(el);
-      document.body.dataset.escena = String(t);
-    } else {
-      el.classList.remove("preset");
-      if (el.parentElement === escenarioEl) invitadosEl.appendChild(el);
-      if (!escenarioEl.querySelector(".invitado.preset")) delete document.body.dataset.escena;
-    }
-    if (miPalabra && me && uid === me.id) {
-      miPalabra.tamano = t;
-      if (window.MotorSincronia && miPalabra.videoSender) MotorSincronia.emisor(miPalabra.videoSender, t, { pantalla: !!miPalabra.pantalla });
-      if (t >= 3) toast(t === 4 ? "🎬 El creador te puso de protagonista: tu video llena la pantalla de toda la sala." : "🎬 Estás a dúo con el creador: la sala los ve a los dos.", 5000);
-    }
-  }
-  async function cambiarTamano(uid, t) {
-    const r = await api(`/api/rooms/${slug}/palabra/tamano`, { body: { user_id: uid, tamano: t } });
-    if (r.error) return toast("No se pudo cambiar el tamaño.", 3000);
-    toast(`⤢ Tamaño ${t} de 4: ${NOMBRE_TAMANO[t]}. Así lo ve toda la sala.`, 3000);
-  }
   function quitarFichaInvitado(uid, { silencioso = false } = {}) {
     invitadosPendientes.delete(uid);
     const e = invitados.get(uid);
@@ -1588,9 +1680,7 @@
     if (e.sinc) e.sinc.detener();
     try { e.pc.close(); } catch {}
     e.el.remove();
-    if (!escenarioEl.querySelector(".invitado.preset")) delete document.body.dataset.escena;
-    if (escena === "mesa") acomodarMesa();
-    pintarBotonMesa();
+    acomodar();
     if (!silencioso && isOwner) toast(`${e.info.name} dejó la palabra.`, 3000);
   }
   function recibirInvitado(info) {
@@ -1614,9 +1704,8 @@
     invitadosPendientes.clear();
     conPalabra.clear();
     manosEl.innerHTML = "";
-    delete document.body.dataset.escena;
-    if (escena === "mesa") aplicarEscena("fichas");
-    pintarBotonMesa();
+    escena = "fichas";
+    acomodar();
   }
 
   // -- Del lado del creador --
@@ -1642,8 +1731,9 @@
     const card = document.createElement("div");
     card.className = "mano";
     card.dataset.uid = userId;
-    card.innerHTML = `<span>✋ ${escTxt(name)}</span><button class="mano-dar">🎤 Dar la palabra</button><button class="mano-x" aria-label="Cerrar">✕</button>`;
-    card.querySelector(".mano-dar").onclick = () => darPalabraA(userId, name);
+    const lleno = conPalabra.size >= MAX_PALABRA;
+    card.innerHTML = `<span>✋ ${escTxt(name)}</span><button class="mano-dar" ${lleno ? "disabled" : ""}>${lleno ? `Cupo lleno (${MAX_PALABRA})` : "🎤 Dar la palabra"}</button><button class="mano-x" aria-label="Cerrar">✕</button>`;
+    card.querySelector(".mano-dar").onclick = () => { if (conPalabra.size >= MAX_PALABRA) return toast(`Ya hay ${MAX_PALABRA} personas con la palabra. Quítale la palabra a alguien primero.`, 4000); darPalabraA(userId, name); };
     card.querySelector(".mano-x").onclick = () => card.remove();
     manosEl.appendChild(card);
     while (manosEl.children.length > 3) manosEl.firstChild.remove();
@@ -1735,7 +1825,7 @@
     // invitados también. El colchón automático del espectador se apaga.
     if (window.MotorSincronia && pc) { colchonMs = 0; miPalabra.sincPrincipal = MotorSincronia.conversacion(pc); }
     rearmarSincronias();
-    if (escena === "mesa") acomodarMesa();
+    acomodar();
     conPalabra.add(me.id);
     pintarBotonMano();
     toast(videoTrack ? "🎙️📷 Estás al aire: toda la sala te escucha y te ve en tu ficha." : "🎙️ Estás al aire: toda la sala te escucha.", 6000);
@@ -1751,8 +1841,7 @@
     m.stream.getTracks().forEach((t) => t.stop());
     try { m.pc.close(); } catch {}
     m.el.remove();
-    if (!escenarioEl.querySelector(".invitado.preset")) delete document.body.dataset.escena;
-    if (escena === "mesa") acomodarMesa();
+    acomodar();
     if (me) conPalabra.delete(me.id);
     rearmarSincronias();
     pintarBotonMano();
@@ -1767,6 +1856,8 @@
       await miPalabra.videoSender.replaceTrack(miPalabra.camara).catch(() => {});
       ponerVideoEnFicha(miPalabra.el, new MediaStream([miPalabra.camara]), { muted: true, espejo: true });
       if (window.MotorSincronia) MotorSincronia.emisor(miPalabra.videoSender, miPalabra.tamano);
+      miPalabra.el.classList.remove("pantalla");
+      api(`/api/rooms/${slug}/invitado/pantalla`, { body: { pantalla: false } }).catch(() => {});
       boton.classList.remove("active"); boton.title = "Compartir mi pantalla";
       return toast("Volviste a tu cámara.", 2500);
     }
@@ -1778,6 +1869,8 @@
     await miPalabra.videoSender.replaceTrack(track).catch(() => {});
     ponerVideoEnFicha(miPalabra.el, new MediaStream([track]), { muted: true, espejo: false });
     if (window.MotorSincronia) MotorSincronia.emisor(miPalabra.videoSender, miPalabra.tamano, { pantalla: true });
+    miPalabra.el.classList.add("pantalla");
+    api(`/api/rooms/${slug}/invitado/pantalla`, { body: { pantalla: true } }).catch(() => {});
     track.onended = () => { if (miPalabra && miPalabra.pantalla) alternarPantallaInvitado(boton); };
     boton.classList.add("active"); boton.title = "Volver a mi cámara";
     toast("🖥️ Compartiendo tu pantalla con la sala. El creador puede ponerla en grande.", 5000);
@@ -2562,12 +2655,7 @@
         2400
       );
     });
-    guarded($("btn-mesa"), async () => {
-      const modo = escena === "mesa" ? "fichas" : "mesa";
-      const r = await api(`/api/rooms/${slug}/palabra/escena`, { body: { modo } });
-      if (r.error) return toast("No se pudo cambiar el acomodo.", 3000);
-      toast(modo === "mesa" ? "⊞ Mesa: todos parejos, tú incluido. Así lo ve toda la sala." : "Fichas: cada quien a su tamaño o donde la pongas.", 3500);
-    });
+    guarded($("btn-mesa"), async () => cambiarEscena(escena === "mesa" ? "fichas" : "mesa"));
     guarded($("btn-tip"), async () => {
       if (!me) return requireLogin();
       openTipSheet();
@@ -2718,14 +2806,16 @@
           const i = { user_id: info.user_id || `falso_${invitados.size + 1}`, name: info.name || "Invitado", avatar_url: info.avatar_url || null, sfuSessionId: "falso", tamano: info.tamano || 1, acomodo: info.acomodo || null };
           const el = fichaInvitado(i);
           invitados.set(i.user_id, { info: i, pc: { getReceivers: () => [], close() {} }, el, sfu: "falso", nivelTimer: null, sinc: null });
-          if (i.acomodo) aplicarAcomodo(i.user_id, i.acomodo); else aplicarTamano(i.user_id, i.tamano);
-          if (escena === "mesa") acomodarMesa();
-          pintarBotonMesa();
+          acomodar();
           return i.user_id;
         },
         escena: (m) => aplicarEscena(m),
         quitar: (uid) => quitarFichaInvitado(uid, { silencioso: true }),
-        estado: () => ({ escena, invitados: [...invitados.values()].map((e) => ({ uid: e.info.user_id, tamano: e.info.tamano, acomodo: e.info.acomodo })), miPalabra: !!miPalabra }),
+        estado: () => ({ escena, zona: zona(), invitados: [...invitados.values()].map((e) => ({ uid: e.info.user_id, tamano: e.info.tamano, acomodo: e.info.acomodo })), miPalabra: !!miPalabra }),
+        acomodar: () => acomodar(),
+        tamano: (uid, t) => aplicarTamano(uid, t),
+        acomodo: (uid, a) => aplicarAcomodo(uid, a),
+        hoja: (uid) => abrirHojaFicha(uid),
       },
     };
   }

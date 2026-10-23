@@ -248,18 +248,37 @@ puede estar en grande y el tamaño también manda cómo codifica la persona
 invitada: 360p en ficha, 720p a dúo o de protagonista. Quien entró con cámara
 y está en escritorio puede compartir su pantalla desde su propia ficha (🖥️).
 
-**Acomodo libre y mesa.** El creador arrastra cualquier ficha a donde quiera
-y la redimensiona desde la esquina: queda «libre», guardada en % del
-escenario (`POST /api/rooms/:slug/palabra/acomodo`, acotada a la pantalla y
-con mínimo de 10 %), y toda la sala la pinta igual aunque cada pantalla sea
-distinta; se manda cada 150 ms mientras arrastra y al soltar. Volver a tocar
-la ficha la regresa a los tamaños. El botón «⊞ Mesa» de la barra de estudio
-acomoda a todos parejos, el creador incluido (`/palabra/escena`): la
-cuadrícula la calcula cada cliente según cuántos son y si la pantalla es
-ancha o alta (2 → lado a lado; 3 → tres columnas en ancha, apiladas en alta;
-4 → 2×2; 5 → 3+2 con la última fila centrada). El creador manda en todo: dar,
-quitar, tamaño, lugar y escena son suyos y nada de eso se comparte. Cuatro
-personas como máximo; con ✕ sale una y entra otra al instante.
+**El acomodo: un solo motor (`acomodar()` en `room.js`).** Dónde va cada
+video no está en CSS fijo: se calcula en píxeles midiendo la zona libre
+entre las barras de arriba (estudio, presencia, solo audio) y el dock, con 8
+px de aire, y se recalcula entero al girar el teléfono, al entrar o salir
+alguien, al abrir el modo tele o al cambiar la escena; las transiciones de
+250 ms evitan saltos y nada de esto toca el video. Reglas que salen de
+recorrer las combinaciones (1 a 4 personas × teléfono vertical u horizontal,
+tablet, computadora, tele × creador y público): fichas chicas en fila arriba
+a la derecha en vertical (cuatro caben en 320 px) y en columna a la derecha
+en horizontal; mediana arriba a la derecha, nunca abajo (ahí viven el chat y
+el dock), con las chicas debajo; a dúo mitad y mitad u arriba y abajo, con
+las chicas del lado del creador; protagonista llena la zona y el creador
+queda chico arriba a la izquierda; mesa en cuadrícula con el creador primero
+y la última fila centrada (2 → lado a lado o apilados; 3 → tres columnas o
+dos filas; 4 → 2×2; 5 → 3+2, en vertical 2 columnas); libre donde el creador
+la soltó, imantada a bordes y centro (12 px), mínimo 15 % de ancho y nunca
+fuera de la zona. El chat se encoge a 30 vh mientras hay escena. La persona
+invitada codifica según el ancho con que la sala la ve (360p < 25 %, 480p <
+45 %, 720p), solo cuando cambia de escalón. Si comparte pantalla avisa
+(`/invitado/pantalla`) y la sala la pinta completa, sin recortar.
+
+**Los controles del creador, en la ficha.** Un toque corto abre la hoja de
+esa persona: los cuatro tamaños dibujados con el actual marcado, «Mesa» y
+«Quitar la palabra»; nada cambia por accidente. Arrastrar mueve; la esquina
+(40 px en pantallas táctiles) o un pellizco con dos dedos redimensiona; la ✕
+quita. Mientras el creador trae una ficha en la mano, lo que llega del
+servidor no la mueve. El acomodo libre viaja en % de la zona
+(`/palabra/acomodo`, cada 150 ms y al soltar). La tarjeta de mano levantada
+dice «Cupo lleno (4)» cuando ya hay cuatro. El creador manda en todo: dar,
+quitar, tamaño, lugar y escena son suyos y nada de eso se comparte; con ✕
+sale una persona y entra otra al instante.
 
 **Motor de sincronía (`public/motor-sincronia.js`).** El razonamiento
 completo está en la cabecera del archivo. En corto: el único pedazo grande

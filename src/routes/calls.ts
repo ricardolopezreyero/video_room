@@ -279,3 +279,17 @@ calls.post("/api/rooms/:slug/invitado/salir", async (c) => {
   await stub.fetch("https://do/invitado-fuera", { method: "POST", body: JSON.stringify({ user_id: user.id }) });
   return c.json({ ok: true });
 });
+
+// La persona invitada avisa si está compartiendo pantalla: la sala la pinta
+// completa (sin recortar) mientras dure.
+calls.post("/api/rooms/:slug/invitado/pantalla", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "no_session" }, 401);
+  const room = await c.env.DB.prepare("SELECT * FROM rooms WHERE slug = ?").bind(c.req.param("slug")).first<Room>();
+  if (!room) return c.json({ error: "not_found" }, 404);
+  const { pantalla } = await c.req.json<{ pantalla: boolean }>().catch(() => ({ pantalla: false }));
+  const stub = c.env.ROOM_DO.get(c.env.ROOM_DO.idFromName(room.id));
+  const r = await stub.fetch("https://do/invitado-pantalla", { method: "POST", body: JSON.stringify({ user_id: user.id, pantalla: !!pantalla }) });
+  if (!r.ok) return c.json({ error: "sin_palabra" }, 403);
+  return c.json({ ok: true });
+});

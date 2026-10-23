@@ -130,4 +130,16 @@ describe("la palabra", () => {
     await DO(room.id).fetch("https://do/stop", { method: "POST" });
     expect(((await (await DO(room.id).fetch("https://do/invitados")).json()) as { escena: string }).escena).toBe("fichas");
   });
+
+  it("compartir pantalla se avisa a la sala y solo con la palabra", async () => {
+    const owner = await createUser();
+    const room = await createRoom(owner);
+    await DO(room.id).fetch("https://do/start", { method: "POST", body: JSON.stringify({ sessionId: await createLiveSession(room.id) }) });
+    const a = await createUser(), otro = await createUser();
+    await post(`/api/rooms/${room.slug}/palabra`, await cookieFor(owner), { user_id: a, dar: true });
+    expect((await post(`/api/rooms/${room.slug}/invitado/pantalla`, await cookieFor(otro), { pantalla: true })).status).toBe(403);
+    expect((await post(`/api/rooms/${room.slug}/invitado/pantalla`, await cookieFor(a), { pantalla: true })).status).toBe(200);
+    const inv = ((await (await DO(room.id).fetch("https://do/invitados")).json()) as { invitados: { user_id: string; pantalla?: boolean }[] }).invitados.find((i) => i.user_id === a);
+    expect(inv?.pantalla).toBe(true);
+  });
 });
