@@ -9,7 +9,7 @@
 // publicación nueva tarda exactamente una navegación en llegar; a cambio,
 // ninguna navegación espera a la red.
 var _k = "eye", _rev = 181218;
-var VERSION = "2026-10-22a";
+var VERSION = "2026-10-22b";
 var CACHE = "video-room-" + VERSION;
 var GUARDADO = [
   "/", "/app/monedero", "/app/estadisticas", "/app/transacciones", "/app/faq", "/app/materiales",
@@ -23,7 +23,9 @@ self.addEventListener("install", function (e) {
   e.waitUntil(caches.open(CACHE).then(function (cache) {
     return Promise.all(GUARDADO.map(function (ruta) {
       return fetch(new Request(ruta, { cache: "reload", credentials: "same-origin" }))
-        .then(function (r) { if (r.ok) return cache.put(ruta, r); })
+        // Una respuesta que llegó por redirección (/ con sesión → monedero)
+        // no se guarda: Chrome no deja servirla a una navegación (ERR_FAILED).
+        .then(function (r) { if (r.ok && !r.redirected) return cache.put(ruta, r); })
         .catch(function () {});
     }));
   }).then(function () { return self.skipWaiting(); }));
@@ -64,11 +66,12 @@ function delDiscoPrimero(e, ruta, llave) {
   llave = llave || ruta;
   return caches.open(CACHE).then(function (cache) {
     return cache.match(llave).then(function (guardada) {
+      if (guardada && guardada.redirected) { cache.delete(llave); guardada = null; }
       // "no-cache": la renovación de fondo pregunta al servidor de verdad
       // (ETag), no a la caché HTTP del navegador — si no, una publicación
       // nueva tardaría hasta 10 minutos (max-age) además de una navegación.
       var red = fetch(new Request(llave, { credentials: "same-origin", cache: "no-cache" })).then(function (r) {
-        if (r && r.ok) {
+        if (r && r.ok && !r.redirected) {
           cache.put(llave, r.clone());
           if (llave !== ruta) {
             // Versiones anteriores del mismo archivo: fuera.
@@ -81,6 +84,8 @@ function delDiscoPrimero(e, ruta, llave) {
       }).catch(function () { return null; });
       if (guardada) { e.waitUntil(red); return guardada; }
       return red.then(function (r) {
+        // Redirigida: que el navegador siga la redirección por su cuenta.
+        if (r && r.redirected) return fetch(e.request);
         return r || new Response("Sin conexión. Intenta de nuevo en un momento.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
       });
     });
